@@ -70,7 +70,10 @@ jobs:
         run: pnpm --filter @paperclipai/execution-target-kubernetes test:integration
 
       - name: Run server k8s end-to-end smoke
-        run: pnpm -w exec vitest run --config server/vitest.integration.config.ts k8s-cli-end-to-end
+        # Vitest's include patterns in vitest.integration.config.ts are relative
+        # to the cwd, not the config file path. Run from server/ so they resolve.
+        working-directory: server
+        run: pnpm exec vitest run --config vitest.integration.config.ts k8s-cli-end-to-end
 
       - name: Collect kind cluster logs on failure
         if: failure()
