@@ -213,4 +213,16 @@ describe("waitForSandboxReady", () => {
       }),
     ).rejects.toThrow(/failed.*OOMKilled/i);
   });
+
+  it("fails fast when Sandbox starts terminating before it is ready", async () => {
+    const get = vi.fn().mockResolvedValue(makeCr("Terminating"));
+    const clients = { custom: { getNamespacedCustomObject: get } };
+    await expect(
+      waitForSandboxReady(clients as never, "ns", "pc-abc", {
+        timeoutMs: 5000,
+        pollMs: 10,
+      }),
+    ).rejects.toThrow(/terminating before it became ready/i);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
 });

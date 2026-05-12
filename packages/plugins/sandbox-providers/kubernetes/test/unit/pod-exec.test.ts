@@ -38,4 +38,13 @@ describe("execInPod", () => {
       stderr: expect.stringContaining("websocket closed before status frame"),
     });
   });
+
+  it("returns an execution failure if the exec command exceeds its deadline", async () => {
+    execMock.mockResolvedValue(new EventEmitter());
+
+    const result = await execInPod({} as never, "ns", "pod-1", "agent", ["sleep", "60"], undefined, 5);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Kubernetes exec timed out after 5ms");
+  });
 });

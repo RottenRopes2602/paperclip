@@ -21,6 +21,7 @@ export async function execInPod(
   containerName: string,
   command: string[],
   stdin?: string,
+  timeoutMs?: number,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const exec = new Exec(kc);
   const stdoutStream = new PassThrough();
@@ -45,9 +46,16 @@ export async function execInPod(
   return await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
     (resolve, reject) => {
       let settled = false;
+      const timeout =
+        typeof timeoutMs === "number" && timeoutMs > 0
+          ? setTimeout(() => {
+              finishWithTransportFailure(`Kubernetes exec timed out after ${timeoutMs}ms`);
+            }, timeoutMs)
+          : null;
       const finish = (result: { exitCode: number; stdout: string; stderr: string }) => {
         if (settled) return;
         settled = true;
+        if (timeout) clearTimeout(timeout);
         resolve(result);
       };
       const finishWithTransportFailure = (message: string) => {

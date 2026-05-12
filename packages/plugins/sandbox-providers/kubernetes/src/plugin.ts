@@ -274,33 +274,45 @@ const plugin = definePlugin({
     // NOTE: For sandbox-cr, if the Secret outlives the Sandbox due to a cluster
     // quirk, the release() call will still clean it up via namespace GC or
     // explicit delete in a future milestone.
-    await createPerRunSecret(clients, {
-      namespace,
-      secretName,
-      runId: params.runId,
-      ownerKind: isSandboxCrBackend ? "Sandbox" : "Job",
-      ownerApiVersion: isSandboxCrBackend ? "agents.x-k8s.io/v1alpha1" : "batch/v1",
-      ownerName: jobName,
-      ownerUid,
-      bootstrapToken,
-      adapterEnv,
-    });
+    try {
+      await createPerRunSecret(clients, {
+        namespace,
+        secretName,
+        runId: params.runId,
+        ownerKind: isSandboxCrBackend ? "Sandbox" : "Job",
+        ownerApiVersion: isSandboxCrBackend ? "agents.x-k8s.io/v1alpha1" : "batch/v1",
+        ownerName: jobName,
+        ownerUid,
+        bootstrapToken,
+        adapterEnv,
+      });
 
-    const podName = await orchestrator.findPod(clients, namespace, jobName);
+      const podName = await orchestrator.findPod(clients, namespace, jobName);
 
-    const leaseMetadata: KubernetesLeaseMetadata = {
-      namespace,
-      jobName,
-      podName,
-      secretName,
-      phase: "Pending",
-      backend: config.backend,
-    };
+      const leaseMetadata: KubernetesLeaseMetadata = {
+        namespace,
+        jobName,
+        podName,
+        secretName,
+        phase: "Pending",
+        backend: config.backend,
+      };
 
-    return {
-      providerLeaseId: jobName,
-      metadata: leaseMetadata as unknown as Record<string, unknown>,
-    };
+      return {
+        providerLeaseId: jobName,
+        metadata: leaseMetadata as unknown as Record<string, unknown>,
+      };
+    } catch (err) {
+      try {
+        await orchestrator.release(clients, namespace, jobName);
+      } catch (cleanupErr) {
+        throw new Error(
+          `Kubernetes lease setup failed and cleanup also failed: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          { cause: err },
+        );
+      }
+      throw err;
+    }
   },
 
   async onEnvironmentRealizeWorkspace(
@@ -397,6 +409,7 @@ const plugin = definePlugin({
       // 1. Ensure the Sandbox pod is Ready (wait if needed).
       // 2. Exec the command into the running pod.
       // 3. Return exec result directly (no log scraping needed).
+      const executeStartedAt = Date.now();
 
       let podName =
         typeof lease.metadata?.podName === "string" && lease.metadata.podName
@@ -464,6 +477,7 @@ const plugin = definePlugin({
         ? ["/bin/sh", "-lc", rawCommand]
         : ["/bin/sh", "-l"];
 
+      const remainingTimeoutMs = Math.max(1, effectiveTimeoutMs - (Date.now() - executeStartedAt));
       const execResult = await execInPod(
         kc,
         namespace,
@@ -471,6 +485,7 @@ const plugin = definePlugin({
         "agent",
         execCommand,
         typeof params.stdin === "string" ? params.stdin : undefined,
+        remainingTimeoutMs,
       );
 
       return {

@@ -264,7 +264,10 @@ export async function waitForSandboxReady(
         `Sandbox ${namespace}/${name} failed: ${mapped.reason ?? "unknown reason"} — ${mapped.message ?? ""}`,
       );
     }
-    // Pending or Terminating — keep polling
+    if (phase === "Terminating") {
+      throw new Error(`Sandbox ${namespace}/${name} is terminating before it became ready`);
+    }
+    // Pending or unknown — keep polling
     await sleep(pollMs);
   }
 
