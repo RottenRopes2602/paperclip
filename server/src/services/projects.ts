@@ -510,7 +510,7 @@ export function projectService(db: Db) {
 
   return {
     list: async (companyId: string): Promise<ProjectWithGoals[]> => {
-      const rows = await db.select().from(projects).where(eq(projects.companyId, companyId));
+      const rows = await db.select().from(projects).where(eq(projects.companyId, companyId)).orderBy(asc(projects.createdAt));
       const withGoals = await attachGoals(db, rows);
       return attachWorkspaces(db, withGoals);
     },
