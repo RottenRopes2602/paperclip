@@ -265,6 +265,8 @@ export function adapterRoutes() {
         await execFileAsync("npm", ["install", "--no-save", spec], {
           cwd: pluginsDir,
           timeout: 120_000,
+          // Windows ships `npm.cmd`; Node can't spawn .cmd without a shell.
+          shell: process.platform === "win32",
         });
 
         // Read installed version from package.json
@@ -464,6 +466,7 @@ export function adapterRoutes() {
         await execFileAsync("npm", ["uninstall", externalRecord.packageName], {
           cwd: pluginsDir,
           timeout: 60_000,
+          shell: process.platform === "win32",
         });
         logger.info(
           { type: adapterType, packageName: externalRecord.packageName },
@@ -577,6 +580,7 @@ export function adapterRoutes() {
       await execFileAsync("npm", ["install", "--no-save", record.packageName], {
         cwd: pluginsDir,
         timeout: 120_000,
+        shell: process.platform === "win32",
       });
 
       // Reload the freshly installed adapter

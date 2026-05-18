@@ -873,7 +873,13 @@ export function pluginLoader(
         await execFileAsync(
           "npm",
           ["install", spec, "--prefix", targetInstallDir, "--save", "--ignore-scripts"],
-          { timeout: 120_000 }, // 2 minute timeout for npm install
+          {
+            timeout: 120_000, // 2 minute timeout for npm install
+            // On Windows the `npm` binary is `npm.cmd`. Node refuses to spawn
+            // .cmd / .bat without a shell ("spawn npm ENOENT"). Shell on Windows
+            // adds the resolution; on POSIX it is a no-op since `npm` works as-is.
+            shell: process.platform === "win32",
+          },
         );
       } catch (err) {
         throw new Error(`npm install failed for ${spec}: ${String(err)}`);
@@ -1857,8 +1863,10 @@ export function pluginLoader(
       // Repo-local plugin installs can resolve workspace TS sources at runtime
       // (for example @paperclipai/shared exports). Run those workers through
       // the tsx loader so first-party example plugins work in development.
+      // Node's --import flag treats raw Windows absolute paths (D:\...) as
+      // URLs and rejects them ("Received protocol 'd:'"). Convert to file://.
       if (activePlugin.packagePath && existsSync(DEV_TSX_LOADER_PATH)) {
-        workerOptions.execArgv = ["--import", DEV_TSX_LOADER_PATH];
+        workerOptions.execArgv = ["--import", pathToFileURL(DEV_TSX_LOADER_PATH).href];
       }
 
       await workerManager.startWorker(pluginId, workerOptions);
