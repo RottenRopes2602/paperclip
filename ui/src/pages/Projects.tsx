@@ -75,7 +75,7 @@ export function Projects() {
                       {formatDate(project.targetDate)}
                     </span>
                   )}
-                  <StatusBadge status={project.status} />
+                  <StatusBadge status={project.status} ns="project" />
                 </div>
               }
             />

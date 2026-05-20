@@ -1,5 +1,6 @@
 import type { Goal } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
+import { useTranslation } from "@/i18n";
 import { StatusBadge } from "./StatusBadge";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -45,7 +46,7 @@ function GoalNode({ goal, children, allGoals, depth, goalLink, onSelect }: GoalN
       )}
       <span className="text-xs text-muted-foreground capitalize">{goal.level}</span>
       <span className="flex-1 truncate">{goal.title}</span>
-      <StatusBadge status={goal.status} />
+      <StatusBadge status={goal.status} ns="goal" />
     </>
   );
 
@@ -92,11 +93,12 @@ function GoalNode({ goal, children, allGoals, depth, goalLink, onSelect }: GoalN
 }
 
 export function GoalTree({ goals, goalLink, onSelect }: GoalTreeProps) {
+  const { t } = useTranslation();
   const goalIds = new Set(goals.map((g) => g.id));
   const roots = goals.filter((g) => !g.parentId || !goalIds.has(g.parentId));
 
   if (goals.length === 0) {
-    return <p className="text-sm text-muted-foreground">No goals.</p>;
+    return <p className="text-sm text-muted-foreground">{t("goalTree.empty.noGoals", { defaultValue: "목표가 없습니다. (No goals.)" })}</p>;
   }
 
   return (
