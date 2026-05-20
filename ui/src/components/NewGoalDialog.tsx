@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { GOAL_STATUSES, GOAL_LEVELS } from "@paperclipai/shared";
+import { GOAL_STATUSES, GOAL_LEVELS, GOAL_KINDS, type GoalKind } from "@paperclipai/shared";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { goalsApi } from "../api/goals";
@@ -33,6 +33,26 @@ const levelLabels: Record<string, string> = {
   task: "Task",
 };
 
+// fork_mangoclaw: explicit OKR layer label (mission/vision/objective/key_result/other).
+const kindLabels: Record<GoalKind, string> = {
+  mission: "🏛️ Mission",
+  vision: "🔭 Vision",
+  objective: "🎯 Objective",
+  key_result: "📍 Key Result",
+  other: "기타",
+};
+
+// fork_mangoclaw: infer best default kind based on the parent (and optional explicit override).
+function inferKindFromParent(parentKind: GoalKind | null | undefined, parentLevel: string | null | undefined): GoalKind {
+  if (parentKind === "mission" || parentKind === "vision") return "objective";
+  if (parentKind === "objective") return "key_result";
+  if (parentKind === "key_result") return "other";
+  // Fallback by legacy level when kind isn't set on parent
+  if (parentLevel === "company") return "objective";
+  if (parentLevel === "team") return "key_result";
+  return "objective"; // no parent → assume top-level Objective
+}
+
 export function NewGoalDialog() {
   const { newGoalOpen, newGoalDefaults, closeNewGoal } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
@@ -41,11 +61,15 @@ export function NewGoalDialog() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [level, setLevel] = useState("task");
+  // fork_mangoclaw: explicit OKR layer. Defaults inferred from parent when known.
+  const [kind, setKind] = useState<GoalKind>("objective");
+  const [kindTouched, setKindTouched] = useState(false);
   const [parentId, setParentId] = useState("");
   const [expanded, setExpanded] = useState(false);
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [levelOpen, setLevelOpen] = useState(false);
+  const [kindOpen, setKindOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
 
@@ -80,6 +104,8 @@ export function NewGoalDialog() {
     setDescription("");
     setStatus("planned");
     setLevel("task");
+    setKind("objective");
+    setKindTouched(false);
     setParentId("");
     setExpanded(false);
   }
@@ -91,6 +117,7 @@ export function NewGoalDialog() {
       description: description.trim() || undefined,
       status,
       level,
+      kind, // fork_mangoclaw: explicit OKR layer
       ...(appliedParentId ? { parentId: appliedParentId } : {}),
     });
   }
@@ -103,6 +130,14 @@ export function NewGoalDialog() {
   }
 
   const currentParent = (goals ?? []).find((g) => g.id === appliedParentId);
+
+  // fork_mangoclaw: when parent changes (and user hasn't manually picked a kind),
+  // re-infer the default kind so the chip stays sensible.
+  useEffect(() => {
+    if (kindTouched) return;
+    const inferred = inferKindFromParent(currentParent?.kind, currentParent?.level);
+    setKind(inferred);
+  }, [currentParent?.id, currentParent?.kind, currentParent?.level, kindTouched]);
 
   return (
     <Dialog
@@ -203,6 +238,29 @@ export function NewGoalDialog() {
                   onClick={() => { setStatus(s); setStatusOpen(false); }}
                 >
                   {s}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+
+          {/* fork_mangoclaw: Kind chip (Mission / Vision / Objective / Key Result / Other) */}
+          <Popover open={kindOpen} onOpenChange={setKindOpen}>
+            <PopoverTrigger asChild>
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+                {kindLabels[kind]}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-44 p-1" align="start">
+              {GOAL_KINDS.map((k) => (
+                <button
+                  key={k}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                    k === kind && "bg-accent",
+                  )}
+                  onClick={() => { setKind(k); setKindTouched(true); setKindOpen(false); }}
+                >
+                  {kindLabels[k]}
                 </button>
               ))}
             </PopoverContent>

@@ -82,6 +82,22 @@ export const statusBadge: Record<string, string> = {
 
 export const statusBadgeDefault = "bg-muted text-muted-foreground";
 
+// fork_mangoclaw: ns-specific overrides so Goal's `active` doesn't collide with
+// Agent's `active` (both used to be green; Goal `active` vs `achieved` were
+// indistinguishable). Goal palette:
+//   planned   = amber (waiting to start)
+//   active    = blue  (in progress)
+//   achieved  = green (done)
+//   cancelled = muted gray (abandoned)
+export const statusBadgeByNs: Record<string, Record<string, string>> = {
+  goal: {
+    planned: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+    active: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+    achieved: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
+    cancelled: "bg-neutral-200/60 text-neutral-500 dark:bg-neutral-800/50 dark:text-neutral-500",
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Agent status dot — solid background for small indicator dots
 // ---------------------------------------------------------------------------

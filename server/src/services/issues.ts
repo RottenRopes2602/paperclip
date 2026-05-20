@@ -4518,7 +4518,61 @@ export function issueService(db: Db) {
         return enriched;
       };
 
-      return dbOrTx === db ? db.transaction(runUpdate) : runUpdate(dbOrTx);
+      // fork_mangoclaw: cascade A3 — capture result then run cascade outside the tx.
+      const result = dbOrTx === db ? await db.transaction(runUpdate) : await runUpdate(dbOrTx);
+
+      // fork_mangoclaw: cascade A3 — when an issue reaches done/cancelled, check if
+      // all sibling issues under the same project are also terminal. If so, and the
+      // project is still active (planned/in_progress), auto-complete it.
+      // Infinite-recursion guard: project.update() is a simple SQL UPDATE (not this
+      // service's update), so no cascade loop. Idempotent: project must be in a
+      // non-terminal status for cascade to fire.
+      if (
+        result &&
+        data.status !== undefined &&
+        (result.status === "done" || result.status === "cancelled") &&
+        result.projectId != null
+      ) {
+        try {
+          const siblings = await db
+            .select({ status: issues.status })
+            .from(issues)
+            .where(
+              and(
+                eq(issues.companyId, result.companyId),
+                eq(issues.projectId, result.projectId),
+              ),
+            );
+          const allTerminal = siblings.length > 0 &&
+            siblings.every((s) => s.status === "done" || s.status === "cancelled");
+          if (allTerminal) {
+            const project = await db
+              .select({ id: projects.id, status: projects.status })
+              .from(projects)
+              .where(
+                and(
+                  eq(projects.id, result.projectId!),
+                  eq(projects.companyId, result.companyId),
+                ),
+              )
+              .then((rows) => rows[0] ?? null);
+            if (project && (project.status === "planned" || project.status === "in_progress")) {
+              await db
+                .update(projects)
+                .set({ status: "completed", updatedAt: new Date() })
+                .where(eq(projects.id, project.id));
+              console.log(
+                `[fork_mangoclaw:cascade] project.cascade_completed: project ${project.id} auto-completed via issue ${result.id}`,
+              );
+            }
+          }
+        } catch (err) {
+          // Cascade failure must not fail the original PATCH.
+          console.error("[fork_mangoclaw:cascade] A3 cascade error:", err);
+        }
+      }
+
+      return result;
     },
 
     clearExecutionWorkspaceEnvironmentSelection: async (companyId: string, environmentId: string) => {

@@ -25,6 +25,8 @@ export const goals = pgTable(
     // fork_mangoclaw: auto-numbered identifier (migration 0090). Mirrors projects + issues.
     goalNumber: integer("goal_number"),
     identifier: text("identifier"),
+    // fork_mangoclaw: explicit goal kind (mission/vision/objective/key_result/other). Migration 0092.
+    kind: text("kind"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

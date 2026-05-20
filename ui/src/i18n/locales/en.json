@@ -630,5 +630,91 @@
     "errors": {
       "selectCompanyForSecrets": "Select a company to create secrets"
     }
+  },
+  "companySettings": {
+    "title": "Company Settings",
+    "breadcrumb": {
+      "company": "Company",
+      "settings": "Settings"
+    },
+    "section": {
+      "general": "General",
+      "appearance": "Appearance",
+      "hiring": "Hiring",
+      "invites": "Invites",
+      "ecoMode": "Eco Mode",
+      "companyPackages": "Company Packages",
+      "dangerZone": "Danger Zone"
+    },
+    "field": {
+      "companyName": "Company name",
+      "companyNameHint": "The display name for your company.",
+      "description": "Description",
+      "descriptionHint": "Optional description shown in the company profile.",
+      "descriptionPlaceholder": "Optional company description",
+      "logo": "Logo",
+      "logoHint": "Upload a PNG, JPEG, WEBP, GIF, or SVG logo image.",
+      "brandColor": "Brand color",
+      "brandColorHint": "Sets the hue for the company icon. Leave empty for auto-generated color.",
+      "brandColorPlaceholder": "Auto",
+      "attachmentLimit": "Attachment size limit",
+      "attachmentLimitHint": "Accepted range: 1-{{max}} MiB.",
+      "attachmentLimitError": "Enter a whole number between 1 and {{max}}"
+    },
+    "button": {
+      "removeLogo": "Remove logo",
+      "removing": "Removing...",
+      "uploadingLogo": "Uploading logo...",
+      "logoUploadFailed": "Logo upload failed",
+      "clear": "Clear",
+      "save": "Save changes",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "saveFailed": "Failed to save"
+    },
+    "hiring": {
+      "requireApproval": "Require board approval for new hires",
+      "requireApprovalHint": "New agent hires stay pending until approved by board."
+    },
+    "invites": {
+      "generatePrompt": "Generate an OpenClaw agent invite snippet.",
+      "generateHint": "Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt.",
+      "generate": "Generate OpenClaw Invite Prompt",
+      "generating": "Generating...",
+      "createFailed": "Failed to create invite",
+      "snippetTitle": "OpenClaw Invite Prompt",
+      "copySnippet": "Copy snippet",
+      "copiedSnippet": "Copied snippet",
+      "copied": "Copied"
+    },
+    "ecoMode": {
+      "title": "Skip wake when nothing changed",
+      "description": "Master switch for all non-Director agents. When enabled, idle agents skip the LLM call on timer wake if nothing has changed. Saves idle cost. Director is always excluded for autonomous cascade.",
+      "turnOnAll": "Turn ON all",
+      "turnOffAll": "Turn OFF all",
+      "updating": "Updating...",
+      "mixed": "Mixed",
+      "affected": "Affected agents ({{count}})",
+      "on": "eco ON",
+      "off": "eco OFF",
+      "loadingAgents": "Loading agents...",
+      "noAgents": "No non-Director agents to toggle.",
+      "updateFailed": "Failed to update eco mode",
+      "unknownError": "unknown error"
+    },
+    "packages": {
+      "description": "Import and Export have moved to a dedicated page (accessible via the {{orgLink}} header).",
+      "orgChartLink": "Org Chart",
+      "export": "Export",
+      "import": "Import"
+    },
+    "dangerZone": {
+      "description": "Archive this company to hide it from the sidebar. Persists in DB.",
+      "archive": "Archive company",
+      "archiving": "Archiving...",
+      "alreadyArchived": "Already archived",
+      "archiveFailed": "Failed to archive company",
+      "confirmArchive": "Archive company \"{{name}}\"? It will be hidden from the sidebar."
+    }
   }
 }

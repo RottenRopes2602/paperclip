@@ -329,6 +329,10 @@ export type GoalLevel = (typeof GOAL_LEVELS)[number];
 export const GOAL_STATUSES = ["planned", "active", "achieved", "cancelled"] as const;
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
+// fork_mangoclaw: explicit goal kind (Mission / Vision / OKR layer).
+export const GOAL_KINDS = ["mission", "vision", "objective", "key_result", "other"] as const;
+export type GoalKind = (typeof GOAL_KINDS)[number];
+
 export const PROJECT_STATUSES = [
   "backlog",
   "planned",

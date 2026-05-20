@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GOAL_LEVELS, GOAL_STATUSES } from "../constants.js";
+import { GOAL_LEVELS, GOAL_STATUSES, GOAL_KINDS } from "../constants.js";
 
 export const createGoalSchema = z.object({
   title: z.string().min(1),
@@ -15,6 +15,8 @@ export const createGoalSchema = z.object({
   // rows have an identifier, this should become server-readonly.
   identifier: z.string().optional().nullable(),
   goalNumber: z.number().int().optional().nullable(),
+  // fork_mangoclaw: explicit goal kind (mission/vision/objective/key_result/other). Optional.
+  kind: z.enum(GOAL_KINDS).optional().nullable(),
 });
 
 export type CreateGoal = z.infer<typeof createGoalSchema>;

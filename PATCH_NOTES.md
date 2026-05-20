@@ -1,6 +1,81 @@
-# PATCH_NOTES — feature/dashboard-external-source
+# PATCH_NOTES — master (running log)
 
-> This is a working snapshot for the branch `feature/dashboard-external-source`. It serves as Monday's reference and as a draft for the eventual PR description.
+> Chronological working log of fork_mangoclaw changes on `master`. Most recent at the top.
+
+---
+
+## [2026-05-20] OKR system — kind field + cascade automations + UI split
+
+### TL;DR
+
+Goals now carry an explicit `kind` field (`mission / vision / objective / key_result / other`), the Goals page is split into two sections (Mission·Vision cards top, OKR tree bottom), two cascade automations fire server-side when KRs or Issues complete, and the New Goal Dialog has a kind selector with parent-based inference.
+
+### Why
+
+PaperClip's flat Goals list conflated absolute standards (Mission/Vision) with measurable OKRs (Objective/KR). Introducing `kind` lets the UI render them differently and lets cascades propagate status automatically.
+
+### What changed
+
+#### DB + Shared
+
+- `packages/db/src/migrations/0091_goal_kind.sql` (new) — `ALTER TABLE goals ADD COLUMN kind text` + index on `(company_id, kind)`.
+- `packages/db/src/schema/goals.ts` — added `kind: text("kind")` column.
+- `packages/shared/src/constants.ts` — `GOAL_KINDS` array + `GoalKind` type.
+- `packages/shared/src/types/goal.ts` — `kind?: GoalKind | null` field.
+- `packages/shared/src/validators/goal.ts` — `kind: z.enum(GOAL_KINDS).optional().nullable()`.
+
+#### Server cascades
+
+`server/src/services/goals.ts` — cascade A2: when a KR is updated to `achieved`, if all sibling KRs under the same Objective are `achieved`, the Objective is promoted to `achieved` automatically.
+
+`server/src/services/issues.ts` — cascade A3: when an Issue is closed (`done` / `cancelled`), if all Issues in the parent Project are closed, the Project is set to `completed` automatically.
+
+#### UI
+
+| File | Change |
+|---|---|
+| `ui/src/components/OkrTree.tsx` (new) | OKR-only tree — filters out mission/vision, promotes orphans to root |
+| `ui/src/components/MissionVisionCards.tsx` (new) | Card grid for mission/vision goals; links to detail page |
+| `ui/src/pages/Goals.tsx` | 2-section layout: Mission·Vision (top) + OKR tree (bottom) |
+| `ui/src/components/NewGoalDialog.tsx` | Kind selector chip + parent-based kind inference |
+| `ui/src/lib/status-colors.ts` | `statusBadgeByNs.goal` — planned=amber, active=blue, achieved=green, cancelled=gray |
+| `ui/src/components/StatusBadge.tsx` | Uses `statusBadgeByNs` override before falling back to generic |
+| `ui/src/i18n/locales/en.json` | Added `companySettings` block (fix: was in ko.json only, causing validation error) |
+
+#### Plugins
+
+- `packages/plugins/paperclip-plugin-catalog/` (new) — Agent Roles catalog page with 12 role cards; labels distinguish PaperClip-official vs author-guidance entries.
+
+### Files touched
+
+```
+New:
+  packages/db/src/migrations/0091_goal_kind.sql
+  ui/src/components/MissionVisionCards.tsx
+  ui/src/components/OkrTree.tsx
+  packages/plugins/paperclip-plugin-catalog/  (entire plugin)
+
+Modified:
+  packages/db/src/migrations/meta/_journal.json
+  packages/db/src/schema/goals.ts
+  packages/shared/src/constants.ts
+  packages/shared/src/index.ts
+  packages/shared/src/types/goal.ts
+  packages/shared/src/validators/goal.ts
+  server/src/services/goals.ts
+  server/src/services/issues.ts
+  ui/src/components/NewGoalDialog.tsx
+  ui/src/components/StatusBadge.tsx
+  ui/src/lib/status-colors.ts
+  ui/src/pages/Goals.tsx
+  ui/src/i18n/locales/en.json
+```
+
+---
+
+## [prior] feature/dashboard-external-source
+
+> This was a working snapshot for the branch `feature/dashboard-external-source`. It serves as Monday's reference and as a draft for the eventual PR description.
 
 ## TL;DR
 
