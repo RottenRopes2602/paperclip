@@ -4,6 +4,7 @@ import { useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
 import { projectsApi } from "../api/projects";
+import { issuesApi } from "../api/issues";
 import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
@@ -12,6 +13,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { GoalProperties } from "../components/GoalProperties";
 import { GoalTree } from "../components/GoalTree";
+import { OkrSummaryTab } from "../components/OkrSummaryTab";
 import { StatusBadge } from "../components/StatusBadge";
 import { InlineEditor } from "../components/InlineEditor";
 import { EntityRow } from "../components/EntityRow";
@@ -77,6 +79,13 @@ export function GoalDetail() {
   const { data: allProjects } = useQuery({
     queryKey: queryKeys.projects.list(resolvedCompanyId!),
     queryFn: () => projectsApi.list(resolvedCompanyId!),
+    enabled: !!resolvedCompanyId
+  });
+
+  // fork_mangoclaw: also fetch issues so Summary tab can show progress + counts.
+  const { data: allIssues } = useQuery({
+    queryKey: queryKeys.issues.list(resolvedCompanyId!),
+    queryFn: () => issuesApi.list(resolvedCompanyId!, { limit: 1000 }),
     enabled: !!resolvedCompanyId
   });
 
@@ -179,8 +188,12 @@ export function GoalDetail() {
         />
       </div>
 
-      <Tabs defaultValue="children">
+      <Tabs defaultValue="summary">
         <TabsList>
+          {/* fork_mangoclaw: Summary tab — visual snapshot for OKR review. */}
+          <TabsTrigger value="summary">
+            {t("goalDetail.tab.summary", { defaultValue: "요약 (Summary)" })}
+          </TabsTrigger>
           <TabsTrigger value="children">
             {t("goalDetail.tab.subGoals", { defaultValue: "하위 목표 (Sub-goals)" })} ({childGoals.length})
           </TabsTrigger>
@@ -188,6 +201,15 @@ export function GoalDetail() {
             {t("goalDetail.tab.projects", { defaultValue: "프로젝트 (Projects)" })} ({linkedProjects.length})
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="summary">
+          <OkrSummaryTab
+            goal={goal}
+            allGoals={allGoals ?? []}
+            projects={allProjects ?? []}
+            issues={allIssues ?? []}
+          />
+        </TabsContent>
 
         <TabsContent value="children" className="mt-4 space-y-3">
           <div className="flex items-center justify-start">

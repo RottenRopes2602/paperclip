@@ -1,6 +1,8 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { goals, companies } from "@paperclipai/db";
+// fork_mangoclaw: write completion snapshot to workspace when an Objective achieves.
+import { writeOkrSnapshot } from "./okr-snapshot-writer.js";
 
 // fork_mangoclaw: zero-pad helper for identifiers. Goals use 3 digits ("001").
 function padNumber(n: number, width: number): string {
@@ -113,6 +115,19 @@ export function goalService(db: Db) {
       },
 
       update: async (id: string, data: Partial<typeof goals.$inferInsert>) => {
+        // fork_mangoclaw: snapshot writer needs to know if THIS call transitioned
+        // an Objective into achieved (manual toggle path). Read prior status before
+        // the update so we can detect the transition after.
+        let priorStatus: string | null = null;
+        if (data.status !== undefined) {
+          const prior = await db
+            .select({ status: goals.status, kind: goals.kind })
+            .from(goals)
+            .where(eq(goals.id, id))
+            .then((rows) => rows[0] ?? null);
+          priorStatus = prior?.status ?? null;
+        }
+
         const updated = await db
           .update(goals)
           .set({ ...data, updatedAt: new Date() })
@@ -154,7 +169,14 @@ export function goalService(db: Db) {
                 .where(eq(goals.id, updated.parentId!))
                 .then((rows) => rows[0] ?? null);
               if (parent && parent.kind === "objective" && parent.status === "active") {
-                await svc.update(parent.id, { status: "achieved" });
+                // fork_mangoclaw: bypass svc.update to skip the manual-snapshot
+                // branch (we want a single snapshot tagged "cascade_a2", not two).
+                await db
+                  .update(goals)
+                  .set({ status: "achieved", updatedAt: new Date() })
+                  .where(eq(goals.id, parent.id));
+                // Fire-and-forget; failures swallowed inside writeOkrSnapshot.
+                void writeOkrSnapshot(db, parent.id, "cascade_a2");
                 console.log(
                   `[fork_mangoclaw:cascade] goal.cascade_achieved: objective ${parent.id} auto-achieved via KR ${updated.id}`,
                 );
@@ -164,6 +186,20 @@ export function goalService(db: Db) {
             // Cascade failure must not fail the original PATCH.
             console.error("[fork_mangoclaw:cascade] A2 cascade error:", err);
           }
+        }
+
+        // fork_mangoclaw: snapshot for manual Objective achievement.
+        // Fires when this svc.update call transitions an Objective from
+        // non-achieved → achieved (Monday or Director directly toggling).
+        // The cascade A2 path bypasses svc.update with a raw db.update to avoid
+        // double-firing here; cascade fires its own snapshot tagged "cascade_a2".
+        if (
+          updated &&
+          updated.kind === "objective" &&
+          data.status === "achieved" &&
+          priorStatus !== "achieved"
+        ) {
+          void writeOkrSnapshot(db, updated.id, "manual");
         }
 
         return updated;

@@ -2,6 +2,8 @@ import { useEffect, useMemo } from "react";
 import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
+import { projectsApi } from "../api/projects";
+import { issuesApi } from "../api/issues";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -27,6 +29,18 @@ export function Goals() {
   const { data: goals, isLoading, error } = useQuery({
     queryKey: queryKeys.goals.list(selectedCompanyId!),
     queryFn: () => goalsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  // fork_mangoclaw: fetch projects + issues so OkrTree can show per-goal indicators.
+  const { data: projects } = useQuery({
+    queryKey: queryKeys.projects.list(selectedCompanyId!),
+    queryFn: () => projectsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const { data: issues } = useQuery({
+    queryKey: queryKeys.issues.list(selectedCompanyId!),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { limit: 1000 }),
     enabled: !!selectedCompanyId,
   });
 
@@ -97,7 +111,12 @@ export function Goals() {
                 })}
               </p>
             ) : (
-              <OkrTree goals={goals} goalLink={(g) => `/goals/${g.id}`} />
+              <OkrTree
+                goals={goals}
+                projects={projects ?? []}
+                issues={issues ?? []}
+                goalLink={(g) => `/goals/${g.id}`}
+              />
             )}
           </section>
         </>
