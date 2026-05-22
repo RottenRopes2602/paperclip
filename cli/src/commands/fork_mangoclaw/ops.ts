@@ -724,37 +724,43 @@ export function registerProjectCommands(program: Command): void {
         console.log(`  projects: created=${created} updated=${updated} failed=${failed} identifier-stamped=${stamped}`);
       }
 
-      // ── Agents: PATCH cwd + managed instructions (slug-based, already idempotent).
-      // We also pre-list to build agentSlugToId for issue assignment below.
+      // ── Agents: PATCH cwd + flip instructions bundle to EXTERNAL mode pointing at workspace.
+      // fork_mangoclaw 2026-05-20: previous sync pushed each .md file via PUT
+      // /api/agents/.../instructions-bundle/file (managed mode). That was the wrong
+      // direction — PaperClip natively supports `instructionsBundleMode: "external"`
+      // where the agent reads `_ops/agents/<slug>/*.md` from the workspace directly.
+      // Switching to external = workspace is the single source-of-truth, sync no
+      // longer needs to push instruction content. See _archive/sync-managed-instructions-2026-05-20.md
       const dbAgentsRaw = await ctx.api.get<Array<{ id: string; slug?: string | null; name?: string | null; adapterConfig?: Record<string, unknown> | null }>>(`/api/companies/${companyId}/agents`) ?? [];
-      // Build slug → id map. Agents may have null slug; fall back to name lowercase first word.
+      // Build slug → id map. Agents may have null slug; fall back to name lowercase last word.
       for (const a of dbAgentsRaw) {
         const inferredSlug = a.slug ?? (a.name ? a.name.trim().split(/\s+/).pop()?.toLowerCase() ?? null : null);
         if (inferredSlug) agentSlugToId.set(inferredSlug, a.id);
       }
       const agentCwd = normalizedWorkspace;
-      console.log(pc.cyan(`[sync] patching ${dbAgentsRaw.length} agent(s) — cwd + managed instructions + clear legacy prompt template`));
+      console.log(pc.cyan(`[sync] patching ${dbAgentsRaw.length} agent(s) — cwd + external instructions root (no file push)`));
       for (const a of dbAgentsRaw) {
         const inferredSlug = a.slug ?? (a.name ? a.name.trim().split(/\s+/).pop()?.toLowerCase() ?? "" : "");
         if (!inferredSlug) continue;
         try {
+          // 1) cwd + strip legacy prompt template on adapterConfig.
           const nextAdapterConfig: Record<string, unknown> = { ...(a.adapterConfig ?? {}), cwd: agentCwd };
           delete nextAdapterConfig.promptTemplate;
           delete nextAdapterConfig.bootstrapPromptTemplate;
           await ctx.api.patch(`/api/agents/${a.id}`, { adapterConfig: nextAdapterConfig });
 
-          const agentPrefix = `agents/${inferredSlug}/`;
-          const agentFiles = Object.keys(filesDict).filter((k) => k.startsWith(agentPrefix) && k.toLowerCase().endsWith(".md"));
-          let pushedFiles = 0;
-          for (const key of agentFiles) {
-            const raw = filesDict[key];
-            const content = typeof raw === "string" ? raw : "";
-            if (!content) continue;
-            const relativePath = key.slice(agentPrefix.length);
-            await ctx.api.put(`/api/agents/${a.id}/instructions-bundle/file`, { path: relativePath, content, clearLegacyPromptTemplate: true });
-            pushedFiles++;
-          }
-          console.log(`  ${inferredSlug}: cwd + ${pushedFiles} instructions file(s)`);
+          // 2) Flip instructions bundle to external mode. rootPath points at the
+          //    workspace's `_ops/agents/<slug>/` folder. PaperClip reads AGENTS.md
+          //    (and any sibling files referenced from it) directly from disk.
+          //    Idempotent — safe to re-run.
+          const agentInstructionsRoot = path.join(paperclipDir, "agents", inferredSlug);
+          await ctx.api.patch(`/api/agents/${a.id}/instructions-bundle`, {
+            mode: "external",
+            rootPath: agentInstructionsRoot,
+            entryFile: "AGENTS.md",
+            clearLegacyPromptTemplate: true,
+          });
+          console.log(`  ${inferredSlug}: cwd + external root → ${agentInstructionsRoot}`);
         } catch (err) {
           const msg = err instanceof ApiRequestError ? `${(err as ApiRequestError).status} ${(err as ApiRequestError).message}` : String(err);
           console.log(pc.yellow(`  ${inferredSlug}: ${msg}`));
