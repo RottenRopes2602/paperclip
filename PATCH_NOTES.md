@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-05-25] sync: flat entity files (`<slug>.md`) — PR-13 후보
+
+### TL;DR
+
+`paperclipai sync` 가 entity (goal / project / issue) 를 **flat `<slug>.md` 형식**으로도 읽도록 확장. 옛 nested `<slug>/<TYPE>.md` 도 dual-read 로 그대로 지원 (back-compat). `paperclipai init` 새 scaffold 는 flat default. 옛 → flat 일괄 변환은 `paperclipai migrate --to-flat`.
+
+### Why
+
+옛 nested 형식 (`issues/puz-1/ISSUE.md`) 은 폴더당 파일 1 개라 폴더 부풀림 + git diff 노이즈. 첨부 파일을 위해 폴더가 필요한 케이스는 PaperClip 의 attachment API (DB) 로 처리하면 됨. agent 4 파일 (`agents/<slug>/{AGENTS,HEARTBEAT,SOUL,TOOLS}.md`) 은 그대로 폴더 (4 파일 필요).
+
+추가로 `tasks/` (옛 이름) ↔ `issues/` (새 표준 — PaperClip DB term) 폴더명 dual-read 도 같이.
+
+### What changed
+
+- `cli/src/commands/fork_mangoclaw/ops.ts`:
+  - 신규 helpers — `findEntityFile()`, `enumerateEntitySlugs()`, `resolveEntityDir()` + constants `NESTED_FILENAMES` (`GOAL.md`/`PROJECT.md`/`ISSUE.md`+`TASK.md`) · `ENTITY_DIRS` (`goals`/`projects`/`issues`+`tasks`).
+  - `collectGoals` · `collectProjects` · `collectTasks` 3 함수 모두 dual-read 사용. spec 에 `filePath` 필드 추가.
+  - identifier stamp 3 곳 (goals/projects/issues) — `spec.filePath` 사용 (flat / nested 자동 인식).
+  - `init` 의 scaffold — `goals/example/GOAL.md` → `goals/example.md` 등 flat default. `tasks/` → `issues/` rename.
+  - 신규 명령 `paperclipai migrate --to-flat [--dry-run]` — 기존 nested `<slug>/<TYPE>.md` 일괄 → flat. 첨부 있는 폴더는 nested 유지 (정보 손실 방지).
+
+### Compatibility
+
+- Make / 이전 회사들의 `tasks/<slug>/TASK.md` `projects/<slug>/PROJECT.md` `goals/<slug>/GOAL.md` 그대로 동작 (dual-read)
+- 새 회사 / 표준 셋업 시 → flat
+- 점진 마이그레이션 가능 — 새 entity 만 flat, 옛 entity 는 그대로
+
+### Files touched
+
+```
+cli/src/commands/fork_mangoclaw/ops.ts  +180 lines (helpers + migrate command + scaffold flat)
+PATCH_NOTES.md                          this entry
+```
+
+### 향후
+
+- PR-9 (`paperclipai export` — DB → markdown) 는 flat default 로 작성 예정
+- 표준 `standard/templates/base/_ops/{goals,projects,issues}/` 의 scaffold 도 flat 으로 갱신 예정 (별도 commit)
+
+---
+
 ## [2026-05-20] sync: instructions push 폐기 → external mode 전환
 
 ### TL;DR

@@ -3,7 +3,8 @@
 // and the 4-file baseline template scaffolder. See fork_mangoclaw/README.md.
 import { Command } from "commander";
 import path from "node:path";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { mkdir, readdir, readFile, rename, rmdir, stat, writeFile } from "node:fs/promises";
 import pc from "picocolors";
 import type {
   CompanyPortabilityImportResult,
@@ -51,6 +52,106 @@ interface GoalEntry {
   status: "planned" | "active" | "achieved" | "cancelled";
   parentGoalSlug: string | null;
   bodyText: string;
+  /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
+  filePath: string;
+}
+
+// fork_mangoclaw: nested filename candidates per entity kind.
+// Flat form is `<slug>.md` (preferred). Nested form is the legacy layout.
+// The CLI reads both; new scaffolds write flat. `paperclipai migrate --to-flat`
+// converts legacy nested layouts in bulk when ready.
+const NESTED_FILENAMES = {
+  goal: ["GOAL.md"],
+  project: ["PROJECT.md"],
+  issue: ["ISSUE.md", "TASK.md"],  // ISSUE.md preferred (matches DB term); TASK.md kept for back-compat
+} as const;
+
+// fork_mangoclaw: directory candidates per entity kind.
+// First entry is canonical (used by new scaffolds + migrate); later entries are
+// recognised at read time. `issues/` is the new standard name (matches PaperClip
+// DB term); `tasks/` is kept for back-compat with Make / pre-rename projects.
+const ENTITY_DIRS = {
+  goal: ["goals"],
+  project: ["projects"],
+  issue: ["issues", "tasks"],
+} as const;
+
+/**
+ * fork_mangoclaw: find an entity's on-disk file across flat + nested layouts.
+ *
+ * Flat:   <dir>/<slug>.md
+ * Nested: <dir>/<slug>/<NESTED_NAME>   (legacy — kept for back-compat)
+ *
+ * Returns the absolute path of the first form that exists, or null.
+ */
+async function findEntityFile(
+  dir: string,
+  slug: string,
+  nestedNames: readonly string[],
+): Promise<string | null> {
+  const flatFile = path.join(dir, `${slug}.md`);
+  try {
+    if ((await stat(flatFile)).isFile()) return flatFile;
+  } catch { /* not flat */ }
+  for (const nested of nestedNames) {
+    const nestedFile = path.join(dir, slug, nested);
+    try {
+      if ((await stat(nestedFile)).isFile()) return nestedFile;
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/**
+ * fork_mangoclaw: enumerate entity slugs in a directory, recognising both
+ * flat and nested layouts. Skips dotfiles, underscore-prefixed dirs (template/
+ * internal), and the gitkeep marker.
+ */
+async function enumerateEntitySlugs(
+  dir: string,
+  nestedNames: readonly string[],
+): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const slugs = new Set<string>();
+  for (const entry of entries) {
+    if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      slugs.add(entry.name.slice(0, -3));
+    } else if (entry.isDirectory()) {
+      for (const nested of nestedNames) {
+        try {
+          if ((await stat(path.join(dir, entry.name, nested))).isFile()) {
+            slugs.add(entry.name);
+            break;
+          }
+        } catch { /* try next nested name */ }
+      }
+    }
+  }
+  return Array.from(slugs).sort();
+}
+
+/**
+ * fork_mangoclaw: resolve an entity directory across naming candidates.
+ * Returns the first existing candidate, or the canonical name if none exist
+ * (so callers can pass it to `writeFile` for first-time writes).
+ */
+async function resolveEntityDir(
+  paperclipDir: string,
+  candidates: readonly string[],
+): Promise<string> {
+  for (const name of candidates) {
+    const p = path.join(paperclipDir, name);
+    try {
+      if ((await stat(p)).isDirectory()) return p;
+    } catch { /* try next */ }
+  }
+  return path.join(paperclipDir, candidates[0]);
 }
 
 function parseFrontmatter(text: string): { meta: Record<string, unknown>; body: string } {
@@ -272,6 +373,8 @@ interface ProjectSpec {
   goalSlug: string | null;
   assigneeAgentSlug: string | null;
   bodyText: string;
+  /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
+  filePath: string;
 }
 
 interface TaskSpec {
@@ -284,6 +387,8 @@ interface TaskSpec {
   goalSlug: string | null;
   assigneeAgentSlug: string | null;
   bodyText: string;
+  /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
+  filePath: string;
 }
 
 /**
@@ -302,16 +407,12 @@ function normalizeProjectStatus(raw: string | null | undefined): string {
 }
 
 async function collectProjects(paperclipDir: string): Promise<ProjectSpec[]> {
-  const dir = path.join(paperclipDir, "projects");
-  let entries: string[];
-  try { entries = await readdir(dir); } catch { return []; }
+  const dir = await resolveEntityDir(paperclipDir, ENTITY_DIRS.project);
+  const slugs = await enumerateEntitySlugs(dir, NESTED_FILENAMES.project);
   const out: ProjectSpec[] = [];
-  for (const slug of entries) {
-    const file = path.join(dir, slug, "PROJECT.md");
-    try {
-      const stats = await stat(file);
-      if (!stats.isFile()) continue;
-    } catch { continue; }
+  for (const slug of slugs) {
+    const file = await findEntityFile(dir, slug, NESTED_FILENAMES.project);
+    if (!file) continue;
     const text = await readFile(file, "utf-8");
     const { meta, body } = parseFrontmatter(text);
     out.push({
@@ -322,22 +423,19 @@ async function collectProjects(paperclipDir: string): Promise<ProjectSpec[]> {
       goalSlug: (meta.goal_slug && String(meta.goal_slug).trim()) ? String(meta.goal_slug) : null,
       assigneeAgentSlug: (meta.assignee_agent_slug && String(meta.assignee_agent_slug).trim()) ? String(meta.assignee_agent_slug) : null,
       bodyText: body,
+      filePath: file,
     });
   }
   return out;
 }
 
 async function collectTasks(paperclipDir: string): Promise<TaskSpec[]> {
-  const dir = path.join(paperclipDir, "tasks");
-  let entries: string[];
-  try { entries = await readdir(dir); } catch { return []; }
+  const dir = await resolveEntityDir(paperclipDir, ENTITY_DIRS.issue);
+  const slugs = await enumerateEntitySlugs(dir, NESTED_FILENAMES.issue);
   const out: TaskSpec[] = [];
-  for (const slug of entries) {
-    const file = path.join(dir, slug, "TASK.md");
-    try {
-      const stats = await stat(file);
-      if (!stats.isFile()) continue;
-    } catch { continue; }
+  for (const slug of slugs) {
+    const file = await findEntityFile(dir, slug, NESTED_FILENAMES.issue);
+    if (!file) continue;
     const text = await readFile(file, "utf-8");
     const { meta, body } = parseFrontmatter(text);
     out.push({
@@ -350,6 +448,7 @@ async function collectTasks(paperclipDir: string): Promise<TaskSpec[]> {
       goalSlug: (meta.goal_slug && String(meta.goal_slug).trim()) ? String(meta.goal_slug) : null,
       assigneeAgentSlug: (meta.assignee_agent_slug && String(meta.assignee_agent_slug).trim()) ? String(meta.assignee_agent_slug) : null,
       bodyText: body,
+      filePath: file,
     });
   }
   return out;
@@ -383,16 +482,12 @@ function findBySlugOrTitle<T extends DbEntity>(rows: T[], slug: string, expected
 }
 
 async function collectGoals(paperclipDir: string): Promise<GoalEntry[]> {
-  const goalsDir = path.join(paperclipDir, "goals");
-  let entries: string[];
-  try { entries = await readdir(goalsDir); } catch { return []; }
+  const goalsDir = await resolveEntityDir(paperclipDir, ENTITY_DIRS.goal);
+  const slugs = await enumerateEntitySlugs(goalsDir, NESTED_FILENAMES.goal);
   const out: GoalEntry[] = [];
-  for (const slug of entries) {
-    const goalFile = path.join(goalsDir, slug, "GOAL.md");
-    try {
-      const stats = await stat(goalFile);
-      if (!stats.isFile()) continue;
-    } catch { continue; }
+  for (const slug of slugs) {
+    const goalFile = await findEntityFile(goalsDir, slug, NESTED_FILENAMES.goal);
+    if (!goalFile) continue;
     const text = await readFile(goalFile, "utf-8");
     const { meta, body } = parseFrontmatter(text);
     const firstHeading = body.split("\n").find((l) => l.startsWith("# "))?.replace(/^#\s+/, "").trim();
@@ -407,6 +502,7 @@ async function collectGoals(paperclipDir: string): Promise<GoalEntry[]> {
       status,
       parentGoalSlug: (meta.parent_goal_slug && String(meta.parent_goal_slug) !== "null" && String(meta.parent_goal_slug).trim()) ? String(meta.parent_goal_slug) : null,
       bodyText: body,
+      filePath: goalFile,
     });
   }
   return out;
@@ -423,7 +519,7 @@ const PROJECT_SCAFFOLD = {
     `  agents: agents/\n` +
     `  goals: goals/\n` +
     `  projects: projects/\n` +
-    `  tasks: tasks/\n` +
+    `  issues: issues/\n` +
     `\n` +
     `# Per-agent adapter is set by 'paperclipai sync' at sync time.\n` +
     `# To override the default adapter for an individual agent, add:\n` +
@@ -446,20 +542,22 @@ const PROJECT_SCAFFOLD = {
   "agents/ceo/SOUL.md": LEADERSHIP_TEMPLATE["SOUL.md"],
   "agents/ceo/TOOLS.md": LEADERSHIP_TEMPLATE["TOOLS.md"],
 
-  "goals/example/GOAL.md":
+  // fork_mangoclaw: flat layout — <dir>/<slug>.md (preferred new form).
+  // Sync also reads legacy nested <dir>/<slug>/<TYPE>.md for back-compat.
+  "goals/example.md":
     `---\nslug: example\ntitle: 첫 목표\nlevel: company\nstatus: active\n---\n\n` +
     `# 첫 목표\n\n` +
     `(여기에 회사 단위 목표 한 줄 — projects 들이 이 goal에 묶임)\n`,
 
-  "projects/example/PROJECT.md":
-    `---\nslug: example\nname: 첫 프로젝트\ngoalSlug: example\nstatus: in_progress\nleadAgentSlug: ceo\n---\n\n` +
+  "projects/example.md":
+    `---\nslug: example\nname: 첫 프로젝트\ngoal_slug: example\nstatus: in_progress\nassignee_agent_slug: ceo\n---\n\n` +
     `# 첫 프로젝트\n\n` +
     `## 산출물\n- (이 프로젝트가 만들어 낼 것들)\n\n` +
     `## 워크스페이스\n- (작업 폴더 또는 외부 repo 위치)\n`,
 
-  "tasks/task-001/TASK.md":
-    `---\nslug: task-001\ntitle: 첫 task\nkind: task\nproject: example\nassignee: ceo\nstatus: todo\npriority: medium\n---\n\n` +
-    `# Task 001 — 첫 task\n\n` +
+  "issues/issue-001.md":
+    `---\nslug: issue-001\ntitle: 첫 issue\nproject_slug: example\nassignee_agent_slug: ceo\nstatus: todo\npriority: medium\n---\n\n` +
+    `# Issue 001 — 첫 issue\n\n` +
     `## 무엇\n- (구체적 작업)\n\n` +
     `## 검수 기준\n- (완료 판단 기준)\n`,
 
@@ -486,9 +584,9 @@ const PROJECT_SCAFFOLD = {
     `│  ├─ .paperclip.yaml\n` +
     `│  ├─ _shared/           회사 공통 규칙 + agent 공통 prompt 부분\n` +
     `│  ├─ agents/            agent 별 markdown\n` +
-    `│  ├─ goals/             company-level 목표\n` +
+    `│  ├─ goals/             company-level 목표 (각 entity = <slug>.md 1 파일)\n` +
     `│  ├─ projects/          작업 묶음\n` +
-    `│  └─ tasks/             개별 task\n` +
+    `│  └─ issues/            개별 issue\n` +
     `├─ knowledge/            컨셉·톤·spec\n` +
     `└─ app/                  agent 산출물이 들어갈 자리 (필요시)\n` +
     `\`\`\`\n`,
@@ -539,8 +637,124 @@ export function registerProjectCommands(program: Command): void {
         console.log("");
         console.log(pc.green(`✓ Done. Next:`));
         console.log(`  1. Edit ${pc.cyan(PROJECT_MARKER + "/agents/ceo/")} and add more agents under ${pc.cyan(PROJECT_MARKER + "/agents/")}`);
-        console.log(`  2. Add goals/projects/tasks under ${pc.cyan(PROJECT_MARKER + "/goals,projects,tasks/")}`);
+        console.log(`  2. Add goals/projects/issues under ${pc.cyan(PROJECT_MARKER + "/goals,projects,issues/")} as <slug>.md flat files`);
         console.log(`  3. Run: ${pc.cyan("paperclipai sync")}`);
+      } catch (err) {
+        handleCommandError(err);
+      }
+    });
+
+  // fork_mangoclaw: bulk-convert nested entity dirs to flat <slug>.md files.
+  // Reads <dir>/<slug>/<TYPE>.md and writes <dir>/<slug>.md, then removes the
+  // emptied nested folder. agents/ are skipped (4-file layout intentional).
+  program
+    .command("migrate")
+    .description("Bulk-convert nested entity dirs (<slug>/TYPE.md) to flat <slug>.md files")
+    .option("--to-flat", "Convert nested <slug>/<TYPE>.md → flat <slug>.md", false)
+    .option("--path <dir>", "Project root containing _paperclip/ or _ops/ (defaults to cwd)")
+    .option("--dry-run", "Show planned moves without touching disk", false)
+    .action(async (opts: { toFlat?: boolean; path?: string; dryRun?: boolean }) => {
+      try {
+        if (!opts.toFlat) {
+          console.log(pc.yellow("Pass --to-flat to convert nested entity dirs to flat files."));
+          console.log(pc.dim("  Example: paperclipai migrate --to-flat --dry-run"));
+          return;
+        }
+        const root = path.resolve(opts.path?.trim() || process.cwd());
+        // Find paperclip dir under root
+        let paperclipDir: string | null = null;
+        for (const marker of PROJECT_MARKERS) {
+          try {
+            if ((await stat(path.join(root, marker))).isDirectory()) {
+              paperclipDir = path.join(root, marker);
+              break;
+            }
+          } catch { /* try next marker */ }
+        }
+        if (!paperclipDir) {
+          throw new Error(`No ${PROJECT_MARKERS.join(" or ")} directory found at ${root}`);
+        }
+
+        console.log(pc.cyan(`[migrate --to-flat] root=${paperclipDir} (dry-run=${!!opts.dryRun})`));
+
+        // Per-kind migration
+        const kinds = [
+          { label: "goals",    dirs: ENTITY_DIRS.goal,    nested: NESTED_FILENAMES.goal },
+          { label: "projects", dirs: ENTITY_DIRS.project, nested: NESTED_FILENAMES.project },
+          { label: "issues",   dirs: ENTITY_DIRS.issue,   nested: NESTED_FILENAMES.issue },
+        ];
+
+        let total = 0;
+        for (const kind of kinds) {
+          // Process ALL existing candidate dirs (e.g. both "issues" and "tasks" when both present).
+          // The canonical name (first in kind.dirs) is the rename target if dirs need consolidating,
+          // but migrate --to-flat only flattens files in place — it doesn't merge dirs.
+          for (const dirName of kind.dirs) {
+            const dir = path.join(paperclipDir, dirName);
+            let entries: Dirent[];
+            try {
+              entries = await readdir(dir, { withFileTypes: true });
+            } catch {
+              continue;
+            }
+            const moves: Array<{ from: string; to: string; slug: string; extraFiles: string[] }> = [];
+            for (const entry of entries) {
+              if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+              // Find which nested name exists
+              const nestedDir = path.join(dir, entry.name);
+              let nestedFile: string | null = null;
+              for (const n of kind.nested) {
+                try {
+                  if ((await stat(path.join(nestedDir, n))).isFile()) {
+                    nestedFile = path.join(nestedDir, n);
+                    break;
+                  }
+                } catch { /* try next */ }
+              }
+              if (!nestedFile) continue;
+              const flatTarget = path.join(dir, `${entry.name}.md`);
+              // Check for flat file already existing — refuse to overwrite
+              try {
+                if ((await stat(flatTarget)).isFile()) {
+                  console.log(pc.yellow(`  [skip] ${dirName}/${entry.name} — flat file already exists`));
+                  continue;
+                }
+              } catch { /* good — no conflict */ }
+              // Check for extra files in the nested dir (attachments etc)
+              const dirContents = await readdir(nestedDir, { withFileTypes: true });
+              const extras = dirContents
+                .filter((e) => path.join(nestedDir, e.name) !== nestedFile)
+                .map((e) => e.name);
+              moves.push({ from: nestedFile, to: flatTarget, slug: entry.name, extraFiles: extras });
+            }
+
+            if (moves.length === 0) continue;
+            console.log(pc.cyan(`  ${dirName}: ${moves.length} to flatten`));
+            for (const m of moves) {
+              const extraNote = m.extraFiles.length > 0 ? pc.yellow(` (extras kept in nested dir: ${m.extraFiles.join(", ")})`) : "";
+              console.log(`    ${m.slug}: ${path.relative(paperclipDir, m.from)} → ${path.relative(paperclipDir, m.to)}${extraNote}`);
+              if (!opts.dryRun) {
+                await rename(m.from, m.to);
+                // Remove the nested dir only if it's now empty (rmdir refuses non-empty).
+                // This keeps attachment-bearing dirs intact.
+                if (m.extraFiles.length === 0) {
+                  try {
+                    await rmdir(path.dirname(m.from));
+                  } catch (err) {
+                    console.log(pc.yellow(`      could not remove ${path.dirname(m.from)}: ${(err as Error).message}`));
+                  }
+                }
+              }
+              total++;
+            }
+          }
+        }
+
+        if (opts.dryRun) {
+          console.log(pc.green(`\n[dry-run] ${total} entities would be flattened. Re-run without --dry-run to apply.`));
+        } else {
+          console.log(pc.green(`\n✓ ${total} entities flattened.`));
+        }
       } catch (err) {
         handleCommandError(err);
       }
@@ -670,10 +884,10 @@ export function registerProjectCommands(program: Command): void {
                 created++;
               }
             }
-            // fork_mangoclaw: stamp server-assigned identifier into local GOAL.md frontmatter.
-            if (identifier) {
-              const goalFile = path.join(paperclipDir, "goals", g.slug, "GOAL.md");
-              if (await setFrontmatterField(goalFile, "identifier", identifier)) stamped++;
+            // fork_mangoclaw: stamp server-assigned identifier into local GOAL frontmatter.
+            // Uses spec.filePath which already resolved flat vs nested at collect time.
+            if (identifier && g.filePath) {
+              if (await setFrontmatterField(g.filePath, "identifier", identifier)) stamped++;
             }
           } catch (err) {
             const msg = err instanceof ApiRequestError ? `${(err as ApiRequestError).status} ${(err as ApiRequestError).message}` : String(err);
@@ -710,10 +924,9 @@ export function registerProjectCommands(program: Command): void {
                 created++;
               }
             }
-            // fork_mangoclaw: stamp identifier into local PROJECT.md frontmatter.
-            if (identifier) {
-              const projectFile = path.join(paperclipDir, "projects", p.slug, "PROJECT.md");
-              if (await setFrontmatterField(projectFile, "identifier", identifier)) stamped++;
+            // fork_mangoclaw: stamp identifier into local PROJECT frontmatter (flat or nested).
+            if (identifier && p.filePath) {
+              if (await setFrontmatterField(p.filePath, "identifier", identifier)) stamped++;
             }
           } catch (err) {
             const msg = err instanceof ApiRequestError ? `${(err as ApiRequestError).status} ${(err as ApiRequestError).message}` : String(err);
@@ -798,10 +1011,9 @@ export function registerProjectCommands(program: Command): void {
               identifier = created2?.identifier;
               created++;
             }
-            // fork_mangoclaw: stamp issue identifier (MAK-NNN) into local TASK.md frontmatter.
-            if (identifier) {
-              const taskFile = path.join(paperclipDir, "tasks", t.slug, "TASK.md");
-              if (await setFrontmatterField(taskFile, "identifier", identifier)) stamped++;
+            // fork_mangoclaw: stamp issue identifier into local issue frontmatter (flat or nested).
+            if (identifier && t.filePath) {
+              if (await setFrontmatterField(t.filePath, "identifier", identifier)) stamped++;
             }
           } catch (err) {
             const msg = err instanceof ApiRequestError ? `${(err as ApiRequestError).status} ${(err as ApiRequestError).message}` : String(err);
