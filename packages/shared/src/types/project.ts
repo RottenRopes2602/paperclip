@@ -64,6 +64,16 @@ export interface ProjectManagedByPlugin {
   updatedAt: Date;
 }
 
+/** Lightweight agent summary embedded in project responses as `leadAgent`. */
+export interface ProjectLeadAgent {
+  id: string;
+  name: string;
+  role: string;
+  title: string | null;
+  icon: string | null;
+  status: string;
+}
+
 export interface Project {
   id: string;
   companyId: string;
@@ -76,6 +86,7 @@ export interface Project {
   description: string | null;
   status: ProjectStatus;
   leadAgentId: string | null;
+  leadAgent?: ProjectLeadAgent | null;
   targetDate: string | null;
   color: string | null;
   env: AgentEnvConfig | null;

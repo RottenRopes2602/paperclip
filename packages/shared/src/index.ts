@@ -332,6 +332,7 @@ export type {
   ProjectCodebase,
   ProjectCodebaseOrigin,
   ProjectGoalRef,
+  ProjectLeadAgent,
   ProjectManagedByPlugin,
   ProjectWorkspace,
   CompanySearchHighlight,

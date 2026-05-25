@@ -4,6 +4,31 @@
 
 ---
 
+## [2026-05-25] server: projects 응답 leadAgent 풀 객체 (PR-16) — UI UUID raw 노출 fix
+
+### TL;DR
+
+`GET /api/companies/:cid/projects` 가 `leadAgentId: <uuid>` 만 반환하고 `leadAgent` 풀 객체 안 줘서 UI 가 raw UUID 표시. issue 의 `assigneeAgent` 패턴 따라 project 응답에도 `leadAgent: { id, name, role, title, icon, status }` 풀 객체 join.
+
+### Why
+
+PaperClip_Dev 의 project 에 `lead_agent_id` 박았는데 UI 가 "68031393-543b-..." 같은 raw UUID 만 표시 → Monday: "이러면 assignee 가 뭔지 알 수가 없잖아".
+
+### What changed
+
+- `server/src/services/projects.ts` — `agents` 테이블 import 추가. `attachLeadAgents()` 배치 로더 신규 추가 (inArray 배치 쿼리). `list`, `listByIds`, `getById`, `create`, `update` 모두 `attachWorkspaces` 뒤에 `attachLeadAgents` 체이닝.
+- `packages/shared/src/types/project.ts` — `ProjectLeadAgent` interface 신규 + `Project.leadAgent?: ProjectLeadAgent | null` 필드 추가.
+- `packages/shared/src/types/index.ts` — `ProjectLeadAgent` export 추가.
+- `packages/shared/src/index.ts` — `ProjectLeadAgent` re-export 추가.
+
+### 영향
+
+- UI 가 즉시 agent name 표시 가능 (leadAgent 필드 있으면 자동 사용)
+- 기존 client 도 leadAgentId 그대로 받음 (back-compat)
+- N+1 없음 — 배치 inArray 로 single query
+
+---
+
 ## [2026-05-25] sync: marker 위치 body 끝으로 (PR-14) — UI rich editor 정상화
 
 ### TL;DR

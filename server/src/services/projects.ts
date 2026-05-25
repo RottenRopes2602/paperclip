@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  agents,
   projects,
   projectGoals,
   goals,
@@ -19,6 +20,7 @@ import {
   type ProjectCodebase,
   type ProjectExecutionWorkspacePolicy,
   type ProjectGoalRef,
+  type ProjectLeadAgent,
   type ProjectManagedByPlugin,
   type ProjectWorkspaceRuntimeConfig,
   type ProjectWorkspace,
@@ -63,6 +65,7 @@ interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy"> 
   workspaces: ProjectWorkspace[];
   primaryWorkspace: ProjectWorkspace | null;
   managedByPlugin: ProjectManagedByPlugin | null;
+  leadAgent: ProjectLeadAgent | null;
 }
 
 interface ProjectShortnameRow {
@@ -109,8 +112,46 @@ async function attachGoals(db: Db, rows: ProjectRow[]): Promise<ProjectWithGoals
       goalIds: g.map((x) => x.id),
       goals: g,
       executionWorkspacePolicy: parseProjectExecutionWorkspacePolicy(r.executionWorkspacePolicy),
+      leadAgent: null,
     } as ProjectWithGoals;
   });
+}
+
+/** Batch-load leadAgent for a set of projects. */
+async function attachLeadAgents(db: Db, rows: ProjectWithGoals[]): Promise<ProjectWithGoals[]> {
+  if (rows.length === 0) return [];
+
+  const agentIds = [...new Set(rows.map((r) => r.leadAgentId).filter((id): id is string => id !== null))];
+  if (agentIds.length === 0) return rows.map((r) => ({ ...r, leadAgent: null }));
+
+  const agentRows = await db
+    .select({
+      id: agents.id,
+      name: agents.name,
+      role: agents.role,
+      title: agents.title,
+      icon: agents.icon,
+      status: agents.status,
+    })
+    .from(agents)
+    .where(inArray(agents.id, agentIds));
+
+  const agentMap = new Map<string, ProjectLeadAgent>();
+  for (const row of agentRows) {
+    agentMap.set(row.id, {
+      id: row.id,
+      name: row.name,
+      role: row.role,
+      title: row.title ?? null,
+      icon: row.icon ?? null,
+      status: row.status,
+    });
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    leadAgent: r.leadAgentId ? (agentMap.get(r.leadAgentId) ?? null) : null,
+  }));
 }
 
 function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeService {
@@ -525,7 +566,8 @@ export function projectService(db: Db) {
     }
 
     const [withGoals] = await attachGoals(db, [row]);
-    const [enriched] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
+    const [withWorkspaces] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
+    const [enriched] = withWorkspaces ? await attachLeadAgents(db, [withWorkspaces]) : [];
     return enriched!;
   };
 
@@ -538,7 +580,9 @@ export function projectService(db: Db) {
     if (!row) return null;
     const [withGoals] = await attachGoals(db, [row]);
     if (!withGoals) return null;
-    const [enriched] = await attachWorkspaces(db, [withGoals]);
+    const [withWorkspaces] = await attachWorkspaces(db, [withGoals]);
+    if (!withWorkspaces) return null;
+    const [enriched] = await attachLeadAgents(db, [withWorkspaces]);
     return enriched ?? null;
   };
 
@@ -551,7 +595,8 @@ export function projectService(db: Db) {
         .where(eq(projects.companyId, companyId))
         .orderBy(asc(projects.sortOrder), asc(projects.createdAt));
       const withGoals = await attachGoals(db, rows);
-      return attachWorkspaces(db, withGoals);
+      const withWorkspaces = await attachWorkspaces(db, withGoals);
+      return attachLeadAgents(db, withWorkspaces);
     },
 
     listByIds: async (companyId: string, ids: string[]): Promise<ProjectWithGoals[]> => {
@@ -563,7 +608,8 @@ export function projectService(db: Db) {
         .where(and(eq(projects.companyId, companyId), inArray(projects.id, dedupedIds)));
       const withGoals = await attachGoals(db, rows);
       const withWorkspaces = await attachWorkspaces(db, withGoals);
-      const byId = new Map(withWorkspaces.map((project) => [project.id, project]));
+      const withLeadAgents = await attachLeadAgents(db, withWorkspaces);
+      const byId = new Map(withLeadAgents.map((project) => [project.id, project]));
       return dedupedIds.map((id) => byId.get(id)).filter((project): project is ProjectWithGoals => Boolean(project));
     },
 
@@ -780,7 +826,8 @@ export function projectService(db: Db) {
       }
 
       const [withGoals] = await attachGoals(db, [row]);
-      const [enriched] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
+      const [withWorkspaces] = withGoals ? await attachWorkspaces(db, [withGoals]) : [];
+      const [enriched] = withWorkspaces ? await attachLeadAgents(db, [withWorkspaces]) : [];
       return enriched ?? null;
     },
 
