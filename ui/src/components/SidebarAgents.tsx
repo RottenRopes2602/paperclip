@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  GripVertical,
   MoreHorizontal,
   PauseCircle,
   Pencil,
@@ -98,6 +99,7 @@ function SidebarAgentItem({
   setSidebarOpen,
   isDragging = false,
   isClickSuppressed,
+  dragHandleProps,
 }: {
   activeAgentId: string | null;
   activeTab: string | null;
@@ -110,6 +112,8 @@ function SidebarAgentItem({
   isDragging?: boolean;
   /** fork_mangoclaw: drag end 직후 click 차단 (예: 250ms 이내) */
   isClickSuppressed?: () => boolean;
+  /** fork_mangoclaw: dnd-kit drag handle 의 listeners + attributes */
+  dragHandleProps?: React.HTMLAttributes<HTMLElement>;
 }) {
   const routeRef = agentRouteRef(agent);
   const href = activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent);
@@ -127,11 +131,24 @@ function SidebarAgentItem({
 
   return (
     <div className="group/agent relative flex items-center">
+      {/* fork_mangoclaw: drag handle — listeners 는 이 grip icon 에만 박힘.
+          NavLink 영역은 click navigation 그대로 유지 → 충돌 X.
+          평소엔 거의 안 보이고 hover 시 visible. */}
+      {dragHandleProps && (
+        <span
+          {...dragHandleProps}
+          className="absolute left-0 z-10 flex h-full w-3 cursor-grab items-center justify-center text-muted-foreground/0 transition-colors hover:bg-accent/30 group-hover/agent:text-muted-foreground/50 active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-3 w-3" />
+        </span>
+      )}
       <NavLink
         to={href}
         state={SIDEBAR_SCROLL_RESET_STATE}
         onClick={(e) => {
-          // fork_mangoclaw: drag 중 또는 drag 직후 250ms 이내 NavLink click 무시
+          // fork_mangoclaw: drag 중 또는 drag 직후 250ms 이내 NavLink click 무시 (safety net)
           if (isDragging || isClickSuppressed?.()) {
             e.preventDefault();
             e.stopPropagation();
@@ -215,7 +232,7 @@ function SidebarAgentItem({
 }
 
 // fork_mangoclaw: SidebarAgentItem 을 dnd-kit useSortable 로 감싼 래퍼.
-// "top" sortMode 일 때만 사용. SidebarProjects 와 동일 패턴.
+// "top" sortMode 일 때만 사용. listeners 는 SidebarAgentItem 의 GripVertical 핸들에만 박힘 — NavLink click 과 분리.
 function SortableAgentItem(props: React.ComponentProps<typeof SidebarAgentItem>) {
   const {
     attributes,
@@ -226,6 +243,9 @@ function SortableAgentItem(props: React.ComponentProps<typeof SidebarAgentItem>)
     isDragging,
   } = useSortable({ id: props.agent.id });
 
+  // listeners + attributes 를 drag handle 로 전달. outer div 는 transform 만.
+  const dragHandleProps = { ...attributes, ...listeners } as React.HTMLAttributes<HTMLElement>;
+
   return (
     <div
       ref={setNodeRef}
@@ -235,10 +255,8 @@ function SortableAgentItem(props: React.ComponentProps<typeof SidebarAgentItem>)
         zIndex: isDragging ? 10 : undefined,
       }}
       className={cn(isDragging && "opacity-80")}
-      {...attributes}
-      {...listeners}
     >
-      <SidebarAgentItem {...props} isDragging={isDragging} />
+      <SidebarAgentItem {...props} isDragging={isDragging} dragHandleProps={dragHandleProps} />
     </div>
   );
 }
