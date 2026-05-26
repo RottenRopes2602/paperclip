@@ -51,6 +51,8 @@ interface GoalEntry {
   level: "company" | "team" | "agent" | "task";
   status: "planned" | "active" | "achieved" | "cancelled";
   parentGoalSlug: string | null;
+  /** fork_mangoclaw PR-15: goal kind (mission/vision/objective/key_result/other). */
+  kind: string | null;
   bodyText: string;
   /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
   filePath: string;
@@ -399,6 +401,8 @@ interface ProjectSpec {
   status: string;
   goalSlug: string | null;
   assigneeAgentSlug: string | null;
+  /** fork_mangoclaw PR-15: agent slug for projects.leadAgentId. */
+  leadSlug: string | null;
   bodyText: string;
   /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
   filePath: string;
@@ -452,6 +456,8 @@ async function collectProjects(paperclipDir: string): Promise<ProjectSpec[]> {
       status: normalizeProjectStatus(meta.status as string | undefined),
       goalSlug: (meta.goal_slug && String(meta.goal_slug).trim()) ? String(meta.goal_slug) : null,
       assigneeAgentSlug: (meta.assignee_agent_slug && String(meta.assignee_agent_slug).trim()) ? String(meta.assignee_agent_slug) : null,
+      // fork_mangoclaw PR-15: `lead:` frontmatter → projects.leadAgentId (resolved to UUID at sync time).
+      leadSlug: (meta.lead && String(meta.lead).trim()) ? String(meta.lead) : null,
       bodyText: cleanBody,
       filePath: file,
     });
@@ -533,6 +539,8 @@ async function collectGoals(paperclipDir: string): Promise<GoalEntry[]> {
       level: (String(meta.level ?? "company")) as GoalEntry["level"],
       status,
       parentGoalSlug: (meta.parent_goal_slug && String(meta.parent_goal_slug) !== "null" && String(meta.parent_goal_slug).trim()) ? String(meta.parent_goal_slug) : null,
+      // fork_mangoclaw PR-15: `kind:` frontmatter → goals.kind (e.g. mission/vision/objective/key_result).
+      kind: (meta.kind && String(meta.kind).trim()) ? String(meta.kind) : null,
       bodyText: cleanBody,
       filePath: goalFile,
     });
@@ -884,6 +892,14 @@ export function registerProjectCommands(program: Command): void {
       const projectSlugToId = new Map<string, string>();
       const agentSlugToId = new Map<string, string>();
 
+      // fork_mangoclaw PR-15: fetch agents early so agentSlugToId is available for
+      // project.leadAgentId resolution (projects sync runs before agents PATCH loop).
+      const dbAgentsRaw = await ctx.api.get<Array<{ id: string; slug?: string | null; name?: string | null; title?: string | null; adapterConfig?: Record<string, unknown> | null }>>(`/api/companies/${companyId}/agents`) ?? [];
+      for (const a of dbAgentsRaw) {
+        const inferredSlug = a.slug ?? (a.name ? a.name.trim().split(/\s+/).pop()?.toLowerCase() ?? null : null);
+        if (inferredSlug) agentSlugToId.set(inferredSlug, a.id);
+      }
+
       // ── Goals: process in level order (company → team → agent → task) so
       // parents exist before children.
       const goalSpecs = await collectGoals(paperclipDir);
@@ -899,7 +915,9 @@ export function registerProjectCommands(program: Command): void {
             console.log(pc.yellow(`  ${g.slug}: parent ${g.parentGoalSlug} not yet known — skipping`));
             failed++; continue;
           }
-          const body = { title: g.title, level: g.level, status: g.status, parentId, description: buildDescriptionWithMarker(g.slug, "goal", g.bodyText) };
+          // fork_mangoclaw PR-15: include `kind` when present (mission/vision/objective/key_result/other).
+          const body: Record<string, unknown> = { title: g.title, level: g.level, status: g.status, parentId, description: buildDescriptionWithMarker(g.slug, "goal", g.bodyText) };
+          if (g.kind) body.kind = g.kind;
           try {
             const existing = findBySlugOrTitle(dbGoals, g.slug, g.title);
             let identifier: string | null | undefined = null;
@@ -938,8 +956,11 @@ export function registerProjectCommands(program: Command): void {
         let created = 0, updated = 0, failed = 0, stamped = 0;
         for (const p of projectSpecs) {
           const goalId = p.goalSlug ? goalSlugToId.get(p.goalSlug) ?? null : null;
+          // fork_mangoclaw PR-15: resolve lead slug → UUID (agentSlugToId built from earlier agents fetch).
+          const leadAgentId = p.leadSlug ? agentSlugToId.get(p.leadSlug) ?? null : null;
           const body: Record<string, unknown> = { name: p.name, status: p.status, description: buildDescriptionWithMarker(p.slug, "project", p.bodyText) };
           if (goalId) body.goalId = goalId;
+          if (leadAgentId) body.leadAgentId = leadAgentId;
           try {
             const existing = findBySlugOrTitle(dbProjects, p.slug, p.name);
             let identifier: string | null | undefined = null;
@@ -976,23 +997,32 @@ export function registerProjectCommands(program: Command): void {
       // where the agent reads `_ops/agents/<slug>/*.md` from the workspace directly.
       // Switching to external = workspace is the single source-of-truth, sync no
       // longer needs to push instruction content. See _archive/sync-managed-instructions-2026-05-20.md
-      const dbAgentsRaw = await ctx.api.get<Array<{ id: string; slug?: string | null; name?: string | null; adapterConfig?: Record<string, unknown> | null }>>(`/api/companies/${companyId}/agents`) ?? [];
-      // Build slug → id map. Agents may have null slug; fall back to name lowercase last word.
-      for (const a of dbAgentsRaw) {
-        const inferredSlug = a.slug ?? (a.name ? a.name.trim().split(/\s+/).pop()?.toLowerCase() ?? null : null);
-        if (inferredSlug) agentSlugToId.set(inferredSlug, a.id);
-      }
+      // fork_mangoclaw PR-15: dbAgentsRaw fetched early (above goals) so agentSlugToId
+      // was available for project.leadAgentId resolution. Reuse here for PATCH loop.
       const agentCwd = normalizedWorkspace;
       console.log(pc.cyan(`[sync] patching ${dbAgentsRaw.length} agent(s) — cwd + external instructions root (no file push)`));
       for (const a of dbAgentsRaw) {
         const inferredSlug = a.slug ?? (a.name ? a.name.trim().split(/\s+/).pop()?.toLowerCase() ?? "" : "");
         if (!inferredSlug) continue;
         try {
-          // 1) cwd + strip legacy prompt template on adapterConfig.
+          // fork_mangoclaw PR-15: read `title:` from local AGENTS.md frontmatter → agents.title.
+          let agentTitle: string | null = null;
+          const agentsMdPath = path.join(paperclipDir, "agents", inferredSlug, "AGENTS.md");
+          try {
+            const agentsMdText = await readFile(agentsMdPath, "utf-8");
+            const { meta: agentMeta } = parseFrontmatter(agentsMdText);
+            if (agentMeta.title && String(agentMeta.title).trim()) {
+              agentTitle = String(agentMeta.title).trim();
+            }
+          } catch { /* AGENTS.md not on disk — skip title sync for this agent */ }
+
+          // 1) cwd + strip legacy prompt template on adapterConfig; include title if set.
           const nextAdapterConfig: Record<string, unknown> = { ...(a.adapterConfig ?? {}), cwd: agentCwd };
           delete nextAdapterConfig.promptTemplate;
           delete nextAdapterConfig.bootstrapPromptTemplate;
-          await ctx.api.patch(`/api/agents/${a.id}`, { adapterConfig: nextAdapterConfig });
+          const agentPatch: Record<string, unknown> = { adapterConfig: nextAdapterConfig };
+          if (agentTitle) agentPatch.title = agentTitle;
+          await ctx.api.patch(`/api/agents/${a.id}`, agentPatch);
 
           // 2) Flip instructions bundle to external mode. rootPath points at the
           //    workspace's `_ops/agents/<slug>/` folder. PaperClip reads AGENTS.md
