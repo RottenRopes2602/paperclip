@@ -9,6 +9,16 @@ import {
   Plus,
   Users,
 } from "lucide-react";
+import {
+  DndContext,
+  MouseSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "@/i18n";
 import { useCompany } from "../context/CompanyContext";
 import { useDialogActions } from "../context/DialogContext";
@@ -86,6 +96,7 @@ function SidebarAgentItem({
   onPauseResume,
   runCount,
   setSidebarOpen,
+  isDragging = false,
 }: {
   activeAgentId: string | null;
   activeTab: string | null;
@@ -95,6 +106,7 @@ function SidebarAgentItem({
   onPauseResume: (agent: Agent, action: "pause" | "resume") => void;
   runCount: number;
   setSidebarOpen: (open: boolean) => void;
+  isDragging?: boolean;
 }) {
   const routeRef = agentRouteRef(agent);
   const href = activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent);
@@ -115,7 +127,12 @@ function SidebarAgentItem({
       <NavLink
         to={href}
         state={SIDEBAR_SCROLL_RESET_STATE}
-        onClick={() => {
+        onClick={(e) => {
+          // fork_mangoclaw: drag 중에는 NavLink 클릭 무시 (drag-and-drop 진행 중)
+          if (isDragging) {
+            e.preventDefault();
+            return;
+          }
           if (isMobile) setSidebarOpen(false);
         }}
         className={cn(
@@ -193,6 +210,35 @@ function SidebarAgentItem({
   );
 }
 
+// fork_mangoclaw: SidebarAgentItem 을 dnd-kit useSortable 로 감싼 래퍼.
+// "top" sortMode 일 때만 사용. SidebarProjects 와 동일 패턴.
+function SortableAgentItem(props: React.ComponentProps<typeof SidebarAgentItem>) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.agent.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className={cn(isDragging && "opacity-80")}
+      {...attributes}
+      {...listeners}
+    >
+      <SidebarAgentItem {...props} isDragging={isDragging} />
+    </div>
+  );
+}
+
 export function SidebarAgents() {
   const [open, setOpen] = useState(true);
   const [pendingAgentIds, setPendingAgentIds] = useState<Set<string>>(() => new Set());
@@ -244,7 +290,7 @@ export function SidebarAgents() {
     if (!sortModeStorageKey) return "top";
     return readAgentSortMode(sortModeStorageKey);
   });
-  const { orderedAgents } = useAgentOrder({
+  const { orderedAgents, persistOrder } = useAgentOrder({
     agents: visibleAgents,
     companyId: selectedCompanyId,
     userId: currentUserId,
@@ -297,6 +343,31 @@ export function SidebarAgents() {
       }
     },
     [sortModeStorageKey],
+  );
+
+  // fork_mangoclaw: drag-and-drop 활성 조건 — "top" mode 일 때만.
+  // alphabetical / recent 는 클라이언트 정렬이라 drag 무의미.
+  const isTopMode = sortMode === "top";
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!isTopMode) return;
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const ids = orderedAgents.map((agent) => agent.id);
+      const oldIndex = ids.indexOf(active.id as string);
+      const newIndex = ids.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      persistOrder(arrayMove(ids, oldIndex, newIndex));
+    },
+    [isTopMode, orderedAgents, persistOrder],
   );
 
   const pauseResumeAgent = useMutation({
@@ -366,22 +437,52 @@ export function SidebarAgents() {
         onRadioValueChange: persistSortMode,
       }}
     >
-      {sortedAgents.map((agent: Agent) => {
-        const runCount = liveCountByAgent.get(agent.id) ?? 0;
-        return (
-          <SidebarAgentItem
-            key={agent.id}
-            activeAgentId={activeAgentId}
-            activeTab={activeTab}
-            agent={agent}
-            disabled={pendingAgentIds.has(agent.id)}
-            isMobile={isMobile}
-            onPauseResume={(targetAgent, action) => pauseResumeAgent.mutate({ agent: targetAgent, action })}
-            runCount={runCount}
-            setSidebarOpen={setSidebarOpen}
-          />
-        );
-      })}
+      {isTopMode ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={orderedAgents.map((agent) => agent.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {sortedAgents.map((agent: Agent) => {
+              const runCount = liveCountByAgent.get(agent.id) ?? 0;
+              return (
+                <SortableAgentItem
+                  key={agent.id}
+                  activeAgentId={activeAgentId}
+                  activeTab={activeTab}
+                  agent={agent}
+                  disabled={pendingAgentIds.has(agent.id)}
+                  isMobile={isMobile}
+                  onPauseResume={(targetAgent, action) => pauseResumeAgent.mutate({ agent: targetAgent, action })}
+                  runCount={runCount}
+                  setSidebarOpen={setSidebarOpen}
+                />
+              );
+            })}
+          </SortableContext>
+        </DndContext>
+      ) : (
+        sortedAgents.map((agent: Agent) => {
+          const runCount = liveCountByAgent.get(agent.id) ?? 0;
+          return (
+            <SidebarAgentItem
+              key={agent.id}
+              activeAgentId={activeAgentId}
+              activeTab={activeTab}
+              agent={agent}
+              disabled={pendingAgentIds.has(agent.id)}
+              isMobile={isMobile}
+              onPauseResume={(targetAgent, action) => pauseResumeAgent.mutate({ agent: targetAgent, action })}
+              runCount={runCount}
+              setSidebarOpen={setSidebarOpen}
+            />
+          );
+        })
+      )}
     </SidebarSection>
   );
 }
