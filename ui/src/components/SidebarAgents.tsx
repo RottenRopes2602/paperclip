@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -97,6 +97,7 @@ function SidebarAgentItem({
   runCount,
   setSidebarOpen,
   isDragging = false,
+  isClickSuppressed,
 }: {
   activeAgentId: string | null;
   activeTab: string | null;
@@ -107,6 +108,8 @@ function SidebarAgentItem({
   runCount: number;
   setSidebarOpen: (open: boolean) => void;
   isDragging?: boolean;
+  /** fork_mangoclaw: drag end 직후 click 차단 (예: 250ms 이내) */
+  isClickSuppressed?: () => boolean;
 }) {
   const routeRef = agentRouteRef(agent);
   const href = activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent);
@@ -128,9 +131,10 @@ function SidebarAgentItem({
         to={href}
         state={SIDEBAR_SCROLL_RESET_STATE}
         onClick={(e) => {
-          // fork_mangoclaw: drag 중에는 NavLink 클릭 무시 (drag-and-drop 진행 중)
-          if (isDragging) {
+          // fork_mangoclaw: drag 중 또는 drag 직후 250ms 이내 NavLink click 무시
+          if (isDragging || isClickSuppressed?.()) {
             e.preventDefault();
+            e.stopPropagation();
             return;
           }
           if (isMobile) setSidebarOpen(false);
@@ -354,23 +358,31 @@ export function SidebarAgents() {
     }),
   );
 
-  // fork_mangoclaw: drag end 직후 발생하는 click event (NavLink navigation 유발) 차단용 timestamp.
-  const [lastDragEndAt, setLastDragEndAt] = useState(0);
+  // fork_mangoclaw: drag end 후 click event (NavLink navigation 유발) 차단용 ref.
+  // useRef 사용 — state 와 달리 re-render 안 일으키고 즉시 읽기 가능.
+  const dragEndRef = useRef(0);
+  const isClickSuppressed = useCallback(() => {
+    return Date.now() - dragEndRef.current < 250;
+  }, []);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       if (!isTopMode) return;
       const { active, over } = event;
-      if (!over || active.id === over.id) return;
+      if (!over || active.id === over.id) {
+        // drop 위치 변화 없어도 click suppress (단순 클릭으로 끝났을 수도)
+        dragEndRef.current = Date.now();
+        return;
+      }
 
       const ids = orderedAgents.map((agent) => agent.id);
       const oldIndex = ids.indexOf(active.id as string);
       const newIndex = ids.indexOf(over.id as string);
       if (oldIndex === -1 || newIndex === -1) return;
 
-      // drag end timestamp 기록 — 직후 click 차단용 (NavLink 이 navigation 발화 방지)
-      setLastDragEndAt(Date.now());
-      // setTimeout 으로 defer — dnd-kit cleanup 끝난 후 state 변경 → reconciler 가 SortableContext 안전하게 재구성
+      // drag end timestamp — NavLink onClick 에서 250ms 이내 click 차단
+      dragEndRef.current = Date.now();
+      // setTimeout 으로 defer — dnd-kit cleanup 끝난 후 state 변경
       setTimeout(() => {
         persistOrder(arrayMove(ids, oldIndex, newIndex));
       }, 0);
@@ -468,6 +480,7 @@ export function SidebarAgents() {
                   onPauseResume={(targetAgent, action) => pauseResumeAgent.mutate({ agent: targetAgent, action })}
                   runCount={runCount}
                   setSidebarOpen={setSidebarOpen}
+                  isClickSuppressed={isClickSuppressed}
                 />
               );
             })}
