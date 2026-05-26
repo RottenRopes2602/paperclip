@@ -50,6 +50,7 @@ export const AGENT_ROLES = [
   "security",
   "engineer",
   "designer",
+  "architect",
   "pm",
   "qa",
   "devops",
@@ -66,6 +67,9 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   security: "Security",
   engineer: "Engineer",
   designer: "Designer",
+  // fork_mangoclaw: 도메인 본질 설계자 (게임 스테이지 / 학습 코스 / 콘텐츠 매트릭스).
+  // visual Designer 와 분리. 게임 회사면 "Game Designer", 학습 회사면 "Curriculum Designer" 식으로 display 변주.
+  architect: "Architect",
   pm: "PM",
   qa: "QA",
   devops: "DevOps",
