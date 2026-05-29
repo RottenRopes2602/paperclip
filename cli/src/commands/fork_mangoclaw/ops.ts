@@ -53,6 +53,8 @@ interface GoalEntry {
   parentGoalSlug: string | null;
   /** fork_mangoclaw PR-15: goal kind (mission/vision/objective/key_result/other). */
   kind: string | null;
+  /** fork_mangoclaw: 로컬-first identifier — 로컬 frontmatter 가 진실원. sync 가 서버에 전송. */
+  identifier: string | null;
   bodyText: string;
   /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
   filePath: string;
@@ -403,6 +405,8 @@ interface ProjectSpec {
   assigneeAgentSlug: string | null;
   /** fork_mangoclaw PR-15: agent slug for projects.leadAgentId. */
   leadSlug: string | null;
+  /** fork_mangoclaw: 로컬-first identifier — 로컬 frontmatter 가 진실원. */
+  identifier: string | null;
   bodyText: string;
   /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
   filePath: string;
@@ -417,6 +421,8 @@ interface TaskSpec {
   projectSlug: string | null;
   goalSlug: string | null;
   assigneeAgentSlug: string | null;
+  /** fork_mangoclaw: 로컬-first identifier — 로컬 frontmatter 가 진실원. */
+  identifier: string | null;
   bodyText: string;
   /** fork_mangoclaw: resolved on-disk path. Used by identifier-stamp post-sync. */
   filePath: string;
@@ -458,6 +464,8 @@ async function collectProjects(paperclipDir: string): Promise<ProjectSpec[]> {
       assigneeAgentSlug: (meta.assignee_agent_slug && String(meta.assignee_agent_slug).trim()) ? String(meta.assignee_agent_slug) : null,
       // fork_mangoclaw PR-15: `lead:` frontmatter → projects.leadAgentId (resolved to UUID at sync time).
       leadSlug: (meta.lead && String(meta.lead).trim()) ? String(meta.lead) : null,
+      // fork_mangoclaw: 로컬-first identifier.
+      identifier: (meta.identifier && String(meta.identifier).trim()) ? String(meta.identifier).trim() : null,
       bodyText: cleanBody,
       filePath: file,
     });
@@ -484,6 +492,8 @@ async function collectTasks(paperclipDir: string): Promise<TaskSpec[]> {
       projectSlug: (meta.project_slug && String(meta.project_slug).trim()) ? String(meta.project_slug) : null,
       goalSlug: (meta.goal_slug && String(meta.goal_slug).trim()) ? String(meta.goal_slug) : null,
       assigneeAgentSlug: (meta.assignee_agent_slug && String(meta.assignee_agent_slug).trim()) ? String(meta.assignee_agent_slug) : null,
+      // fork_mangoclaw: 로컬-first identifier.
+      identifier: (meta.identifier && String(meta.identifier).trim()) ? String(meta.identifier).trim() : null,
       bodyText: cleanBody,
       filePath: file,
     });
@@ -541,6 +551,8 @@ async function collectGoals(paperclipDir: string): Promise<GoalEntry[]> {
       parentGoalSlug: (meta.parent_goal_slug && String(meta.parent_goal_slug) !== "null" && String(meta.parent_goal_slug).trim()) ? String(meta.parent_goal_slug) : null,
       // fork_mangoclaw PR-15: `kind:` frontmatter → goals.kind (e.g. mission/vision/objective/key_result).
       kind: (meta.kind && String(meta.kind).trim()) ? String(meta.kind) : null,
+      // fork_mangoclaw: 로컬-first identifier — 로컬이 지정한 값을 서버로 전송.
+      identifier: (meta.identifier && String(meta.identifier).trim()) ? String(meta.identifier).trim() : null,
       bodyText: cleanBody,
       filePath: goalFile,
     });
@@ -918,6 +930,8 @@ export function registerProjectCommands(program: Command): void {
           // fork_mangoclaw PR-15: include `kind` when present (mission/vision/objective/key_result/other).
           const body: Record<string, unknown> = { title: g.title, level: g.level, status: g.status, parentId, description: buildDescriptionWithMarker(g.slug, "goal", g.bodyText) };
           if (g.kind) body.kind = g.kind;
+          // fork_mangoclaw: 로컬-first — 로컬 identifier 가 있으면 서버에 전송 (create/patch 둘 다 수용).
+          if (g.identifier) body.identifier = g.identifier;
           try {
             const existing = findBySlugOrTitle(dbGoals, g.slug, g.title);
             let identifier: string | null | undefined = null;
@@ -961,6 +975,8 @@ export function registerProjectCommands(program: Command): void {
           const body: Record<string, unknown> = { name: p.name, status: p.status, description: buildDescriptionWithMarker(p.slug, "project", p.bodyText) };
           if (goalId) body.goalId = goalId;
           if (leadAgentId) body.leadAgentId = leadAgentId;
+          // fork_mangoclaw: 로컬-first — 로컬 identifier 가 진실원.
+          if (p.identifier) body.identifier = p.identifier;
           try {
             const existing = findBySlugOrTitle(dbProjects, p.slug, p.name);
             let identifier: string | null | undefined = null;
@@ -1061,6 +1077,8 @@ export function registerProjectCommands(program: Command): void {
           if (projectId) body.projectId = projectId;
           if (goalId) body.goalId = goalId;
           if (assigneeAgentId) body.assigneeAgentId = assigneeAgentId;
+          // fork_mangoclaw: 로컬-first — 로컬 identifier 가 진실원.
+          if (t.identifier) body.identifier = t.identifier;
           try {
             const existing = findBySlugOrTitle(dbIssues, t.slug, t.title);
             let identifier: string | null | undefined = null;

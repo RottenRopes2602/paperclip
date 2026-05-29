@@ -90,10 +90,21 @@ export function goalService(db: Db) {
             .where(eq(companies.id, companyId))
             .returning({ goalCounter: companies.goalCounter, goalPrefix: companies.goalPrefix });
 
-          const goalNumber = company?.goalCounter ?? currentMax + 1;
-          const prefix = company?.goalPrefix ?? "";
-          const padded = padNumber(goalNumber, 3);
-          const identifier = prefix ? `${prefix}-${padded}` : padded;
+          // fork_mangoclaw: 로컬-first — client 가 identifier 제공 시 그대로 수용 (로컬 = 진실원).
+          // 없으면 counter 기반 auto. goalNumber 는 identifier 끝 숫자에서 파싱.
+          const clientIdentifier = (data as { identifier?: string | null }).identifier;
+          let goalNumber: number;
+          let identifier: string;
+          if (clientIdentifier && clientIdentifier.trim()) {
+            identifier = clientIdentifier.trim();
+            const m = identifier.match(/(\d+)\s*$/);
+            goalNumber = m ? parseInt(m[1], 10) : (company?.goalCounter ?? currentMax + 1);
+          } else {
+            goalNumber = company?.goalCounter ?? currentMax + 1;
+            const prefix = company?.goalPrefix ?? "";
+            const padded = padNumber(goalNumber, 3);
+            identifier = prefix ? `${prefix}-${padded}` : padded;
+          }
 
           // sort_order: place new goal at end of list within its company, sparse
           // increment (10) so users have room to insert between siblings later.

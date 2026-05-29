@@ -386,6 +386,9 @@ const createIssueBaseSchema = z.object({
   executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
   executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
   labelIds: z.array(z.string().uuid()).optional(),
+  // fork_mangoclaw: 로컬-first — sync 가 로컬 파일의 identifier 를 보내면 서버가 수용.
+  // 없으면 서버 counter 로 auto (기존 동작).
+  identifier: z.string().optional().nullable(),
 });
 
 export const createIssueInputSchema = createIssueBaseSchema.extend({

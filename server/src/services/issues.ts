@@ -4178,8 +4178,19 @@ export function issueService(db: Db) {
           .where(eq(companies.id, companyId))
           .returning({ issueCounter: companies.issueCounter, issuePrefix: companies.issuePrefix });
 
-        const issueNumber = company.issueCounter;
-        const identifier = `${company.issuePrefix}-${issueNumber}`;
+        // fork_mangoclaw: 로컬-first — client(=로컬 sync)가 identifier 제공 시 그대로 수용
+        // (로컬 = 진실원). 없으면 counter 기반 auto. issueNumber 는 identifier 끝 숫자에서 파싱.
+        const clientIdentifier = (issueData as { identifier?: string | null }).identifier;
+        let issueNumber: number;
+        let identifier: string;
+        if (clientIdentifier && clientIdentifier.trim()) {
+          identifier = clientIdentifier.trim();
+          const m = identifier.match(/(\d+)\s*$/);
+          issueNumber = m ? parseInt(m[1], 10) : company.issueCounter;
+        } else {
+          issueNumber = company.issueCounter;
+          identifier = `${company.issuePrefix}-${issueNumber}`;
+        }
 
         const values = {
           ...issueData,

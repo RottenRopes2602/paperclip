@@ -539,10 +539,21 @@ export function projectService(db: Db) {
         .where(eq(companies.id, companyId))
         .returning({ projectCounter: companies.projectCounter, projectPrefix: companies.projectPrefix });
 
-      const projectNumber = company?.projectCounter ?? currentMax + 1;
-      const prefix = company?.projectPrefix ?? "PRJ";
-      const padded = String(projectNumber).padStart(2, "0");
-      const identifier = `${prefix}-${padded}`;
+      // fork_mangoclaw: 로컬-first — client(=로컬 파일 sync)가 identifier 를 제공하면
+      // 그대로 수용 (로컬 = 진실원). 없으면 counter 기반 auto (기존 동작).
+      // projectNumber 는 identifier 끝 숫자에서 파싱 → self-correcting counter 가 다음 auto 를 보정.
+      const clientIdentifier = (projectData as { identifier?: string | null }).identifier;
+      let projectNumber: number;
+      let identifier: string;
+      if (clientIdentifier && clientIdentifier.trim()) {
+        identifier = clientIdentifier.trim();
+        const m = identifier.match(/(\d+)\s*$/);
+        projectNumber = m ? parseInt(m[1], 10) : (company?.projectCounter ?? currentMax + 1);
+      } else {
+        projectNumber = company?.projectCounter ?? currentMax + 1;
+        const prefix = company?.projectPrefix ?? "PRJ";
+        identifier = `${prefix}-${String(projectNumber).padStart(2, "0")}`;
+      }
 
       // sort_order: append to end with sparse increment (10) for easy reorder.
       let sortOrder = (projectData as { sortOrder?: number | null }).sortOrder;
