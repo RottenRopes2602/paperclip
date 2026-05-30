@@ -42,6 +42,10 @@ interface SyncOptions extends BaseClientOptions {
   skipExternalSource?: boolean;
   syncCommand?: string;
   workspacePath?: string;
+  // fork_mangoclaw: local-first prune — retire DB entities with no local source file.
+  prune?: boolean;
+  pruneApply?: boolean;
+  pruneMode?: "cancel" | "delete";
 }
 
 interface GoalEntry {
@@ -822,7 +826,10 @@ export function registerProjectCommands(program: Command): void {
       .option("--skip-goals", `Don't POST goals from ${PROJECT_MARKER}/goals/`, false)
       .option("--skip-external-source", "Don't PATCH externalSource after import", false)
       .option("--sync-command <cmd>", "Command stored on externalSource for the dashboard 'Re-sync' button")
-      .option("--workspace-path <dir>", "workspacePath stored on externalSource (defaults to project root)"),
+      .option("--workspace-path <dir>", "workspacePath stored on externalSource (defaults to project root)")
+      .option("--prune", "Report active-set DB issues/projects with no local source file (local-first drift). Preview only unless --prune-apply.", false)
+      .option("--prune-apply", "Actually retire the orphans found by --prune (mutates the DB). Without this, --prune is a dry-run.", false)
+      .option("--prune-mode <mode>", "How to retire orphans: 'cancel' (PATCH status=cancelled, reversible) or 'delete' (hard DELETE, falls back to cancel on FK)", "cancel"),
     { includeCompany: true },
   ).action(async (opts: SyncOptions) => {
     try {
@@ -1102,6 +1109,84 @@ export function registerProjectCommands(program: Command): void {
           }
         }
         console.log(`  issues: created=${created} updated=${updated} failed=${failed} identifier-stamped=${stamped}`);
+      }
+
+      // ── Prune (fork_mangoclaw local-first): retire DB issues/projects in the
+      //    active working set that have no local source file. The workspace is
+      //    the source of truth — an active DB entity with no matching local slug
+      //    or title is drift (a deleted local file, or one an agent created
+      //    straight in the DB). Terminal states (done/completed/cancelled) are
+      //    history and left untouched; goals are out of scope.
+      //
+      //    Safety (R-16): --prune previews only. Pass --prune-apply to mutate.
+      //    --prune-mode cancel (default) → PATCH status=cancelled (reversible);
+      //    delete → hard DELETE, falling back to cancel when a child FK blocks it.
+      if (opts.prune || opts.pruneApply) {
+        const apply = Boolean(opts.pruneApply);
+        const mode = opts.pruneMode === "delete" ? "delete" : "cancel";
+        console.log(pc.cyan(`\n[sync] prune (mode=${mode}, ${apply ? "APPLY — mutating" : "dry-run — preview only"})`));
+
+        const ACTIVE_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
+        const ACTIVE_PROJECT_STATUSES = new Set(["backlog", "planned", "in_progress"]);
+
+        // Mirror findBySlugOrTitle: a DB entity is local-backed when its embedded
+        // slug marker matches a local slug, or its title matches a local title.
+        const localIssueSlugs = new Set(taskSpecs.map((t) => t.slug));
+        const localIssueTitles = new Set(taskSpecs.map((t) => cleanTitle(t.title)));
+        const localProjectSlugs = new Set(projectSpecs.map((p) => p.slug));
+        const localProjectTitles = new Set(projectSpecs.map((p) => cleanTitle(p.name)));
+        const isLocalBacked = (e: DbEntity, slugs: Set<string>, titles: Set<string>): boolean => {
+          const dbSlug = extractSlugFromDescription(e.description);
+          if (dbSlug && slugs.has(dbSlug)) return true;
+          const dbTitle = cleanTitle(e.title ?? e.name ?? "");
+          return dbTitle.length > 0 && titles.has(dbTitle);
+        };
+
+        type PrunableEntity = DbEntity & { status?: string };
+        // Re-fetch post-upsert so freshly created/reconnected rows count as backed.
+        const allIssues = await ctx.api.get<PrunableEntity[]>(`/api/companies/${companyId}/issues?status=todo,in_progress,blocked,in_review,done,cancelled,backlog`) ?? [];
+        const allProjects = await ctx.api.get<PrunableEntity[]>(`/api/companies/${companyId}/projects`) ?? [];
+        const orphanIssues = allIssues.filter((i) => ACTIVE_ISSUE_STATUSES.has(String(i.status)) && !isLocalBacked(i, localIssueSlugs, localIssueTitles));
+        const orphanProjects = allProjects.filter((p) => ACTIVE_PROJECT_STATUSES.has(String(p.status)) && !isLocalBacked(p, localProjectSlugs, localProjectTitles));
+        const label = (e: PrunableEntity) => `${e.identifier ?? e.id} [${e.status}] ${cleanTitle(e.title ?? e.name ?? "")}`;
+
+        console.log(`  active-set orphans: ${orphanIssues.length} issue(s), ${orphanProjects.length} project(s)`);
+        for (const i of orphanIssues) console.log(pc.dim(`    issue   ${label(i)}`));
+        for (const p of orphanProjects) console.log(pc.dim(`    project ${label(p)}`));
+
+        if (!apply) {
+          if (orphanIssues.length || orphanProjects.length) {
+            console.log(pc.yellow(`  [dry-run] nothing changed. Re-run with --prune-apply to ${mode} the above.`));
+          } else {
+            console.log(pc.green(`  [dry-run] no active-set drift — DB matches local.`));
+          }
+        } else {
+          let cancelled = 0, deleted = 0, failed = 0;
+          // Issues first: they are children of projects, so retiring them lets a
+          // subsequent project delete succeed instead of hitting the child FK.
+          const retire = async (kind: "issues" | "projects", e: PrunableEntity): Promise<void> => {
+            try {
+              if (mode === "delete") {
+                try {
+                  await ctx.api.delete(`/api/${kind}/${e.id}`);
+                  deleted++;
+                  return;
+                } catch {
+                  console.log(pc.yellow(`    ${kind} ${label(e)}: hard-delete blocked (child FK?) — falling back to cancel`));
+                }
+              }
+              await ctx.api.patch(`/api/${kind}/${e.id}`, { status: "cancelled" });
+              cancelled++;
+            } catch (err) {
+              const msg = err instanceof ApiRequestError ? `${(err as ApiRequestError).status} ${(err as ApiRequestError).message}` : String(err);
+              console.log(pc.yellow(`    ${kind} ${label(e)}: ${msg}`));
+              failed++;
+            }
+          };
+          for (const i of orphanIssues) await retire("issues", i);
+          for (const p of orphanProjects) await retire("projects", p);
+          console.log(`  prune: cancelled=${cancelled} deleted=${deleted} failed=${failed}`);
+        }
       }
 
       // ── externalSource PATCH (idempotent — same payload every time).

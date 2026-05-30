@@ -26,6 +26,20 @@
 
 → sync 명령의 진짜 가치 = **DB 데이터 upsert** (goals/projects/issues + externalSource).
 
+### `--prune` (로컬-first drift 정리, 2026-05-30)
+
+로컬 파일 = 진실원이므로, **active 셋에서 로컬 파일 없는 DB issue/project (orphan) 를 회수**한다.
+
+| 플래그 | 동작 |
+|---|---|
+| `--prune` | orphan 미리보기만 (dry-run **기본** — 절대 변경 안 함) |
+| `--prune-apply` | 실제 회수 (mutate) |
+| `--prune-mode <cancel\|delete>` | `cancel`(기본)=status=cancelled (되돌릴 수 있음) / `delete`=hard DELETE → 자식 FK 막히면 cancel fallback |
+
+- 대상 = **active 셋만** (issue `backlog/todo/in_progress/in_review/blocked`, project `backlog/planned/in_progress`). terminal(done/completed/cancelled) 은 히스토리로 보존.
+- orphan 판정 = upsert 와 동일한 slug-marker → title 매칭. upsert 직후 재조회라 갓 만든/재연결된 entity 는 자동 제외.
+- ⚠️ 이슈 hard-delete 는 비-cascade FK(감사 테이블)로 종종 500 → cancel fallback 정상. 완전 삭제는 직접 pg 필요 (learning `2026-05-30-local-first-prune` 참조).
+
 ## 폐기된 동작 (참고)
 
 2026-05-20 이전 sync 는 agent instructions 파일들을 PaperClip 인스턴스 폴더로 일일이 PUT 했음 (managed mode). 헛수고였음 — PaperClip 이 처음부터 `instructionsBundleMode: "external"` 지원. 자세한 사연: `_archive/sync-managed-instructions-2026-05-20.md`
