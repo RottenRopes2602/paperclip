@@ -1,4 +1,5 @@
-import { NavLink } from "@/lib/router";
+import { NavLink as CompanyNavLink } from "@/lib/router";
+import { NavLink as RouterNavLink } from "react-router-dom";
 import { SIDEBAR_SCROLL_RESET_STATE } from "../lib/navigation-scroll";
 import { cn } from "../lib/utils";
 import { useSidebar } from "../context/SidebarContext";
@@ -16,6 +17,7 @@ interface SidebarNavItemProps {
   textBadgeTone?: "default" | "amber";
   alert?: boolean;
   liveCount?: number;
+  global?: boolean;
 }
 
 export function SidebarNavItem({
@@ -30,25 +32,11 @@ export function SidebarNavItem({
   textBadgeTone = "default",
   alert = false,
   liveCount,
+  global = false,
 }: SidebarNavItemProps) {
   const { isMobile, setSidebarOpen } = useSidebar();
-
-  return (
-    <NavLink
-      to={to}
-      state={SIDEBAR_SCROLL_RESET_STATE}
-      end={end}
-      onClick={() => { if (isMobile) setSidebarOpen(false); }}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors",
-          isActive
-            ? "bg-accent text-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
-          className,
-        )
-      }
-    >
+  const content = (
+    <>
       <span className="relative shrink-0">
         <Icon className="h-4 w-4" />
         {alert && (
@@ -89,6 +77,40 @@ export function SidebarNavItem({
           {badge}
         </span>
       )}
-    </NavLink>
+    </>
+  );
+  const classNameForState = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors",
+      isActive
+        ? "bg-accent text-foreground"
+        : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+      className,
+    );
+
+  if (global) {
+    return (
+      <RouterNavLink
+        to={to}
+        state={SIDEBAR_SCROLL_RESET_STATE}
+        end={end}
+        onClick={() => { if (isMobile) setSidebarOpen(false); }}
+        className={classNameForState}
+      >
+        {content}
+      </RouterNavLink>
+    );
+  }
+
+  return (
+    <CompanyNavLink
+      to={to}
+      state={SIDEBAR_SCROLL_RESET_STATE}
+      end={end}
+      onClick={() => { if (isMobile) setSidebarOpen(false); }}
+      className={classNameForState}
+    >
+      {content}
+    </CompanyNavLink>
   );
 }

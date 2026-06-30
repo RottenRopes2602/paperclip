@@ -12,6 +12,7 @@ import {
   Repeat,
   GitBranch,
   Settings,
+  Globe2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -82,6 +83,7 @@ export function Sidebar() {
             <SquarePen className="h-4 w-4 shrink-0" />
             <span className="truncate">{t("nav.newIssue", { defaultValue: "New Issue" })}</span>
           </button>
+          <SidebarNavItem to="/overview" global label="Overview" icon={Globe2} />
           <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
