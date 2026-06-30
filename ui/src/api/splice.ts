@@ -20,7 +20,7 @@ export interface SpliceWorkspaceAgent {
   urlKey: string;
   role: string;
   title: string | null;
-  status: "idle" | "running" | "requested" | string;
+  status: "idle" | "running" | "requested" | "launched" | "error" | string;
   source: string;
   lastHeartbeatAt: string | null;
   request: SpliceAgentRunRequest | null;
@@ -32,7 +32,7 @@ export interface SpliceWorkspace {
   name: string;
   prefix: string;
   path: string | null;
-  state: "idle" | "running" | "requested" | "blocked" | "stale";
+  state: "idle" | "running" | "requested" | "launched" | "blocked" | "stale";
   projectsActive: number;
   projectsTotal: number;
   issuesActive: number;
@@ -66,6 +66,7 @@ export interface SpliceOverviewData {
     agents: number;
     runningAgents: number;
     requestedAgents: number;
+    launchedAgents?: number;
     liveRuns: number;
     activeWork: number;
     blocked: number;
@@ -73,8 +74,34 @@ export interface SpliceOverviewData {
     openCards: number;
     sessions: number;
   };
+  runner: {
+    queuePath: string;
+    command: string;
+    pending: number;
+    launched: number;
+    failed: number;
+    active: number;
+    total: number;
+    canDispatch: boolean;
+    latest: {
+      id: string;
+      companyId: string;
+      agentId: string;
+      status: string;
+      updatedAt: string;
+    } | null;
+  };
   companies: SpliceWorkspace[];
   requests: SpliceAgentRunRequest[];
+}
+
+export interface SpliceRunnerDispatch {
+  status: "runner_dispatched" | "dry_run_dispatched" | string;
+  pid: number | null;
+  dryRun: boolean;
+  pending: number;
+  requestId: string;
+  runner: SpliceOverviewData["runner"];
 }
 
 export const spliceApi = {
@@ -84,4 +111,5 @@ export const spliceApi = {
       `/splice/companies/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/run`,
       {},
     ),
+  dispatchRunner: () => api.post<SpliceRunnerDispatch>("/splice/runner/dispatch", {}),
 };

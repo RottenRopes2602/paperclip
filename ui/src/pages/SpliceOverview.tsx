@@ -11,6 +11,7 @@ import {
   Play,
   RefreshCw,
   ShieldAlert,
+  Terminal,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -23,6 +24,8 @@ const OVERVIEW_QUERY_KEY = ["splice", "overview"] as const;
 const stateStyles: Record<string, string> = {
   running: "bg-emerald-500",
   requested: "bg-amber-500",
+  launched: "bg-blue-500",
+  error: "bg-red-500",
   blocked: "bg-red-500",
   stale: "bg-orange-500",
   idle: "bg-muted-foreground/40",
@@ -31,6 +34,8 @@ const stateStyles: Record<string, string> = {
 const stateLabels: Record<string, string> = {
   running: "Running",
   requested: "Requested",
+  launched: "Launched",
+  error: "Error",
   blocked: "Blocked",
   stale: "Stale",
   idle: "Idle",
@@ -49,7 +54,7 @@ function formatNumber(value: number | null | undefined): string {
 }
 
 function StatusDot({ state }: { state: string }) {
-  const live = state === "running" || state === "requested";
+  const live = state === "running" || state === "requested" || state === "launched";
   return (
     <span className="relative flex h-2.5 w-2.5 shrink-0">
       {live ? (
@@ -222,6 +227,12 @@ export function SpliceOverview() {
       void queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY });
     },
   });
+  const dispatchRunnerMutation = useMutation({
+    mutationFn: spliceApi.dispatchRunner,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY });
+    },
+  });
 
   const data = overviewQuery.data;
   const totals = data?.totals;
@@ -286,6 +297,38 @@ export function SpliceOverview() {
           {runAgentMutation.error instanceof Error ? runAgentMutation.error.message : "Run request failed"}
         </div>
       ) : null}
+
+      {dispatchRunnerMutation.isError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {dispatchRunnerMutation.error instanceof Error ? dispatchRunnerMutation.error.message : "Runner dispatch failed"}
+        </div>
+      ) : null}
+
+      <div className="rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Terminal className="h-4 w-4 text-muted-foreground" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Runner</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {formatNumber(data?.runner.pending ?? 0)} pending · {formatNumber(data?.runner.launched ?? 0)} launched · {formatNumber(data?.runner.failed ?? 0)} failed
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!data?.runner.canDispatch || dispatchRunnerMutation.isPending}
+            onClick={() => dispatchRunnerMutation.mutate()}
+            className="w-fit gap-1.5"
+          >
+            {dispatchRunnerMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Dispatch Queue
+          </Button>
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <MetricPanel icon={Boxes} value={totals?.workspaces ?? 0} label="Workspaces" />
