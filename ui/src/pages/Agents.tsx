@@ -121,14 +121,6 @@ export function Agents() {
     setBreadcrumbs([{ label: t("agents.breadcrumb", { defaultValue: "Agents" }) }]);
   }, [setBreadcrumbs, t]);
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Bot} message={t("agents.emptyState.selectCompany", { defaultValue: "Select a company to view agents." })} />;
-  }
-
-  if (isLoading) {
-    return <PageSkeleton variant="list" />;
-  }
-
   const filtered = filterAgents(agents ?? [], tab, showTerminated);
   const filteredOrg = filterOrgTree(orgTree ?? [], tab, showTerminated);
 
@@ -154,6 +146,14 @@ export function Agents() {
     if (!other || !self || reorderMutation.isPending) return;
     reorderMutation.mutate({ a: self, b: other });
   };
+
+  if (!selectedCompanyId) {
+    return <EmptyState icon={Bot} message={t("agents.emptyState.selectCompany", { defaultValue: "Select a company to view agents." })} />;
+  }
+
+  if (isLoading) {
+    return <PageSkeleton variant="list" />;
+  }
 
   return (
     <div className="space-y-4">
