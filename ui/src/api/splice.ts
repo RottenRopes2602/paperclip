@@ -6,12 +6,12 @@ export interface SpliceAgentRunRequest {
   companyName: string;
   agentId: string;
   agentName: string;
-  status: "requested";
+  status: "requested" | "launch_ready" | "launched" | "failed" | string;
   requestedAt: string;
   updatedAt: string;
   note?: string;
   ageSeconds?: number;
-  state?: "fresh" | "waiting";
+  state?: "fresh" | "waiting" | "launched";
 }
 
 export interface SpliceWorkspaceAgent {
