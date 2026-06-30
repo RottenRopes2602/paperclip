@@ -39,6 +39,7 @@ import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
 import { SpliceOverview } from "./pages/SpliceOverview";
+import { SplicePuzzleRoom } from "./pages/SplicePuzzleRoom";
 import { InstanceGeneralSettings } from "./pages/InstanceGeneralSettings";
 import { InstanceAccess } from "./pages/InstanceAccess";
 import { InstanceSettings } from "./pages/InstanceSettings";
@@ -314,6 +315,9 @@ export function App() {
           <Route index element={<CompanyRootRedirect />} />
           <Route path="overview" element={<Layout />}>
             <Route index element={<SpliceOverview />} />
+          </Route>
+          <Route path="puzzle-room" element={<Layout />}>
+            <Route index element={<SplicePuzzleRoom />} />
           </Route>
           <Route path="onboarding" element={<OnboardingRoutePage />} />
           <Route path="instance" element={<Navigate to="/instance/settings/general" replace />} />

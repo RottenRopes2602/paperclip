@@ -104,11 +104,125 @@ export interface SpliceRunnerDispatch {
   runner: SpliceOverviewData["runner"];
 }
 
+export interface SplicePuzzleWorkItem {
+  id: string;
+  type: "project" | "issue";
+  title: string;
+  status: string;
+  bucket: "active" | "review" | "todo" | "blocked" | "done" | string;
+  progressWeight: number;
+  ownerSlug: string | null;
+  ownerName: string;
+  projectSlug: string | null;
+  projectName: string;
+  priority: string | null;
+  ageMin: number | null;
+  description: string | null;
+}
+
+export interface SplicePuzzleProject extends SplicePuzzleWorkItem {
+  progress: number;
+  issueCounts: {
+    active: number;
+    review: number;
+    todo: number;
+    blocked: number;
+    done: number;
+  };
+  issueTotal: number;
+}
+
+export interface SplicePuzzleActor {
+  id: string;
+  slug: string;
+  name: string;
+  initials: string;
+  role: string;
+  state: "working" | "reviewing" | "requested" | "queued" | "idle" | "blocked" | "present" | "away" | string;
+  zone: string;
+  x: number;
+  y: number;
+  currentWork: SplicePuzzleWorkItem[];
+  activeCount: number;
+  reviewCount: number;
+  queuedCount: number;
+  request?: SpliceAgentRunRequest | null;
+  session?: {
+    branch: string;
+    dirty: number;
+    path: string;
+    lastCommit: { sha?: string; msg?: string; ageMin?: number } | null;
+  } | null;
+}
+
+export interface SplicePuzzleRoomData {
+  generatedAt: string;
+  id: "puzzle-game";
+  name: "Puzzle Game";
+  mode: "single-workspace-live-room";
+  path: string;
+  shortPath: string;
+  dataSource: string;
+  objective: { name?: string; slug?: string; status?: string; description?: string } | null;
+  totals: {
+    projects: number;
+    activeProjects: number;
+    issues: number;
+    activeIssues: number;
+    reviewIssues: number;
+    todoIssues: number;
+    blockedIssues: number;
+    doneIssues: number;
+    agents: number;
+    activeAgents: number;
+    progress: number;
+    agentOwned: number;
+    humanOwned: number;
+    liveRuns: number;
+    requests: number;
+  };
+  buckets: {
+    active: number;
+    review: number;
+    todo: number;
+    blocked: number;
+    done: number;
+  };
+  room: {
+    zones: Array<{ id: string; label: string; x: number; y: number; workCount: number }>;
+    agents: SplicePuzzleActor[];
+    humans: SplicePuzzleActor[];
+  };
+  lanes: {
+    active: SplicePuzzleWorkItem[];
+    review: SplicePuzzleWorkItem[];
+    next: SplicePuzzleWorkItem[];
+    blocked: SplicePuzzleWorkItem[];
+  };
+  projects: SplicePuzzleProject[];
+  agents: SplicePuzzleActor[];
+  activity: Array<{
+    id: string;
+    type: "project" | "issue";
+    title: string;
+    status: string;
+    ownerName: string;
+    ageMin: number | null;
+  }>;
+  requests: SpliceAgentRunRequest[];
+}
+
 export const spliceApi = {
   overview: () => api.get<SpliceOverviewData>("/splice/overview"),
+  puzzleRoom: () => api.get<SplicePuzzleRoomData>("/splice/puzzle-room"),
   runAgent: (companyId: string, agentId: string) =>
     api.post<SpliceAgentRunRequest>(
       `/splice/companies/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/run`,
+      {},
+    ),
+  runPuzzleAgent: (agentId: string) =>
+    api.post<SpliceAgentRunRequest>(
+      `/splice/puzzle-room/agents/${encodeURIComponent(agentId)}/run`,
       {},
     ),
   dispatchRunner: () => api.post<SpliceRunnerDispatch>("/splice/runner/dispatch", {}),

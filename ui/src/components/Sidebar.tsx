@@ -13,6 +13,7 @@ import {
   GitBranch,
   Settings,
   Globe2,
+  Map,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "@/lib/router";
@@ -84,6 +85,7 @@ export function Sidebar() {
             <span className="truncate">{t("nav.newIssue", { defaultValue: "New Issue" })}</span>
           </button>
           <SidebarNavItem to="/overview" global label="Overview" icon={Globe2} />
+          <SidebarNavItem to="/puzzle-room" global label="Puzzle Room" icon={Map} />
           <SidebarNavItem to="/dashboard" label={t("nav.dashboard", { defaultValue: "Dashboard" })} icon={LayoutDashboard} liveCount={liveRunCount} />
           <SidebarNavItem
             to="/inbox"
