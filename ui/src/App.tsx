@@ -38,6 +38,7 @@ import { Secrets } from "./pages/Secrets";
 import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
+import { SpliceLabShell } from "./components/SpliceLabShell";
 import { SpliceOverview } from "./pages/SpliceOverview";
 import { SpliceWorkspaceRoom } from "./pages/SpliceWorkspaceRoom";
 import { InstanceGeneralSettings } from "./pages/InstanceGeneralSettings";
@@ -270,6 +271,11 @@ function NoCompaniesStartPage() {
   );
 }
 
+function LegacySpliceRoomRedirect() {
+  const { workspaceId = "puzzle-game" } = useParams<{ workspaceId?: string }>();
+  return <Navigate to={`/splice/workspace-room/${workspaceId}`} replace />;
+}
+
 // fork_mangoclaw: bridge for the i18n-ko plugin's language toggle.
 // The plugin can't import i18next directly (separate bundle), so it dispatches
 // a CustomEvent that we listen for here and turn into changeLanguage().
@@ -311,15 +317,15 @@ export function App() {
         <Route path="invite/:token" element={<InviteLandingPage />} />
         <Route path="tests/perf/long-thread" element={<IssueChatLongThreadPerf />} />
 
-        <Route element={<CloudAccessGate />}>
+          <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />
-          <Route path="overview" element={<Layout scope="splice" />}>
+          <Route path="splice" element={<SpliceLabShell />}>
             <Route index element={<SpliceOverview />} />
+            <Route path="workspace-room/:workspaceId" element={<SpliceWorkspaceRoom />} />
           </Route>
-          <Route path="workspace-room/:workspaceId" element={<Layout scope="splice" />}>
-            <Route index element={<SpliceWorkspaceRoom />} />
-          </Route>
-          <Route path="puzzle-room" element={<Navigate to="/workspace-room/puzzle-game" replace />} />
+          <Route path="overview" element={<Navigate to="/splice" replace />} />
+          <Route path="workspace-room/:workspaceId" element={<LegacySpliceRoomRedirect />} />
+          <Route path="puzzle-room" element={<Navigate to="/splice/workspace-room/puzzle-game" replace />} />
           <Route path="onboarding" element={<OnboardingRoutePage />} />
           <Route path="instance" element={<Navigate to="/instance/settings/general" replace />} />
           <Route path="instance/settings" element={<Layout />}>

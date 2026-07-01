@@ -55,7 +55,7 @@ function WorkspaceSignal({ workspace }: { workspace: SpliceWorkspace }) {
 
 export function SpliceSidebar() {
   const location = useLocation();
-  const isPuzzleTestbed = location.pathname === "/workspace-room/puzzle-game";
+  const isPuzzleTestbed = location.pathname === "/splice/workspace-room/puzzle-game";
   const overviewQuery = useQuery({
     queryKey: SPLICE_SIDEBAR_QUERY_KEY,
     queryFn: spliceApi.overview,
@@ -84,8 +84,8 @@ export function SpliceSidebar() {
 
       <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3 scrollbar-auto-hide">
         <div className="flex flex-col gap-0.5">
-          <SidebarNavItem to="/overview" global end label="Workspace Map" icon={Globe2} />
-          <SidebarNavItem to="/workspace-room/puzzle-game" global label="Puzzle Testbed" icon={Beaker} />
+          <SidebarNavItem to="/splice" global end label="Workspace Map" icon={Globe2} />
+          <SidebarNavItem to="/splice/workspace-room/puzzle-game" global label="Puzzle Testbed" icon={Beaker} />
         </div>
 
         {isPuzzleTestbed ? (
@@ -145,8 +145,8 @@ export function SpliceSidebar() {
                 Could not load puzzle testbed
               </div>
             ) : null}
-            <SidebarNavItem to="/workspace-room/puzzle-game" global label="Live Room" icon={Map} />
-            <SidebarNavItem to="/overview" global label="Back to Map" icon={Globe2} />
+            <SidebarNavItem to="/splice/workspace-room/puzzle-game" global label="Live Room" icon={Map} />
+            <SidebarNavItem to="/splice" global label="Back to Map" icon={Globe2} />
           </SidebarSection>
         ) : (
           <SidebarSection label="Workspaces">

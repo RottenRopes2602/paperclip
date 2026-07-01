@@ -40,7 +40,9 @@ const queryClient = new QueryClient({
 function CompanyAwareBreadcrumbProvider({ children }: { children: React.ReactNode }) {
   const { selectedCompany } = useCompany();
   const location = useLocation();
-  const isSpliceRoute = location.pathname === "/overview" || location.pathname.startsWith("/workspace-room/");
+  const isSpliceRoute = location.pathname.startsWith("/splice")
+    || location.pathname === "/overview"
+    || location.pathname.startsWith("/workspace-room/");
   return (
     <BreadcrumbProvider companyName={isSpliceRoute ? null : selectedCompany?.name ?? null}>
       {children}
