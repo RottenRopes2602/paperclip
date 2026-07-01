@@ -5,7 +5,6 @@ import {
   Building2,
   Globe2,
   Map,
-  RefreshCw,
 } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { spliceApi, type SpliceWorkspace } from "@/api/splice";
@@ -43,13 +42,13 @@ function StateDot({ state }: { state: string }) {
 function WorkspaceSignal({ workspace }: { workspace: SpliceWorkspace }) {
   return (
     <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-[13px] font-medium text-foreground/80">
-        <StateDot state={workspace.state} />
-        <span className="truncate">{workspace.name}</span>
-        {workspace.liveRuns > 0 || workspace.runningAgents > 0 ? (
-          <span className="ml-auto shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-            live
-          </span>
-        ) : null}
+      <StateDot state={workspace.state} />
+      <span className="truncate">{workspace.name}</span>
+      {workspace.liveRuns > 0 || workspace.runningAgents > 0 ? (
+        <span className="ml-auto shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+          live
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -139,14 +138,7 @@ export function SpliceSidebar() {
         )}
 
         {isPuzzleTestbed ? (
-          <SidebarSection
-            label="Puzzle Testbed"
-            headerAction={{
-              icon: RefreshCw,
-              ariaLabel: "Refresh puzzle testbed",
-              onClick: () => void testbedQuery.refetch(),
-            }}
-          >
+          <SidebarSection label="Puzzle Testbed">
             {testbedQuery.isError ? (
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-600">
                 <AlertTriangle className="h-3.5 w-3.5" />
@@ -157,14 +149,7 @@ export function SpliceSidebar() {
             <SidebarNavItem to="/overview" global label="Back to Map" icon={Globe2} />
           </SidebarSection>
         ) : (
-          <SidebarSection
-            label="Workspaces"
-            headerAction={{
-              icon: RefreshCw,
-              ariaLabel: "Refresh workspaces",
-              onClick: () => void overviewQuery.refetch(),
-            }}
-          >
+          <SidebarSection label="Workspaces">
             {overviewQuery.isError ? (
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-600">
                 <AlertTriangle className="h-3.5 w-3.5" />
