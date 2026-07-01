@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Beaker, Globe2 } from "lucide-react";
+import { Beaker, DoorOpen, Globe2, type LucideIcon } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { SpliceSidebar } from "./SpliceSidebar";
 function TopLink({ to, label, icon: Icon, end = false }: {
   to: string;
   label: string;
-  icon: typeof Globe2;
+  icon: LucideIcon;
   end?: boolean;
 }) {
   return (
@@ -31,13 +31,19 @@ function TopLink({ to, label, icon: Icon, end = false }: {
 export function SpliceLabShell() {
   const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const isEntrance = location.pathname === "/splice";
 
   useEffect(() => {
+    const current = isEntrance
+      ? "Entrance"
+      : location.pathname.startsWith("/splice/workspace-room/")
+        ? "Puzzle Testbed"
+        : "Workspace Map";
     setBreadcrumbs([
-      { label: location.pathname.startsWith("/splice/workspace-room/") ? "Puzzle Testbed" : "Workspace Map" },
+      { label: current },
       { label: "Splice Lab" },
     ]);
-  }, [location.pathname, setBreadcrumbs]);
+  }, [isEntrance, location.pathname, setBreadcrumbs]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
@@ -47,15 +53,27 @@ export function SpliceLabShell() {
       >
         Skip to Main Content
       </a>
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden">
-        <TopLink to="/splice" label="Workspace Map" icon={Globe2} end />
-        <TopLink to="/splice/workspace-room/puzzle-game" label="Puzzle Testbed" icon={Beaker} />
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <div className="hidden h-full w-72 shrink-0 md:block">
-          <SpliceSidebar />
+      {!isEntrance ? (
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden">
+          <TopLink to="/splice" label="Entrance" icon={DoorOpen} end />
+          <TopLink to="/splice/workspaces" label="Workspaces" icon={Globe2} />
+          <TopLink to="/splice/workspace-room/puzzle-game" label="Puzzle Testbed" icon={Beaker} />
         </div>
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-auto p-4 outline-none md:p-6">
+      ) : null}
+      <div className="flex min-h-0 flex-1">
+        {!isEntrance ? (
+          <div className="hidden h-full w-72 shrink-0 md:block">
+            <SpliceSidebar />
+          </div>
+        ) : null}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className={cn(
+            "min-w-0 flex-1 overflow-auto outline-none",
+            isEntrance ? "p-4 md:p-8" : "p-4 md:p-6",
+          )}
+        >
           <div className="mx-auto w-full max-w-[1600px]">
             <Outlet />
           </div>

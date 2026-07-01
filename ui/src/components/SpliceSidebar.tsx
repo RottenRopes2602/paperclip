@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Beaker,
   Building2,
+  DoorOpen,
   Globe2,
   Map,
 } from "lucide-react";
@@ -84,7 +85,8 @@ export function SpliceSidebar() {
 
       <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3 scrollbar-auto-hide">
         <div className="flex flex-col gap-0.5">
-          <SidebarNavItem to="/splice" global end label="Workspace Map" icon={Globe2} />
+          <SidebarNavItem to="/splice" global end label="Entrance" icon={DoorOpen} />
+          <SidebarNavItem to="/splice/workspaces" global label="Workspace Map" icon={Globe2} />
           <SidebarNavItem to="/splice/workspace-room/puzzle-game" global label="Puzzle Testbed" icon={Beaker} />
         </div>
 
@@ -146,7 +148,7 @@ export function SpliceSidebar() {
               </div>
             ) : null}
             <SidebarNavItem to="/splice/workspace-room/puzzle-game" global label="Live Room" icon={Map} />
-            <SidebarNavItem to="/splice" global label="Back to Map" icon={Globe2} />
+            <SidebarNavItem to="/splice/workspaces" global label="Workspace Map" icon={Globe2} />
           </SidebarSection>
         ) : (
           <SidebarSection label="Workspaces">

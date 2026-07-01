@@ -229,8 +229,8 @@ export function SpliceOverview() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">Splice</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Workspace Overview</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Read-only workspace map. Puzzle Game is the only active testbed.</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Existing Workspaces</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Read-only map for the current workspace folders.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm" className="w-fit gap-1.5">

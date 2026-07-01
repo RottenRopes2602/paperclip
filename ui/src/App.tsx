@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { useTranslation, i18n } from "@/i18n";
@@ -39,6 +40,7 @@ import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
 import { SpliceLabShell } from "./components/SpliceLabShell";
+import { SpliceEntrance } from "./pages/SpliceEntrance";
 import { SpliceOverview } from "./pages/SpliceOverview";
 import { SpliceWorkspaceRoom } from "./pages/SpliceWorkspaceRoom";
 import { InstanceGeneralSettings } from "./pages/InstanceGeneralSettings";
@@ -62,6 +64,8 @@ import { useCompany } from "./context/CompanyContext";
 import { useDialogActions } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 import { shouldRedirectCompanylessRouteToOnboarding } from "./lib/onboarding-route";
+import { healthApi } from "./api/health";
+import { queryKeys } from "./lib/queryKeys";
 
 function boardRoutes() {
   return (
@@ -271,6 +275,24 @@ function NoCompaniesStartPage() {
   );
 }
 
+function RootRedirect() {
+  const healthQuery = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+    retry: false,
+  });
+
+  if (healthQuery.isLoading) {
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+  }
+
+  if (healthQuery.data?.version === "splice") {
+    return <Navigate to="/splice" replace />;
+  }
+
+  return <CompanyRootRedirect />;
+}
+
 function LegacySpliceRoomRedirect() {
   const { workspaceId = "puzzle-game" } = useParams<{ workspaceId?: string }>();
   return <Navigate to={`/splice/workspace-room/${workspaceId}`} replace />;
@@ -318,9 +340,10 @@ export function App() {
         <Route path="tests/perf/long-thread" element={<IssueChatLongThreadPerf />} />
 
           <Route element={<CloudAccessGate />}>
-          <Route index element={<CompanyRootRedirect />} />
+          <Route index element={<RootRedirect />} />
           <Route path="splice" element={<SpliceLabShell />}>
-            <Route index element={<SpliceOverview />} />
+            <Route index element={<SpliceEntrance />} />
+            <Route path="workspaces" element={<SpliceOverview />} />
             <Route path="workspace-room/:workspaceId" element={<SpliceWorkspaceRoom />} />
           </Route>
           <Route path="overview" element={<Navigate to="/splice" replace />} />
