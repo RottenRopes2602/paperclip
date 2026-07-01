@@ -2,7 +2,7 @@ import * as React from "react";
 import { StrictMode } from "react";
 import * as ReactDOM from "react-dom";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "@/lib/router";
+import { BrowserRouter, useLocation } from "@/lib/router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { CompanyProvider, useCompany } from "./context/CompanyContext";
@@ -39,7 +39,13 @@ const queryClient = new QueryClient({
 
 function CompanyAwareBreadcrumbProvider({ children }: { children: React.ReactNode }) {
   const { selectedCompany } = useCompany();
-  return <BreadcrumbProvider companyName={selectedCompany?.name ?? null}>{children}</BreadcrumbProvider>;
+  const location = useLocation();
+  const isSpliceRoute = location.pathname === "/overview" || location.pathname.startsWith("/workspace-room/");
+  return (
+    <BreadcrumbProvider companyName={isSpliceRoute ? null : selectedCompany?.name ?? null}>
+      {children}
+    </BreadcrumbProvider>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(

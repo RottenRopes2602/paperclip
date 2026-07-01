@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -18,6 +19,7 @@ import {
 import { useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { spliceApi, type SpliceWorkspaceRoomActor, type SpliceWorkspaceRoomProject, type SpliceWorkspaceRoomWorkItem } from "@/api/splice";
+import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
 
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room"] as const;
@@ -299,6 +301,7 @@ function AgentRoster({
 export function SpliceWorkspaceRoom() {
   const { workspaceId = "puzzle-game" } = useParams<{ workspaceId?: string }>();
   const queryClient = useQueryClient();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const queryKey = [...WORKSPACE_ROOM_QUERY_ROOT, workspaceId] as const;
   const roomQuery = useQuery({
     queryKey,
@@ -318,6 +321,13 @@ export function SpliceWorkspaceRoom() {
   const runAgent = (actor: SpliceWorkspaceRoomActor) => {
     runAgentMutation.mutate(actor.id);
   };
+
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: "Workspace Overview", href: "/overview" },
+      { label: `${data?.name ?? "Workspace"} Room` },
+    ]);
+  }, [data?.name, setBreadcrumbs]);
 
   if (roomQuery.isLoading) {
     return (

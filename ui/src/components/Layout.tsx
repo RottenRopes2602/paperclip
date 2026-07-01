@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation, useNavigate, useNavigationType, useParams } from "@/lib/router";
 import { Sidebar } from "./Sidebar";
+import { SpliceSidebar } from "./SpliceSidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
 import { CompanySettingsSidebar } from "./CompanySettingsSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
@@ -61,7 +62,13 @@ function readRememberedInstanceSettingsPath(): string {
   }
 }
 
-export function Layout() {
+type LayoutScope = "company" | "splice";
+
+interface LayoutProps {
+  scope?: LayoutScope;
+}
+
+export function Layout({ scope = "company" }: LayoutProps) {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialogActions();
   const { togglePanelVisible } = usePanel();
@@ -77,6 +84,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const navigationType = useNavigationType();
+  const isSpliceScope = scope === "splice";
   const isInstanceSettingsRoute = location.pathname.startsWith("/instance/");
   const isCompanySettingsRoute = location.pathname.includes("/company/settings");
   const onboardingTriggered = useRef(false);
@@ -125,6 +133,7 @@ export function Layout() {
   ) : (
     <Sidebar />
   );
+  const primarySidebar = isSpliceScope ? <SpliceSidebar /> : companySidebar;
   const { data: health } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
@@ -369,7 +378,7 @@ export function Layout() {
           />
         )}
 
-        {isMobile ? (
+            {isMobile ? (
           <div
             className={cn(
               "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
@@ -383,7 +392,7 @@ export function Layout() {
                 ) : isCompanySettingsRoute ? (
                   <CompanySettingsSidebar />
                 ) : (
-                  companySidebar
+                  primarySidebar
                 )}
               </div>
             </div>
@@ -402,7 +411,7 @@ export function Layout() {
                 ) : isCompanySettingsRoute ? (
                   <CompanySettingsSidebar />
                 ) : (
-                  companySidebar
+                  primarySidebar
                 )}
               </ResizableSidebarPane>
             </div>
@@ -420,7 +429,7 @@ export function Layout() {
               isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85",
             )}
           >
-            <BreadcrumbBar />
+            <BreadcrumbBar scope={scope} />
           </div>
           <div className={cn(isMobile ? "block" : "flex flex-1 min-h-0")}>
             <main
@@ -441,16 +450,16 @@ export function Layout() {
                 <Outlet />
               )}
             </main>
-            <PropertiesPanel />
+            {isSpliceScope ? null : <PropertiesPanel />}
           </div>
         </div>
       </div>
-      {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
-      <CommandPalette />
-      <NewIssueDialog />
-      <NewProjectDialog />
-      <NewGoalDialog />
-      <NewAgentDialog />
+      {isMobile && !isSpliceScope && <MobileBottomNav visible={mobileNavVisible} />}
+      {!isSpliceScope ? <CommandPalette /> : null}
+      {!isSpliceScope ? <NewIssueDialog /> : null}
+      {!isSpliceScope ? <NewProjectDialog /> : null}
+      {!isSpliceScope ? <NewGoalDialog /> : null}
+      {!isSpliceScope ? <NewAgentDialog /> : null}
       <KeyboardShortcutsCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <ToastViewport />
       </div>

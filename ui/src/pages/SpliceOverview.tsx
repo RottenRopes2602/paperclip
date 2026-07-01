@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { spliceApi, type SpliceWorkspace, type SpliceWorkspaceAgent } from "@/api/splice";
+import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
 
 const OVERVIEW_QUERY_KEY = ["splice", "overview"] as const;
@@ -222,6 +224,7 @@ function Signal({
 
 export function SpliceOverview() {
   const queryClient = useQueryClient();
+  const { setBreadcrumbs } = useBreadcrumbs();
   const overviewQuery = useQuery({
     queryKey: OVERVIEW_QUERY_KEY,
     queryFn: spliceApi.overview,
@@ -246,6 +249,10 @@ export function SpliceOverview() {
   const launchingKey = runAgentMutation.variables
     ? `${runAgentMutation.variables.companyId}:${runAgentMutation.variables.agentId}`
     : null;
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: "Workspace Overview" }]);
+  }, [setBreadcrumbs]);
 
   if (overviewQuery.isLoading) {
     return (

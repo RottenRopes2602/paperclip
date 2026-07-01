@@ -313,10 +313,10 @@ export function App() {
 
         <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />
-          <Route path="overview" element={<Layout />}>
+          <Route path="overview" element={<Layout scope="splice" />}>
             <Route index element={<SpliceOverview />} />
           </Route>
-          <Route path="workspace-room/:workspaceId" element={<Layout />}>
+          <Route path="workspace-room/:workspaceId" element={<Layout scope="splice" />}>
             <Route index element={<SpliceWorkspaceRoom />} />
           </Route>
           <Route path="puzzle-room" element={<Navigate to="/workspace-room/puzzle-game" replace />} />

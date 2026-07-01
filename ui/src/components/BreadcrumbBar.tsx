@@ -30,7 +30,11 @@ function GlobalToolbarPlugins({ context }: { context: GlobalToolbarContext }) {
   );
 }
 
-export function BreadcrumbBar() {
+interface BreadcrumbBarProps {
+  scope?: "company" | "splice";
+}
+
+export function BreadcrumbBar({ scope = "company" }: BreadcrumbBarProps = {}) {
   const { breadcrumbs, mobileToolbar } = useBreadcrumbs();
   const { toggleSidebar, isMobile } = useSidebar();
   const { selectedCompanyId, selectedCompany } = useCompany();
@@ -43,7 +47,7 @@ export function BreadcrumbBar() {
     [selectedCompanyId, selectedCompany?.issuePrefix],
   );
 
-  const globalToolbarSlots = <GlobalToolbarPlugins context={globalToolbarSlotContext} />;
+  const globalToolbarSlots = scope === "splice" ? null : <GlobalToolbarPlugins context={globalToolbarSlotContext} />;
 
   if (isMobile && mobileToolbar) {
     return (
