@@ -2,20 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Beaker,
-  Boxes,
   Building2,
-  ExternalLink,
   Globe2,
   Map,
   RefreshCw,
 } from "lucide-react";
-import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { useLocation } from "react-router-dom";
 import { spliceApi, type SpliceWorkspace } from "@/api/splice";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarSection } from "./SidebarSection";
-import { useSidebar } from "../context/SidebarContext";
-import { SIDEBAR_SCROLL_RESET_STATE } from "../lib/navigation-scroll";
 import { cn } from "../lib/utils";
 
 const SPLICE_SIDEBAR_QUERY_KEY = ["splice", "sidebar-overview"] as const;
@@ -45,22 +40,9 @@ function StateDot({ state }: { state: string }) {
   );
 }
 
-function WorkspaceLink({ workspace }: { workspace: SpliceWorkspace }) {
-  const { isMobile, setSidebarOpen } = useSidebar();
-
+function WorkspaceSignal({ workspace }: { workspace: SpliceWorkspace }) {
   return (
-    <div className="group flex min-w-0 items-center gap-1">
-      <RouterNavLink
-        to={`/workspace-room/${encodeURIComponent(workspace.id)}`}
-        state={SIDEBAR_SCROLL_RESET_STATE}
-        onClick={() => { if (isMobile) setSidebarOpen(false); }}
-        className={({ isActive }) => cn(
-          "flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors",
-          isActive
-            ? "bg-accent text-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
-        )}
-      >
+    <div className="flex min-w-0 items-center gap-2 px-3 py-2 text-[13px] font-medium text-foreground/80">
         <StateDot state={workspace.state} />
         <span className="truncate">{workspace.name}</span>
         {workspace.liveRuns > 0 || workspace.runningAgents > 0 ? (
@@ -68,21 +50,6 @@ function WorkspaceLink({ workspace }: { workspace: SpliceWorkspace }) {
             live
           </span>
         ) : null}
-      </RouterNavLink>
-      <Button
-        asChild
-        variant="ghost"
-        size="icon-sm"
-        className="mr-1 h-7 w-7 shrink-0 text-muted-foreground opacity-70 hover:opacity-100"
-        title={`${workspace.name} board`}
-      >
-        <RouterNavLink
-          to={`/${workspace.prefix}/dashboard`}
-          onClick={() => { if (isMobile) setSidebarOpen(false); }}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </RouterNavLink>
-      </Button>
     </div>
   );
 }
@@ -94,13 +61,11 @@ export function SpliceSidebar() {
     queryKey: SPLICE_SIDEBAR_QUERY_KEY,
     queryFn: spliceApi.overview,
     enabled: !isPuzzleTestbed,
-    refetchInterval: 10_000,
   });
   const testbedQuery = useQuery({
     queryKey: SPLICE_TESTBED_QUERY_KEY,
     queryFn: () => spliceApi.workspaceRoom("puzzle-game"),
     enabled: isPuzzleTestbed,
-    refetchInterval: 10_000,
   });
   const totals = overviewQuery.data?.totals;
   const workspaces = overviewQuery.data?.companies ?? [];
@@ -120,8 +85,8 @@ export function SpliceSidebar() {
 
       <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3 scrollbar-auto-hide">
         <div className="flex flex-col gap-0.5">
-          <SidebarNavItem to="/overview" global end label="Overview" icon={Globe2} />
-          <SidebarNavItem to="/workspace-room/puzzle-game" global label="Puzzle Pilot" icon={Beaker} />
+          <SidebarNavItem to="/overview" global end label="Workspace Map" icon={Globe2} />
+          <SidebarNavItem to="/workspace-room/puzzle-game" global label="Puzzle Testbed" icon={Beaker} />
         </div>
 
         {isPuzzleTestbed ? (
@@ -173,11 +138,6 @@ export function SpliceSidebar() {
           </div>
         )}
 
-        <SidebarSection label="Sections">
-          <SidebarNavItem to="/overview" global end label="Portfolio" icon={Boxes} />
-          <SidebarNavItem to="/workspace-room/puzzle-game" global label="Testbed" icon={Map} />
-        </SidebarSection>
-
         {isPuzzleTestbed ? (
           <SidebarSection
             label="Puzzle Testbed"
@@ -194,7 +154,7 @@ export function SpliceSidebar() {
               </div>
             ) : null}
             <SidebarNavItem to="/workspace-room/puzzle-game" global label="Live Room" icon={Map} />
-            <SidebarNavItem to="/overview" global label="Back to Portfolio" icon={Globe2} />
+            <SidebarNavItem to="/overview" global label="Back to Map" icon={Globe2} />
           </SidebarSection>
         ) : (
           <SidebarSection
@@ -220,7 +180,7 @@ export function SpliceSidebar() {
             ) : workspaces.length ? (
               <div className="flex flex-col gap-0.5">
                 {workspaces.map((workspace) => (
-                  <WorkspaceLink key={workspace.id} workspace={workspace} />
+                  <WorkspaceSignal key={workspace.id} workspace={workspace} />
                 ))}
               </div>
             ) : (

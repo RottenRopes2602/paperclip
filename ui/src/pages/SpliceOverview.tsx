@@ -1,16 +1,12 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
-  Bot,
+  Beaker,
   Boxes,
-  ExternalLink,
   GitBranch,
-  Loader2,
-  Map,
-  Play,
   RefreshCw,
   ShieldAlert,
   Terminal,
@@ -112,14 +108,9 @@ function AgentPill({ agent }: { agent: SpliceWorkspaceAgent }) {
 
 function WorkspaceRow({
   workspace,
-  launching,
-  onRun,
 }: {
   workspace: SpliceWorkspace;
-  launching: boolean;
-  onRun: (workspace: SpliceWorkspace, agent: SpliceWorkspaceAgent) => void;
 }) {
-  const agent = workspace.primaryAgent;
   const visibleAgents = workspace.agents.slice(0, 5);
   const hiddenAgentCount = Math.max(0, workspace.agentCount - visibleAgents.length);
 
@@ -129,12 +120,9 @@ function WorkspaceRow({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <StatusDot state={workspace.state} />
-            <RouterLink
-              to={`/${workspace.prefix}/dashboard`}
-              className="truncate text-base font-semibold text-foreground hover:underline"
-            >
+            <span className="truncate text-base font-semibold text-foreground">
               {workspace.name}
-            </RouterLink>
+            </span>
             <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               {stateLabels[workspace.state] ?? workspace.state}
             </span>
@@ -146,33 +134,8 @@ function WorkspaceRow({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => agent && onRun(workspace, agent)}
-            disabled={!agent || launching}
-            className="gap-1.5"
-          >
-            {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Run
-          </Button>
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <RouterLink to={`/workspace-room/${encodeURIComponent(workspace.id)}`}>
-              <Map className="h-3.5 w-3.5" />
-              Room
-            </RouterLink>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <RouterLink to={`/${workspace.prefix}/agents/all`}>
-              <Bot className="h-3.5 w-3.5" />
-              Agents
-            </RouterLink>
-          </Button>
-          <Button asChild variant="ghost" size="icon-sm" title="Open dashboard">
-            <RouterLink to={`/${workspace.prefix}/dashboard`}>
-              <ExternalLink className="h-3.5 w-3.5" />
-            </RouterLink>
-          </Button>
+        <div className="flex shrink-0 items-center rounded-md bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+          Read-only map
         </div>
       </div>
 
@@ -223,32 +186,14 @@ function Signal({
 }
 
 export function SpliceOverview() {
-  const queryClient = useQueryClient();
   const { setBreadcrumbs } = useBreadcrumbs();
   const overviewQuery = useQuery({
     queryKey: OVERVIEW_QUERY_KEY,
     queryFn: spliceApi.overview,
-    refetchInterval: 5_000,
-  });
-  const runAgentMutation = useMutation({
-    mutationFn: ({ companyId, agentId }: { companyId: string; agentId: string }) =>
-      spliceApi.runAgent(companyId, agentId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY });
-    },
-  });
-  const dispatchRunnerMutation = useMutation({
-    mutationFn: spliceApi.dispatchRunner,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY });
-    },
   });
 
   const data = overviewQuery.data;
   const totals = data?.totals;
-  const launchingKey = runAgentMutation.variables
-    ? `${runAgentMutation.variables.companyId}:${runAgentMutation.variables.agentId}`
-    : null;
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Workspace Overview" }]);
@@ -292,31 +237,27 @@ export function SpliceOverview() {
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">Splice</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Workspace Overview</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{data?.dataSource}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Read-only workspace map. Puzzle Game is the only active testbed.</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void overviewQuery.refetch()}
-          disabled={overviewQuery.isFetching}
-          className="w-fit gap-1.5"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", overviewQuery.isFetching && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" className="w-fit gap-1.5">
+            <RouterLink to="/workspace-room/puzzle-game">
+              <Beaker className="h-3.5 w-3.5" />
+              Open Puzzle Testbed
+            </RouterLink>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void overviewQuery.refetch()}
+            disabled={overviewQuery.isFetching}
+            className="w-fit gap-1.5"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", overviewQuery.isFetching && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
-
-      {runAgentMutation.isError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {runAgentMutation.error instanceof Error ? runAgentMutation.error.message : "Run request failed"}
-        </div>
-      ) : null}
-
-      {dispatchRunnerMutation.isError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {dispatchRunnerMutation.error instanceof Error ? dispatchRunnerMutation.error.message : "Runner dispatch failed"}
-        </div>
-      ) : null}
 
       <div className="rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -331,16 +272,9 @@ export function SpliceOverview() {
               </p>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!data?.runner.canDispatch || dispatchRunnerMutation.isPending}
-            onClick={() => dispatchRunnerMutation.mutate()}
-            className="w-fit gap-1.5"
-          >
-            {dispatchRunnerMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Dispatch Queue
-          </Button>
+          <span className="w-fit rounded-md bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+            Controls disabled in pilot
+          </span>
         </div>
       </div>
 
@@ -348,20 +282,17 @@ export function SpliceOverview() {
         <MetricPanel icon={Boxes} value={totals?.workspaces ?? 0} label="Workspaces" />
         <MetricPanel icon={Users} value={totals?.agents ?? 0} label="Agents" />
         <MetricPanel icon={Activity} value={totals?.runningAgents ?? 0} label="Running" tone="green" />
-        <MetricPanel icon={Play} value={totals?.requestedAgents ?? 0} label="Requested" tone="amber" />
+        <MetricPanel icon={Beaker} value={1} label="Active Testbed" tone="amber" />
         <MetricPanel icon={GitBranch} value={totals?.sessions ?? 0} label="Sessions" />
         <MetricPanel icon={ShieldAlert} value={totals?.blocked ?? 0} label="Blocked" tone={totals?.blocked ? "red" : "default"} />
       </div>
 
       <div className="space-y-3">
         {(data?.companies ?? []).map((workspace) => {
-          const key = workspace.primaryAgent ? `${workspace.id}:${workspace.primaryAgent.id}` : null;
           return (
             <WorkspaceRow
               key={workspace.id}
               workspace={workspace}
-              launching={runAgentMutation.isPending && launchingKey === key}
-              onRun={(item, agent) => runAgentMutation.mutate({ companyId: item.id, agentId: agent.id })}
             />
           );
         })}

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -10,7 +10,6 @@ import {
   Flag,
   Layers3,
   Map,
-  Play,
   RefreshCw,
   ShieldAlert,
   UserRound,
@@ -106,7 +105,7 @@ function Metric({
   );
 }
 
-function ActorToken({ actor, workspaceName, onRun, launching }: { actor: SpliceWorkspaceRoomActor; workspaceName?: string; onRun?: (actor: SpliceWorkspaceRoomActor) => void; launching?: boolean }) {
+function ActorToken({ actor, workspaceName }: { actor: SpliceWorkspaceRoomActor; workspaceName?: string }) {
   const style = stateStyles[actor.state] ?? stateStyles.idle;
   return (
     <div
@@ -115,19 +114,14 @@ function ActorToken({ actor, workspaceName, onRun, launching }: { actor: SpliceW
       title={`${actor.name} · ${stateLabel(actor.state)}`}
     >
       <div className="group relative flex flex-col items-center gap-1">
-        <button
-          type="button"
-          onClick={() => onRun?.(actor)}
-          disabled={!onRun || launching}
+        <div
           className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-full border border-background bg-card text-xs font-semibold shadow-sm ring-4 transition-transform group-hover:scale-105",
+            "flex h-12 w-12 items-center justify-center rounded-full border border-background bg-card text-xs font-semibold shadow-sm ring-4",
             style.ring,
-            onRun && "cursor-pointer",
           )}
-          aria-label={`${actor.name} ${stateLabel(actor.state)}`}
         >
-          {launching ? <RefreshCw className="h-4 w-4 animate-spin" /> : actor.initials}
-        </button>
+          {actor.initials}
+        </div>
         <span className="max-w-24 truncate rounded bg-background/95 px-1.5 py-0.5 text-[11px] font-medium shadow-sm">
           {compactAgentName(actor.name, workspaceName)}
         </span>
@@ -141,15 +135,11 @@ function RoomMap({
   humans,
   zones,
   workspaceName,
-  onRun,
-  launchingAgentId,
 }: {
   agents: SpliceWorkspaceRoomActor[];
   humans: SpliceWorkspaceRoomActor[];
   zones: Array<{ id: string; label: string; x: number; y: number; workCount: number }>;
   workspaceName?: string;
-  onRun: (actor: SpliceWorkspaceRoomActor) => void;
-  launchingAgentId: string | null;
 }) {
   return (
     <section className="min-w-0 rounded-lg border border-border bg-card xl:col-span-3">
@@ -189,8 +179,6 @@ function RoomMap({
             key={actor.id}
             actor={actor}
             workspaceName={workspaceName}
-            onRun={onRun}
-            launching={launchingAgentId === actor.id}
           />
         ))}
       </div>
@@ -256,13 +244,9 @@ function ProjectRow({ project }: { project: SpliceWorkspaceRoomProject }) {
 function AgentRoster({
   agents,
   workspaceName,
-  onRun,
-  launchingAgentId,
 }: {
   agents: SpliceWorkspaceRoomActor[];
   workspaceName?: string;
-  onRun: (actor: SpliceWorkspaceRoomActor) => void;
-  launchingAgentId: string | null;
 }) {
   return (
     <section className="min-w-0 rounded-lg border border-border bg-card">
@@ -281,16 +265,9 @@ function AgentRoster({
                 {agent.role} · {stateLabel(agent.state)} · {agent.currentWork[0]?.title ?? "No assigned work"}
               </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="shrink-0 gap-1.5"
-              disabled={launchingAgentId === agent.id || agent.state === "requested"}
-              onClick={() => onRun(agent)}
-            >
-              {launchingAgentId === agent.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              Run
-            </Button>
+            <span className="shrink-0 rounded-md bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground">
+              Read-only
+            </span>
           </div>
         ))}
       </div>
@@ -300,31 +277,18 @@ function AgentRoster({
 
 export function SpliceWorkspaceRoom() {
   const { workspaceId = "puzzle-game" } = useParams<{ workspaceId?: string }>();
-  const queryClient = useQueryClient();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryKey = [...WORKSPACE_ROOM_QUERY_ROOT, workspaceId] as const;
   const roomQuery = useQuery({
     queryKey,
     queryFn: () => spliceApi.workspaceRoom(workspaceId),
-    refetchInterval: 5_000,
-  });
-  const runAgentMutation = useMutation({
-    mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(workspaceId, agentId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey });
-    },
   });
 
   const data = roomQuery.data;
-  const launchingAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
   const isPuzzleTestbed = workspaceId === "puzzle-game";
   const workspaceSubtitle = isPuzzleTestbed
     ? "Pilot fixture · standard/samples/puzzle-game"
     : data?.shortPath;
-
-  const runAgent = (actor: SpliceWorkspaceRoomActor) => {
-    runAgentMutation.mutate(actor.id);
-  };
 
   useEffect(() => {
     setBreadcrumbs([
@@ -379,12 +343,6 @@ export function SpliceWorkspaceRoom() {
         </Button>
       </div>
 
-      {runAgentMutation.isError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {runAgentMutation.error instanceof Error ? runAgentMutation.error.message : "Run request failed"}
-        </div>
-      ) : null}
-
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric icon={Layers3} value={data?.totals.activeProjects ?? 0} label="Active Projects" />
         <Metric icon={CircleDot} value={data?.totals.activeIssues ?? 0} label="In Progress" tone="green" />
@@ -400,8 +358,6 @@ export function SpliceWorkspaceRoom() {
           humans={data?.room.humans ?? []}
           zones={data?.room.zones ?? []}
           workspaceName={data?.name}
-          onRun={runAgent}
-          launchingAgentId={launchingAgentId}
         />
         <div className="min-w-0 space-y-5 xl:col-span-2">
           <section className="min-w-0 rounded-lg border border-border bg-card">
@@ -413,7 +369,7 @@ export function SpliceWorkspaceRoom() {
               {(data?.projects ?? []).map((project) => <ProjectRow key={project.id} project={project} />)}
             </div>
           </section>
-          <AgentRoster agents={data?.agents ?? []} workspaceName={data?.name} onRun={runAgent} launchingAgentId={launchingAgentId} />
+          <AgentRoster agents={data?.agents ?? []} workspaceName={data?.name} />
         </div>
       </div>
 
