@@ -47,6 +47,7 @@ export interface SpliceWorkspace {
   runningAgents: number;
   requestedAgents: number;
   liveRuns: number;
+  roomPath?: string;
   agents: SpliceWorkspaceAgent[];
   primaryAgent: SpliceWorkspaceAgent | null;
   requests: SpliceAgentRunRequest[];
@@ -104,7 +105,7 @@ export interface SpliceRunnerDispatch {
   runner: SpliceOverviewData["runner"];
 }
 
-export interface SplicePuzzleWorkItem {
+export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
   title: string;
@@ -120,7 +121,7 @@ export interface SplicePuzzleWorkItem {
   description: string | null;
 }
 
-export interface SplicePuzzleProject extends SplicePuzzleWorkItem {
+export interface SpliceWorkspaceRoomProject extends SpliceWorkspaceRoomWorkItem {
   progress: number;
   issueCounts: {
     active: number;
@@ -132,7 +133,7 @@ export interface SplicePuzzleProject extends SplicePuzzleWorkItem {
   issueTotal: number;
 }
 
-export interface SplicePuzzleActor {
+export interface SpliceWorkspaceRoomActor {
   id: string;
   slug: string;
   name: string;
@@ -142,7 +143,7 @@ export interface SplicePuzzleActor {
   zone: string;
   x: number;
   y: number;
-  currentWork: SplicePuzzleWorkItem[];
+  currentWork: SpliceWorkspaceRoomWorkItem[];
   activeCount: number;
   reviewCount: number;
   queuedCount: number;
@@ -155,10 +156,10 @@ export interface SplicePuzzleActor {
   } | null;
 }
 
-export interface SplicePuzzleRoomData {
+export interface SpliceWorkspaceRoomData {
   generatedAt: string;
-  id: "puzzle-game";
-  name: "Puzzle Game";
+  id: string;
+  name: string;
   mode: "single-workspace-live-room";
   path: string;
   shortPath: string;
@@ -190,17 +191,17 @@ export interface SplicePuzzleRoomData {
   };
   room: {
     zones: Array<{ id: string; label: string; x: number; y: number; workCount: number }>;
-    agents: SplicePuzzleActor[];
-    humans: SplicePuzzleActor[];
+    agents: SpliceWorkspaceRoomActor[];
+    humans: SpliceWorkspaceRoomActor[];
   };
   lanes: {
-    active: SplicePuzzleWorkItem[];
-    review: SplicePuzzleWorkItem[];
-    next: SplicePuzzleWorkItem[];
-    blocked: SplicePuzzleWorkItem[];
+    active: SpliceWorkspaceRoomWorkItem[];
+    review: SpliceWorkspaceRoomWorkItem[];
+    next: SpliceWorkspaceRoomWorkItem[];
+    blocked: SpliceWorkspaceRoomWorkItem[];
   };
-  projects: SplicePuzzleProject[];
-  agents: SplicePuzzleActor[];
+  projects: SpliceWorkspaceRoomProject[];
+  agents: SpliceWorkspaceRoomActor[];
   activity: Array<{
     id: string;
     type: "project" | "issue";
@@ -214,7 +215,9 @@ export interface SplicePuzzleRoomData {
 
 export const spliceApi = {
   overview: () => api.get<SpliceOverviewData>("/splice/overview"),
-  puzzleRoom: () => api.get<SplicePuzzleRoomData>("/splice/puzzle-room"),
+  workspaceRoom: (workspaceId: string) =>
+    api.get<SpliceWorkspaceRoomData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/room`),
+  puzzleRoom: () => api.get<SpliceWorkspaceRoomData>("/splice/puzzle-room"),
   runAgent: (companyId: string, agentId: string) =>
     api.post<SpliceAgentRunRequest>(
       `/splice/companies/${encodeURIComponent(companyId)}/agents/${encodeURIComponent(agentId)}/run`,
@@ -223,6 +226,11 @@ export const spliceApi = {
   runPuzzleAgent: (agentId: string) =>
     api.post<SpliceAgentRunRequest>(
       `/splice/puzzle-room/agents/${encodeURIComponent(agentId)}/run`,
+      {},
+    ),
+  runWorkspaceRoomAgent: (workspaceId: string, agentId: string) =>
+    api.post<SpliceAgentRunRequest>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}/run`,
       {},
     ),
   dispatchRunner: () => api.post<SpliceRunnerDispatch>("/splice/runner/dispatch", {}),

@@ -15,11 +15,12 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
+import { useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-import { spliceApi, type SplicePuzzleActor, type SplicePuzzleProject, type SplicePuzzleWorkItem } from "@/api/splice";
+import { spliceApi, type SpliceWorkspaceRoomActor, type SpliceWorkspaceRoomProject, type SpliceWorkspaceRoomWorkItem } from "@/api/splice";
 import { cn } from "@/lib/utils";
 
-const PUZZLE_ROOM_QUERY_KEY = ["splice", "puzzle-room"] as const;
+const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room"] as const;
 
 const stateStyles: Record<string, { dot: string; ring: string; label: string }> = {
   working: { dot: "bg-emerald-500", ring: "ring-emerald-500/30", label: "Working" },
@@ -54,6 +55,11 @@ function formatNumber(value: number | null | undefined): string {
 
 function stateLabel(state: string): string {
   return stateStyles[state]?.label ?? state;
+}
+
+function compactAgentName(name: string, workspaceName?: string): string {
+  const prefix = workspaceName ? new RegExp(`^${workspaceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i") : null;
+  return prefix ? name.replace(prefix, "") : name;
 }
 
 function StateDot({ state }: { state: string }) {
@@ -98,7 +104,7 @@ function Metric({
   );
 }
 
-function ActorToken({ actor, onRun, launching }: { actor: SplicePuzzleActor; onRun?: (actor: SplicePuzzleActor) => void; launching?: boolean }) {
+function ActorToken({ actor, workspaceName, onRun, launching }: { actor: SpliceWorkspaceRoomActor; workspaceName?: string; onRun?: (actor: SpliceWorkspaceRoomActor) => void; launching?: boolean }) {
   const style = stateStyles[actor.state] ?? stateStyles.idle;
   return (
     <div
@@ -121,7 +127,7 @@ function ActorToken({ actor, onRun, launching }: { actor: SplicePuzzleActor; onR
           {launching ? <RefreshCw className="h-4 w-4 animate-spin" /> : actor.initials}
         </button>
         <span className="max-w-24 truncate rounded bg-background/95 px-1.5 py-0.5 text-[11px] font-medium shadow-sm">
-          {actor.name.replace(/^Puzzle Game\s+/i, "")}
+          {compactAgentName(actor.name, workspaceName)}
         </span>
       </div>
     </div>
@@ -132,13 +138,15 @@ function RoomMap({
   agents,
   humans,
   zones,
+  workspaceName,
   onRun,
   launchingAgentId,
 }: {
-  agents: SplicePuzzleActor[];
-  humans: SplicePuzzleActor[];
+  agents: SpliceWorkspaceRoomActor[];
+  humans: SpliceWorkspaceRoomActor[];
   zones: Array<{ id: string; label: string; x: number; y: number; workCount: number }>;
-  onRun: (actor: SplicePuzzleActor) => void;
+  workspaceName?: string;
+  onRun: (actor: SpliceWorkspaceRoomActor) => void;
   launchingAgentId: string | null;
 }) {
   return (
@@ -146,7 +154,7 @@ function RoomMap({
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <Map className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <h2 className="truncate text-sm font-semibold">Puzzle Room</h2>
+          <h2 className="truncate text-sm font-semibold">Live Room</h2>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><StateDot state="working" />Working</span>
@@ -172,12 +180,13 @@ function RoomMap({
           </div>
         ))}
         {humans.map((actor) => (
-          <ActorToken key={actor.id} actor={actor} />
+          <ActorToken key={actor.id} actor={actor} workspaceName={workspaceName} />
         ))}
         {agents.map((actor) => (
           <ActorToken
             key={actor.id}
             actor={actor}
+            workspaceName={workspaceName}
             onRun={onRun}
             launching={launchingAgentId === actor.id}
           />
@@ -187,7 +196,7 @@ function RoomMap({
   );
 }
 
-function WorkItemRow({ item }: { item: SplicePuzzleWorkItem }) {
+function WorkItemRow({ item }: { item: SpliceWorkspaceRoomWorkItem }) {
   return (
     <div className="rounded-md border border-border bg-background px-3 py-2">
       <div className="flex items-start justify-between gap-2">
@@ -203,7 +212,7 @@ function WorkItemRow({ item }: { item: SplicePuzzleWorkItem }) {
   );
 }
 
-function WorkLane({ title, items, empty }: { title: string; items: SplicePuzzleWorkItem[]; empty: string }) {
+function WorkLane({ title, items, empty }: { title: string; items: SpliceWorkspaceRoomWorkItem[]; empty: string }) {
   return (
     <section className="min-w-0 rounded-lg border border-border bg-card">
       <div className="border-b border-border px-4 py-3">
@@ -218,7 +227,7 @@ function WorkLane({ title, items, empty }: { title: string; items: SplicePuzzleW
   );
 }
 
-function ProjectRow({ project }: { project: SplicePuzzleProject }) {
+function ProjectRow({ project }: { project: SpliceWorkspaceRoomProject }) {
   return (
     <div className="rounded-md border border-border bg-background px-3 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -244,11 +253,13 @@ function ProjectRow({ project }: { project: SplicePuzzleProject }) {
 
 function AgentRoster({
   agents,
+  workspaceName,
   onRun,
   launchingAgentId,
 }: {
-  agents: SplicePuzzleActor[];
-  onRun: (actor: SplicePuzzleActor) => void;
+  agents: SpliceWorkspaceRoomActor[];
+  workspaceName?: string;
+  onRun: (actor: SpliceWorkspaceRoomActor) => void;
   launchingAgentId: string | null;
 }) {
   return (
@@ -262,7 +273,7 @@ function AgentRoster({
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <StateDot state={agent.state} />
-                <p className="truncate text-sm font-medium">{agent.name.replace(/^Puzzle Game\s+/i, "")}</p>
+                <p className="truncate text-sm font-medium">{compactAgentName(agent.name, workspaceName)}</p>
               </div>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
                 {agent.role} · {stateLabel(agent.state)} · {agent.currentWork[0]?.title ?? "No assigned work"}
@@ -285,24 +296,26 @@ function AgentRoster({
   );
 }
 
-export function SplicePuzzleRoom() {
+export function SpliceWorkspaceRoom() {
+  const { workspaceId = "puzzle-game" } = useParams<{ workspaceId?: string }>();
   const queryClient = useQueryClient();
+  const queryKey = [...WORKSPACE_ROOM_QUERY_ROOT, workspaceId] as const;
   const roomQuery = useQuery({
-    queryKey: PUZZLE_ROOM_QUERY_KEY,
-    queryFn: spliceApi.puzzleRoom,
+    queryKey,
+    queryFn: () => spliceApi.workspaceRoom(workspaceId),
     refetchInterval: 5_000,
   });
   const runAgentMutation = useMutation({
-    mutationFn: (agentId: string) => spliceApi.runPuzzleAgent(agentId),
+    mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(workspaceId, agentId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: PUZZLE_ROOM_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 
   const data = roomQuery.data;
   const launchingAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
 
-  const runAgent = (actor: SplicePuzzleActor) => {
+  const runAgent = (actor: SpliceWorkspaceRoomActor) => {
     runAgentMutation.mutate(actor.id);
   };
 
@@ -323,7 +336,7 @@ export function SplicePuzzleRoom() {
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
         <div className="flex items-center gap-2 font-medium">
           <AlertTriangle className="h-4 w-4" />
-          Could not load Puzzle Room
+          Could not load Workspace Room
         </div>
         <p className="mt-2 text-red-800/80 dark:text-red-200/80">
           {roomQuery.error instanceof Error ? roomQuery.error.message : "Unknown error"}
@@ -337,7 +350,7 @@ export function SplicePuzzleRoom() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">Splice Lab</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Puzzle Game Live Room</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">{data?.name ?? "Workspace"} Live Room</h1>
           <p className="mt-1 truncate text-sm text-muted-foreground">{data?.shortPath}</p>
         </div>
         <Button
@@ -372,6 +385,7 @@ export function SplicePuzzleRoom() {
           agents={data?.room.agents ?? []}
           humans={data?.room.humans ?? []}
           zones={data?.room.zones ?? []}
+          workspaceName={data?.name}
           onRun={runAgent}
           launchingAgentId={launchingAgentId}
         />
@@ -385,7 +399,7 @@ export function SplicePuzzleRoom() {
               {(data?.projects ?? []).map((project) => <ProjectRow key={project.id} project={project} />)}
             </div>
           </section>
-          <AgentRoster agents={data?.agents ?? []} onRun={runAgent} launchingAgentId={launchingAgentId} />
+          <AgentRoster agents={data?.agents ?? []} workspaceName={data?.name} onRun={runAgent} launchingAgentId={launchingAgentId} />
         </div>
       </div>
 

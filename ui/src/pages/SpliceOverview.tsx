@@ -8,6 +8,7 @@ import {
   ExternalLink,
   GitBranch,
   Loader2,
+  Map,
   Play,
   RefreshCw,
   ShieldAlert,
@@ -152,6 +153,12 @@ function WorkspaceRow({
           >
             {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
             Run
+          </Button>
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <RouterLink to={`/workspace-room/${encodeURIComponent(workspace.id)}`}>
+              <Map className="h-3.5 w-3.5" />
+              Room
+            </RouterLink>
           </Button>
           <Button asChild variant="outline" size="sm" className="gap-1.5">
             <RouterLink to={`/${workspace.prefix}/agents/all`}>
