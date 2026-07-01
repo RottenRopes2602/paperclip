@@ -317,6 +317,10 @@ export function SpliceWorkspaceRoom() {
 
   const data = roomQuery.data;
   const launchingAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
+  const isPuzzleTestbed = workspaceId === "puzzle-game";
+  const workspaceSubtitle = isPuzzleTestbed
+    ? "Pilot fixture · standard/samples/puzzle-game"
+    : data?.shortPath;
 
   const runAgent = (actor: SpliceWorkspaceRoomActor) => {
     runAgentMutation.mutate(actor.id);
@@ -361,7 +365,7 @@ export function SpliceWorkspaceRoom() {
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">Splice Lab</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">{data?.name ?? "Workspace"} Live Room</h1>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{data?.shortPath}</p>
+          <p className="mt-1 truncate text-sm text-muted-foreground">{workspaceSubtitle}</p>
         </div>
         <Button
           variant="outline"

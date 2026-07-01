@@ -9,7 +9,7 @@ import {
   Map,
   RefreshCw,
 } from "lucide-react";
-import { NavLink as RouterNavLink } from "react-router-dom";
+import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { spliceApi, type SpliceWorkspace } from "@/api/splice";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -19,6 +19,7 @@ import { SIDEBAR_SCROLL_RESET_STATE } from "../lib/navigation-scroll";
 import { cn } from "../lib/utils";
 
 const SPLICE_SIDEBAR_QUERY_KEY = ["splice", "sidebar-overview"] as const;
+const SPLICE_TESTBED_QUERY_KEY = ["splice", "sidebar-testbed", "puzzle-game"] as const;
 
 const stateStyles: Record<string, string> = {
   running: "bg-emerald-500",
@@ -87,13 +88,23 @@ function WorkspaceLink({ workspace }: { workspace: SpliceWorkspace }) {
 }
 
 export function SpliceSidebar() {
+  const location = useLocation();
+  const isPuzzleTestbed = location.pathname === "/workspace-room/puzzle-game";
   const overviewQuery = useQuery({
     queryKey: SPLICE_SIDEBAR_QUERY_KEY,
     queryFn: spliceApi.overview,
+    enabled: !isPuzzleTestbed,
+    refetchInterval: 10_000,
+  });
+  const testbedQuery = useQuery({
+    queryKey: SPLICE_TESTBED_QUERY_KEY,
+    queryFn: () => spliceApi.workspaceRoom("puzzle-game"),
+    enabled: isPuzzleTestbed,
     refetchInterval: 10_000,
   });
   const totals = overviewQuery.data?.totals;
   const workspaces = overviewQuery.data?.companies ?? [];
+  const testbed = testbedQuery.data;
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-border bg-background">
@@ -113,60 +124,110 @@ export function SpliceSidebar() {
           <SidebarNavItem to="/workspace-room/puzzle-game" global label="Puzzle Pilot" icon={Beaker} />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-md bg-muted/50 px-3 py-2">
-            <p className="text-base font-semibold tabular-nums">{formatCount(totals?.workspaces)}</p>
-            <p className="truncate text-[11px] text-muted-foreground">Workspaces</p>
+        {isPuzzleTestbed ? (
+          <div className="rounded-md border border-border bg-card px-3 py-3">
+            <div className="flex items-center gap-2">
+              <Beaker className="h-4 w-4 text-muted-foreground" />
+              <p className="truncate text-sm font-semibold">Puzzle Game</p>
+            </div>
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+              Single-workspace testbed before rollout
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-md bg-muted/50 px-2.5 py-2">
+                <p className="text-base font-semibold tabular-nums">{formatCount(testbed?.totals.projects)}</p>
+                <p className="truncate text-[11px] text-muted-foreground">Projects</p>
+              </div>
+              <div className="rounded-md bg-muted/50 px-2.5 py-2">
+                <p className="text-base font-semibold tabular-nums">{formatCount(testbed?.totals.issues)}</p>
+                <p className="truncate text-[11px] text-muted-foreground">Issues</p>
+              </div>
+              <div className="rounded-md bg-muted/50 px-2.5 py-2">
+                <p className="text-base font-semibold tabular-nums">{formatCount(testbed?.totals.agents)}</p>
+                <p className="truncate text-[11px] text-muted-foreground">Agents</p>
+              </div>
+              <div className="rounded-md bg-muted/50 px-2.5 py-2">
+                <p className="text-base font-semibold tabular-nums">{formatCount(testbed?.totals.progress)}%</p>
+                <p className="truncate text-[11px] text-muted-foreground">Progress</p>
+              </div>
+            </div>
           </div>
-          <div className="rounded-md bg-muted/50 px-3 py-2">
-            <p className="text-base font-semibold tabular-nums">{formatCount(totals?.sessions)}</p>
-            <p className="truncate text-[11px] text-muted-foreground">Sessions</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md bg-muted/50 px-3 py-2">
+              <p className="text-base font-semibold tabular-nums">{formatCount(totals?.workspaces)}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Workspaces</p>
+            </div>
+            <div className="rounded-md bg-muted/50 px-3 py-2">
+              <p className="text-base font-semibold tabular-nums">{formatCount(totals?.sessions)}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Sessions</p>
+            </div>
+            <div className="rounded-md bg-muted/50 px-3 py-2">
+              <p className="text-base font-semibold tabular-nums">{formatCount(totals?.agents)}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Agents</p>
+            </div>
+            <div className="rounded-md bg-muted/50 px-3 py-2">
+              <p className="text-base font-semibold tabular-nums">{formatCount(totals?.blocked)}</p>
+              <p className="truncate text-[11px] text-muted-foreground">Blocked</p>
+            </div>
           </div>
-          <div className="rounded-md bg-muted/50 px-3 py-2">
-            <p className="text-base font-semibold tabular-nums">{formatCount(totals?.agents)}</p>
-            <p className="truncate text-[11px] text-muted-foreground">Agents</p>
-          </div>
-          <div className="rounded-md bg-muted/50 px-3 py-2">
-            <p className="text-base font-semibold tabular-nums">{formatCount(totals?.blocked)}</p>
-            <p className="truncate text-[11px] text-muted-foreground">Blocked</p>
-          </div>
-        </div>
+        )}
 
         <SidebarSection label="Sections">
           <SidebarNavItem to="/overview" global end label="Portfolio" icon={Boxes} />
           <SidebarNavItem to="/workspace-room/puzzle-game" global label="Testbed" icon={Map} />
         </SidebarSection>
 
-        <SidebarSection
-          label="Workspaces"
-          headerAction={{
-            icon: RefreshCw,
-            ariaLabel: "Refresh workspaces",
-            onClick: () => void overviewQuery.refetch(),
-          }}
-        >
-          {overviewQuery.isError ? (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-600">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Could not load workspaces
-            </div>
-          ) : null}
-          {overviewQuery.isLoading ? (
-            <div className="space-y-1 px-3 py-1">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-7 animate-pulse rounded bg-muted" />
-              ))}
-            </div>
-          ) : workspaces.length ? (
-            <div className="flex flex-col gap-0.5">
-              {workspaces.map((workspace) => (
-                <WorkspaceLink key={workspace.id} workspace={workspace} />
-              ))}
-            </div>
-          ) : (
-            <div className="px-3 py-2 text-xs text-muted-foreground">No workspaces</div>
-          )}
-        </SidebarSection>
+        {isPuzzleTestbed ? (
+          <SidebarSection
+            label="Puzzle Testbed"
+            headerAction={{
+              icon: RefreshCw,
+              ariaLabel: "Refresh puzzle testbed",
+              onClick: () => void testbedQuery.refetch(),
+            }}
+          >
+            {testbedQuery.isError ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-600">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Could not load puzzle testbed
+              </div>
+            ) : null}
+            <SidebarNavItem to="/workspace-room/puzzle-game" global label="Live Room" icon={Map} />
+            <SidebarNavItem to="/overview" global label="Back to Portfolio" icon={Globe2} />
+          </SidebarSection>
+        ) : (
+          <SidebarSection
+            label="Workspaces"
+            headerAction={{
+              icon: RefreshCw,
+              ariaLabel: "Refresh workspaces",
+              onClick: () => void overviewQuery.refetch(),
+            }}
+          >
+            {overviewQuery.isError ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-600">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Could not load workspaces
+              </div>
+            ) : null}
+            {overviewQuery.isLoading ? (
+              <div className="space-y-1 px-3 py-1">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="h-7 animate-pulse rounded bg-muted" />
+                ))}
+              </div>
+            ) : workspaces.length ? (
+              <div className="flex flex-col gap-0.5">
+                {workspaces.map((workspace) => (
+                  <WorkspaceLink key={workspace.id} workspace={workspace} />
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-2 text-xs text-muted-foreground">No workspaces</div>
+            )}
+          </SidebarSection>
+        )}
 
         <div className="mt-auto rounded-md border border-border bg-card px-3 py-3">
           <div className="flex items-center gap-2">
