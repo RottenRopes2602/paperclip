@@ -5,17 +5,12 @@ import {
   Activity,
   AlertTriangle,
   Bot,
-  CheckCircle2,
   CircleDot,
   Clock3,
-  FileText,
   Flag,
-  Layers3,
-  Map,
   Play,
   RefreshCw,
   ShieldAlert,
-  Target,
   UserRound,
 } from "lucide-react";
 import { Navigate, useParams } from "@/lib/router";
@@ -25,8 +20,10 @@ import { MarkdownBody } from "@/components/MarkdownBody";
 import { EntityRow } from "@/components/EntityRow";
 import { Identity } from "@/components/Identity";
 import { MetricCard } from "@/components/MetricCard";
+import { MissionVisionCards } from "@/components/MissionVisionCards";
 import { OkrTree } from "@/components/OkrTree";
 import { PageTabBar } from "@/components/PageTabBar";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   spliceApi,
@@ -62,14 +59,6 @@ const stateDot: Record<string, string> = {
   away: "bg-muted-foreground/40",
   blocked: "bg-red-500",
   idle: "bg-muted-foreground/40",
-};
-
-const bucketLabels: Record<string, string> = {
-  active: "Now",
-  review: "Review",
-  todo: "Next",
-  blocked: "Blocked",
-  done: "Done",
 };
 
 function formatAge(minutes: number | null | undefined): string {
@@ -223,21 +212,28 @@ function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number): Issue {
   } as Issue;
 }
 
-function Header({ data, onRefresh, refreshing }: { data: SpliceWorkspaceRoomData; onRefresh: () => void; refreshing: boolean }) {
+function TopBar({ data, activeTab, onTabChange, onRefresh, refreshing }: {
+  data: SpliceWorkspaceRoomData;
+  activeTab: RoomTab;
+  onTabChange: (tab: RoomTab) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-3">
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Puzzle Game</span>
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">Isolated testbed</span>
-        </div>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Puzzle Game</h1>
-        <p className="mt-1 text-sm text-muted-foreground">PaperClip workspace surface backed by standard/samples/puzzle-game.</p>
+        <h1 className="text-xl font-semibold tracking-tight">Puzzle Game</h1>
+        <p className="mt-1 text-xs text-muted-foreground">{data.dataSource}</p>
       </div>
-      <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
-        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-        Refresh
-      </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as RoomTab)}>
+          <PageTabBar items={roomTabs} value={activeTab} onValueChange={(value) => onTabChange(value as RoomTab)} />
+        </Tabs>
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
+          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+          Refresh
+        </Button>
+      </div>
     </div>
   );
 }
@@ -270,29 +266,14 @@ function DashboardTab({ data }: { data: SpliceWorkspaceRoomData }) {
   );
 }
 
-function GoalsTab({ data, goals, projects, issues }: { data: SpliceWorkspaceRoomData; goals: Goal[]; projects: Project[]; issues: Issue[] }) {
-  const standards = data.goals.filter((goal) => goal.kind === "mission" || goal.kind === "vision");
+function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Project[]; issues: Issue[] }) {
   const okrCount = goals.filter((goal) => goal.kind === "objective" || goal.kind === "key_result").length;
 
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <SectionTitle title="Mission · Vision" aside="PaperClip Goals" />
-        {standards.length ? (
-          <div className="border border-border">
-            {standards.map((goal) => (
-              <EntityRow
-                key={goal.slug}
-                title={goal.name}
-                subtitle={plainSummary(goal.description, `${goalKindLabel(goal)} · ${goal.status}`)}
-                leading={<Target className="h-4 w-4 text-muted-foreground" />}
-                trailing={<StatusBadge status={goal.status} ns="goal" />}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">No Mission · Vision found.</p>
-        )}
+        <SectionTitle title="Mission · Vision" aside="absolute standards" />
+        <MissionVisionCards goals={goals} goalLink={() => null} />
       </section>
 
       <section className="space-y-3">
@@ -500,7 +481,7 @@ function ActivityList({ items }: { items: SpliceWorkspaceRoomData["activity"] })
 function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
   return (
     <section className="space-y-3">
-      <SectionTitle title="Workspace Room" aside="disk signal overlay" />
+      <SectionTitle title="Workspace Room" aside="sample workspace map" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
         <div
           className="relative h-[300px] overflow-hidden border border-border bg-muted/20"
@@ -580,15 +561,7 @@ export function SpliceWorkspaceRoom() {
   }
 
   if (roomQuery.isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-10 w-80 animate-pulse rounded bg-muted" />
-        <div className="grid gap-2 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-24 animate-pulse rounded-lg bg-muted" />)}
-        </div>
-        <div className="h-[360px] animate-pulse rounded-lg bg-muted" />
-      </div>
-    );
+    return <PageSkeleton variant="dashboard" />;
   }
 
   if (roomQuery.isError || !data) {
@@ -609,14 +582,16 @@ export function SpliceWorkspaceRoom() {
 
   return (
     <div className="space-y-6">
-      <Header data={data} onRefresh={() => void roomQuery.refetch()} refreshing={roomQuery.isFetching} />
-
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RoomTab)}>
-        <PageTabBar items={roomTabs} value={activeTab} onValueChange={(value) => setActiveTab(value as RoomTab)} align="start" />
-      </Tabs>
+      <TopBar
+        data={data}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onRefresh={() => void roomQuery.refetch()}
+        refreshing={roomQuery.isFetching}
+      />
 
       {activeTab === "dashboard" && <DashboardTab data={data} />}
-      {activeTab === "goals" && <GoalsTab data={data} goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
+      {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
       {activeTab === "issues" && <IssuesTab data={data} />}
       {activeTab === "agents" && (

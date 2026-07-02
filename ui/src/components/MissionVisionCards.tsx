@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 interface MissionVisionCardsProps {
   goals: Goal[];
   onAdd?: () => void;
+  goalLink?: (goal: Goal) => string | null;
 }
 
 function sortByCreated(list: Goal[]): Goal[] {
@@ -23,7 +24,7 @@ function sortByCreated(list: Goal[]): Goal[] {
   });
 }
 
-export function MissionVisionCards({ goals, onAdd }: MissionVisionCardsProps) {
+export function MissionVisionCards({ goals, onAdd, goalLink }: MissionVisionCardsProps) {
   const { t } = useTranslation();
   // fork_mangoclaw: prefer kind field when set; fall back to level for rows without kind.
   const companyGoals = sortByCreated(
@@ -52,29 +53,38 @@ export function MissionVisionCards({ goals, onAdd }: MissionVisionCardsProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {companyGoals.map((goal) => (
-        <Link
-          key={goal.id}
-          to={`/goals/${goal.id}`}
-          className={cn(
-            "border border-border rounded-md px-4 py-3 transition-colors no-underline text-inherit",
-            "hover:bg-accent/50 hover:border-foreground/20",
-          )}
-        >
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-              {t("missionVision.label.standard", { defaultValue: "절대 기준" })}
-            </span>
+      {companyGoals.map((goal) => {
+        const link = goalLink ? goalLink(goal) : `/goals/${goal.id}`;
+        const className = cn(
+          "border border-border rounded-md px-4 py-3 transition-colors no-underline text-inherit",
+          link && "hover:bg-accent/50 hover:border-foreground/20",
+        );
+        const content = (
+          <>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
+                {t("missionVision.label.standard", { defaultValue: "절대 기준" })}
+              </span>
+            </div>
+            <div className="text-sm font-semibold mb-1.5">{goal.title}</div>
+            {goal.description && (
+              <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">
+                {/* Strip slug marker comment from description preview */}
+                {goal.description.replace(/<!--[\s\S]*?-->/g, "").trim()}
+              </p>
+            )}
+          </>
+        );
+        return link ? (
+          <Link key={goal.id} to={link} className={className}>
+            {content}
+          </Link>
+        ) : (
+          <div key={goal.id} className={className}>
+            {content}
           </div>
-          <div className="text-sm font-semibold mb-1.5">{goal.title}</div>
-          {goal.description && (
-            <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">
-              {/* Strip slug marker comment from description preview */}
-              {goal.description.replace(/<!--[\s\S]*?-->/g, "").trim()}
-            </p>
-          )}
-        </Link>
-      ))}
+        );
+      })}
     </div>
   );
 }
