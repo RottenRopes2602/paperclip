@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link as RouterLink } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
-  Beaker,
   Boxes,
   GitBranch,
   RefreshCw,
@@ -233,12 +231,6 @@ export function SpliceOverview() {
           <p className="mt-1 text-sm text-muted-foreground">Read-only map for the current workspace folders.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" className="w-fit gap-1.5">
-            <RouterLink to="/splice/workspace-room/puzzle-game">
-              <Beaker className="h-3.5 w-3.5" />
-              Open Puzzle Testbed
-            </RouterLink>
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -271,11 +263,10 @@ export function SpliceOverview() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricPanel icon={Boxes} value={totals?.workspaces ?? 0} label="Workspaces" />
         <MetricPanel icon={Users} value={totals?.agents ?? 0} label="Agents" />
         <MetricPanel icon={Activity} value={totals?.runningAgents ?? 0} label="Running" tone="green" />
-        <MetricPanel icon={Beaker} value={1} label="Active Testbed" tone="amber" />
         <MetricPanel icon={GitBranch} value={totals?.sessions ?? 0} label="Sessions" />
         <MetricPanel icon={ShieldAlert} value={totals?.blocked ?? 0} label="Blocked" tone={totals?.blocked ? "red" : "default"} />
       </div>
