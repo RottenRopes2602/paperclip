@@ -156,6 +156,17 @@ export interface SpliceWorkspaceRoomActor {
   } | null;
 }
 
+export interface SpliceWorkspaceRoomGoal {
+  slug: string;
+  kind: "mission" | "vision" | "objective" | "key_result" | "goal" | string;
+  level: string | null;
+  name: string;
+  status: string;
+  parentGoalSlug: string | null;
+  identifier: string | null;
+  description: string | null;
+}
+
 export interface SpliceWorkspaceRoomData {
   generatedAt: string;
   id: string;
@@ -164,7 +175,8 @@ export interface SpliceWorkspaceRoomData {
   path: string;
   shortPath: string;
   dataSource: string;
-  objective: { name?: string; slug?: string; status?: string; description?: string } | null;
+  objective: SpliceWorkspaceRoomGoal | null;
+  goals: SpliceWorkspaceRoomGoal[];
   totals: {
     projects: number;
     activeProjects: number;
