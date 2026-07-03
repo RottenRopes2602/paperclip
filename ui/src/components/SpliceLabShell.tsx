@@ -7,18 +7,26 @@ export function SpliceLabShell() {
   const location = useLocation();
   const { setBreadcrumbs } = useBreadcrumbs();
   const isEntrance = location.pathname === "/splice";
+  const isWorkspaceRoom = location.pathname.startsWith("/splice/workspace-room/");
 
   useEffect(() => {
+    if (isWorkspaceRoom) return;
     const current = isEntrance
       ? "Entrance"
-      : location.pathname.startsWith("/splice/workspace-room/")
-        ? "Puzzle Testbed"
-        : "Workspace Map";
+      : "Workspace Map";
     setBreadcrumbs([
       { label: current },
       { label: "Splice Lab" },
     ]);
-  }, [isEntrance, location.pathname, setBreadcrumbs]);
+  }, [isEntrance, isWorkspaceRoom, location.pathname, setBreadcrumbs]);
+
+  if (isWorkspaceRoom) {
+    return (
+      <div className="h-dvh overflow-hidden bg-background text-foreground">
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">

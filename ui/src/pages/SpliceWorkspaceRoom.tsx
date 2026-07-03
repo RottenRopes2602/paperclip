@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
@@ -7,24 +7,34 @@ import {
   Bot,
   CircleDot,
   Clock3,
+  FileText,
   Flag,
+  FolderOpen,
+  History,
+  LayoutDashboard,
   Play,
   RefreshCw,
+  Search,
   ShieldAlert,
-  UserRound,
+  SquarePen,
+  Target,
+  type LucideIcon,
 } from "lucide-react";
 import { Navigate, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-import { Tabs } from "@/components/ui/tabs";
+import { BreadcrumbBar } from "@/components/BreadcrumbBar";
+import { CompanyPatternIcon } from "@/components/CompanyPatternIcon";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { EntityRow } from "@/components/EntityRow";
 import { Identity } from "@/components/Identity";
 import { MetricCard } from "@/components/MetricCard";
 import { MissionVisionCards } from "@/components/MissionVisionCards";
 import { OkrTree } from "@/components/OkrTree";
-import { PageTabBar } from "@/components/PageTabBar";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { SidebarSection } from "@/components/SidebarSection";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useBreadcrumbs } from "@/context/BreadcrumbContext";
+import { useSidebar } from "@/context/SidebarContext";
 import {
   spliceApi,
   type SpliceWorkspaceRoomActor,
@@ -40,14 +50,14 @@ const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID
 
 type RoomTab = "dashboard" | "goals" | "projects" | "issues" | "agents" | "activity" | "details";
 
-const roomTabs: Array<{ value: RoomTab; label: string }> = [
-  { value: "dashboard", label: "Dashboard" },
-  { value: "goals", label: "Goals" },
-  { value: "projects", label: "Projects" },
-  { value: "issues", label: "Issues" },
-  { value: "agents", label: "Agents" },
-  { value: "activity", label: "Activity" },
-  { value: "details", label: "Details" },
+const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
+  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { value: "goals", label: "Goals", icon: Target },
+  { value: "projects", label: "Projects", icon: FolderOpen },
+  { value: "issues", label: "Issues", icon: CircleDot },
+  { value: "agents", label: "Agents", icon: Bot },
+  { value: "activity", label: "Activity", icon: History },
+  { value: "details", label: "Details", icon: FileText },
 ];
 
 const stateDot: Record<string, string> = {
@@ -212,27 +222,244 @@ function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number): Issue {
   } as Issue;
 }
 
-function TopBar({ data, activeTab, onTabChange, onRefresh, refreshing }: {
-  data: SpliceWorkspaceRoomData;
+function roomTabLabel(tab: RoomTab): string {
+  return roomTabs.find((item) => item.value === tab)?.label ?? "Dashboard";
+}
+
+function PuzzleSidebarNavItem({
+  activeTab,
+  item,
+  liveCount,
+  onSelect,
+  textBadge,
+}: {
   activeTab: RoomTab;
-  onTabChange: (tab: RoomTab) => void;
-  onRefresh: () => void;
-  refreshing: boolean;
+  item: { value: RoomTab; label: string; icon: LucideIcon };
+  liveCount?: number;
+  onSelect: (tab: RoomTab) => void;
+  textBadge?: string;
+}) {
+  const Icon = item.icon;
+  const active = activeTab === item.value;
+  return (
+    <button
+      type="button"
+      aria-current={active ? "page" : undefined}
+      onClick={() => onSelect(item.value)}
+      className={cn(
+        "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium transition-colors",
+        active ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+      )}
+    >
+      <span className="relative shrink-0">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="flex-1 truncate">{item.label}</span>
+      {textBadge ? (
+        <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+          {textBadge}
+        </span>
+      ) : null}
+      {liveCount != null && liveCount > 0 ? (
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+          </span>
+          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">{liveCount} live</span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function PuzzleSidebarMiniItem({
+  title,
+  subtitle,
+  onSelect,
+}: {
+  title: string;
+  subtitle?: string;
+  onSelect: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">Puzzle Game</h1>
-        <p className="mt-1 text-xs text-muted-foreground">{data.dataSource}</p>
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as RoomTab)}>
-          <PageTabBar items={roomTabs} value={activeTab} onValueChange={(value) => onTabChange(value as RoomTab)} />
-        </Tabs>
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
-          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full px-3 py-1.5 text-left transition-colors hover:bg-accent/50"
+    >
+      <p className="truncate text-[13px] font-medium text-foreground/80">{title}</p>
+      {subtitle ? <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p> : null}
+    </button>
+  );
+}
+
+function PuzzleSidebar({
+  activeTab,
+  data,
+  onTabChange,
+}: {
+  activeTab: RoomTab;
+  data: SpliceWorkspaceRoomData;
+  onTabChange: (tab: RoomTab) => void;
+}) {
+  const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
+  const activeRuns = data.requests.filter((request) => request.status === "requested" || request.status === "launched").length;
+  const selectTab = (tab: RoomTab) => {
+    onTabChange(tab);
+    if (isMobile) setSidebarOpen(false);
+  };
+
+  const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
+  const issueItem = roomTabs.find((item) => item.value === "issues")!;
+  const goalItem = roomTabs.find((item) => item.value === "goals")!;
+  const projectItem = roomTabs.find((item) => item.value === "projects")!;
+  const agentItem = roomTabs.find((item) => item.value === "agents")!;
+  const activityItem = roomTabs.find((item) => item.value === "activity")!;
+  const detailItem = roomTabs.find((item) => item.value === "details")!;
+
+  return (
+    <>
+      {isMobile && sidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/50"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+        />
+      ) : null}
+      <aside
+        className={cn(
+          "w-60 shrink-0 border-r border-border bg-background",
+          "flex h-full min-h-0 flex-col",
+          isMobile
+            ? cn(
+                "fixed inset-y-0 left-0 z-50 pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
+                sidebarOpen ? "translate-x-0" : "-translate-x-full",
+              )
+            : "hidden md:flex",
+        )}
+      >
+        <div className="flex h-12 shrink-0 items-center gap-2 px-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1">
+            <CompanyPatternIcon companyName={data.name} className="h-7 w-7 shrink-0 rounded-md" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{data.name}</p>
+              <p className="truncate text-[11px] text-muted-foreground">PZ · sample workspace</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+            aria-label="Search disabled in Puzzle Game testbed"
+            disabled
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </div>
+
+        <nav className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-2">
+          <div className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              disabled
+              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground/60"
+            >
+              <SquarePen className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">New Issue</span>
+              <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                Read-only
+              </span>
+            </button>
+            <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={activeRuns} onSelect={selectTab} />
+          </div>
+
+          <SidebarSection label="Work">
+            <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
+            <PuzzleSidebarNavItem activeTab={activeTab} item={goalItem} onSelect={selectTab} />
+          </SidebarSection>
+
+          <SidebarSection label="Projects">
+            <PuzzleSidebarNavItem activeTab={activeTab} item={projectItem} onSelect={selectTab} textBadge={`${data.projects.length}`} />
+            {data.projects.slice(0, 5).map((project) => (
+              <PuzzleSidebarMiniItem
+                key={project.id}
+                title={project.title}
+                subtitle={project.id}
+                onSelect={() => selectTab("projects")}
+              />
+            ))}
+          </SidebarSection>
+
+          <SidebarSection label="Agents">
+            <PuzzleSidebarNavItem activeTab={activeTab} item={agentItem} onSelect={selectTab} textBadge={`${data.agents.length}`} />
+            {data.agents.slice(0, 5).map((agent) => (
+              <PuzzleSidebarMiniItem
+                key={agent.id}
+                title={compactAgentName(agent.name, data.name)}
+                subtitle={agent.state}
+                onSelect={() => selectTab("agents")}
+              />
+            ))}
+          </SidebarSection>
+
+          <SidebarSection label="Company">
+            <PuzzleSidebarNavItem activeTab={activeTab} item={activityItem} onSelect={selectTab} />
+            <PuzzleSidebarNavItem activeTab={activeTab} item={detailItem} onSelect={selectTab} />
+          </SidebarSection>
+        </nav>
+
+        <div className="border-t border-border px-3 py-3 text-[11px] text-muted-foreground">
+          <p className="truncate">{data.dataSource}</p>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function PuzzleWorkspaceShell({
+  activeTab,
+  children,
+  data,
+  onRefresh,
+  onTabChange,
+  refreshing,
+}: {
+  activeTab: RoomTab;
+  children: ReactNode;
+  data: SpliceWorkspaceRoomData;
+  onRefresh: () => void;
+  onTabChange: (tab: RoomTab) => void;
+  refreshing: boolean;
+}) {
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: roomTabLabel(activeTab) }]);
+  }, [activeTab, setBreadcrumbs]);
+
+  return (
+    <div className="flex h-full min-h-0 bg-background text-foreground">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Skip to Main Content
+      </a>
+      <PuzzleSidebar activeTab={activeTab} data={data} onTabChange={onTabChange} />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <BreadcrumbBar scope="splice" />
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 outline-none md:p-6">
+          <div className="space-y-6">
+            <div className="flex items-center justify-end">
+              <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
+                <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );
@@ -581,15 +808,13 @@ export function SpliceWorkspaceRoom() {
   const runningAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
 
   return (
-    <div className="space-y-6">
-      <TopBar
-        data={data}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onRefresh={() => void roomQuery.refetch()}
-        refreshing={roomQuery.isFetching}
-      />
-
+    <PuzzleWorkspaceShell
+      data={data}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onRefresh={() => void roomQuery.refetch()}
+      refreshing={roomQuery.isFetching}
+    >
       {activeTab === "dashboard" && <DashboardTab data={data} />}
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
@@ -603,11 +828,6 @@ export function SpliceWorkspaceRoom() {
       )}
       {activeTab === "activity" && <ActivityTab data={data} />}
       {activeTab === "details" && <DetailsTab data={data} />}
-
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />You: {data.room.humans[0]?.state ?? "away"}</span>
-        <span>Data source: {data.dataSource}</span>
-      </div>
-    </div>
+    </PuzzleWorkspaceShell>
   );
 }
