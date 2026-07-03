@@ -167,6 +167,32 @@ export interface SpliceWorkspaceRoomGoal {
   description: string | null;
 }
 
+export interface SpliceExecutionLane {
+  id: string;
+  name: string;
+  kind: "main" | "worktree" | "codex" | "claude" | "conductor" | "agent" | string;
+  kindLabel: string;
+  state: "idle" | "active" | "dirty" | "ahead" | "queued" | "running" | "stale" | string;
+  projectSpaceId: string;
+  projectSpaceName: string;
+  path: string;
+  shortPath: string;
+  branch: string;
+  isMain: boolean;
+  dirty: number;
+  ahead: number;
+  behind: number;
+  lastCommit: { sha?: string; msg?: string; ageMin?: number } | null;
+  requestCount: number;
+  activeRequestCount: number;
+  actors: Array<{
+    id: string;
+    name: string;
+    kind: "human" | "agent" | string;
+    state: string;
+  }>;
+}
+
 export interface SpliceWorkspaceRoomData {
   generatedAt: string;
   id: string;
@@ -193,6 +219,8 @@ export interface SpliceWorkspaceRoomData {
     humanOwned: number;
     liveRuns: number;
     requests: number;
+    executionLanes?: number;
+    activeExecutionLanes?: number;
   };
   buckets: {
     active: number;
@@ -214,6 +242,7 @@ export interface SpliceWorkspaceRoomData {
   };
   projects: SpliceWorkspaceRoomProject[];
   agents: SpliceWorkspaceRoomActor[];
+  executionLanes: SpliceExecutionLane[];
   activity: Array<{
     id: string;
     type: "project" | "issue";

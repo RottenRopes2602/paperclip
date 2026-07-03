@@ -10,7 +10,10 @@ import {
   FileText,
   Flag,
   FolderOpen,
+  GitBranch,
+  GitCommit,
   History,
+  Layers,
   LayoutDashboard,
   Play,
   RefreshCw,
@@ -37,6 +40,7 @@ import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useSidebar } from "@/context/SidebarContext";
 import {
   spliceApi,
+  type SpliceExecutionLane,
   type SpliceWorkspaceRoomActor,
   type SpliceWorkspaceRoomData,
   type SpliceWorkspaceRoomGoal,
@@ -48,10 +52,11 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "goals" | "projects" | "issues" | "agents" | "activity" | "details";
+type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "agents" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { value: "lanes", label: "Lanes", icon: GitBranch },
   { value: "goals", label: "Goals", icon: Target },
   { value: "projects", label: "Projects", icon: FolderOpen },
   { value: "issues", label: "Issues", icon: CircleDot },
@@ -69,6 +74,16 @@ const stateDot: Record<string, string> = {
   away: "bg-muted-foreground/40",
   blocked: "bg-red-500",
   idle: "bg-muted-foreground/40",
+};
+
+const laneStateClass: Record<string, string> = {
+  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  ahead: "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-300",
+  dirty: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  idle: "border-border bg-muted/40 text-muted-foreground",
+  queued: "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-300",
+  running: "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-300",
+  stale: "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300",
 };
 
 function formatAge(minutes: number | null | undefined): string {
@@ -116,6 +131,24 @@ function SectionTitle({ title, aside }: { title: string; aside?: string }) {
       {aside ? <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{aside}</span> : null}
     </div>
   );
+}
+
+function LaneStatePill({ state }: { state: string }) {
+  return (
+    <span className={cn(
+      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+      laneStateClass[state] ?? laneStateClass.idle,
+    )}>
+      {state.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function laneIcon(lane: SpliceExecutionLane): LucideIcon {
+  if (lane.kind === "main") return Layers;
+  if (lane.kind === "codex" || lane.kind === "agent") return Bot;
+  if (lane.kind === "claude" || lane.kind === "conductor") return Activity;
+  return GitBranch;
 }
 
 function Dot({ state }: { state: string }) {
@@ -311,6 +344,7 @@ function PuzzleSidebar({
   };
 
   const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
+  const laneItem = roomTabs.find((item) => item.value === "lanes")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const goalItem = roomTabs.find((item) => item.value === "goals")!;
   const projectItem = roomTabs.find((item) => item.value === "projects")!;
@@ -372,6 +406,12 @@ function PuzzleSidebar({
               </span>
             </button>
             <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={activeRuns} onSelect={selectTab} />
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
+              item={laneItem}
+              onSelect={selectTab}
+              textBadge={`${data.executionLanes?.length ?? 0}`}
+            />
           </div>
 
           <SidebarSection label="Work">
@@ -476,6 +516,8 @@ function DashboardTab({ data }: { data: SpliceWorkspaceRoomData }) {
         <MetricCard icon={Clock3} value={data.totals.reviewIssues} label="In Review" description={`${data.totals.todoIssues} queued next`} />
         <MetricCard icon={ShieldAlert} value={data.totals.blockedIssues} label="Blocked" description={`${data.totals.progress}% progress`} />
       </div>
+
+      <ExecutionLanesPanel data={data} limit={3} />
 
       <RoomMap data={data} />
 
@@ -705,6 +747,139 @@ function ActivityList({ items }: { items: SpliceWorkspaceRoomData["activity"] })
   );
 }
 
+function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
+  const Icon = laneIcon(lane);
+  const lastCommit = lane.lastCommit;
+
+  return (
+    <div className="min-w-0 border border-border bg-background px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <Icon className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{lane.name}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{lane.kindLabel} · {lane.branch}</p>
+          </div>
+        </div>
+        <LaneStatePill state={lane.state} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
+          <p className="font-semibold tabular-nums">{lane.dirty}</p>
+          <p className="truncate text-[11px] text-muted-foreground">dirty</p>
+        </div>
+        <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
+          <p className="font-semibold tabular-nums">{lane.ahead}/{lane.behind}</p>
+          <p className="truncate text-[11px] text-muted-foreground">ahead/behind</p>
+        </div>
+        <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
+          <p className="font-semibold tabular-nums">{lane.activeRequestCount}</p>
+          <p className="truncate text-[11px] text-muted-foreground">requests</p>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-1.5">
+        <p className="truncate font-mono text-[11px] text-muted-foreground">{lane.shortPath || lane.path}</p>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <GitCommit className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate">{lastCommit?.msg ?? "No commit signal"}</span>
+          <span className="shrink-0">{formatAge(lastCommit?.ageMin)}</span>
+        </div>
+      </div>
+
+      {lane.actors.length ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {lane.actors.slice(0, 4).map((actor) => (
+            <span
+              key={actor.id}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px]"
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", actor.kind === "agent" ? "bg-blue-500" : "bg-emerald-500")} />
+              <span className="truncate">{actor.name}</span>
+            </span>
+          ))}
+          {lane.actors.length > 4 ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">+{lane.actors.length - 4}</span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; limit?: number }) {
+  const allLanes = data.executionLanes ?? [];
+  const lanes = limit ? allLanes.slice(0, limit) : allLanes;
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Execution Lanes" aside={`${allLanes.length} work copies`} />
+      <div className="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="border border-border bg-muted/20 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project Space</p>
+          </div>
+          <p className="mt-3 truncate text-lg font-semibold">{data.name}</p>
+          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{data.shortPath}</p>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-md bg-background px-2 py-1.5">
+              <p className="font-semibold tabular-nums">{data.totals.activeExecutionLanes ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground">active lanes</p>
+            </div>
+            <div className="rounded-md bg-background px-2 py-1.5">
+              <p className="font-semibold tabular-nums">{data.totals.requests}</p>
+              <p className="text-[11px] text-muted-foreground">queued runs</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          {lanes.length ? lanes.map((lane) => (
+            <LaneCard key={lane.id} lane={lane} />
+          )) : (
+            <div className="border border-border px-4 py-4 text-sm text-muted-foreground">No execution lanes found.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
+  const lanes = data.executionLanes ?? [];
+
+  return (
+    <div className="space-y-6">
+      <ExecutionLanesPanel data={data} />
+      <section className="space-y-3">
+        <SectionTitle title="Lane Signals" aside={`${lanes.length} lanes`} />
+        <div className="border border-border">
+          {lanes.map((lane) => (
+            <EntityRow
+              key={lane.id}
+              title={lane.name}
+              subtitle={`${lane.kindLabel} · ${lane.shortPath || lane.path}`}
+              leading={<GitBranch className="h-4 w-4 text-muted-foreground" />}
+              trailing={(
+                <div className="flex items-center gap-2">
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
+                    {lane.branch} · {lane.dirty} dirty
+                  </span>
+                  <LaneStatePill state={lane.state} />
+                </div>
+              )}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
   return (
     <section className="space-y-3">
@@ -768,6 +943,7 @@ export function SpliceWorkspaceRoom() {
   const roomQuery = useQuery({
     queryKey: WORKSPACE_ROOM_QUERY_ROOT,
     queryFn: () => spliceApi.workspaceRoom(PUZZLE_TESTBED_ID),
+    refetchInterval: 10000,
   });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
@@ -816,6 +992,7 @@ export function SpliceWorkspaceRoom() {
       refreshing={roomQuery.isFetching}
     >
       {activeTab === "dashboard" && <DashboardTab data={data} />}
+      {activeTab === "lanes" && <LanesTab data={data} />}
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
       {activeTab === "issues" && <IssuesTab data={data} />}
