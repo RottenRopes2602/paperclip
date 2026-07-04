@@ -50,6 +50,7 @@ import {
   type SpliceAgentMessage,
   type SpliceExecutionLane,
   type SpliceInboxItem,
+  type SpliceOfficeApprovalsData,
   type SpliceOfficeInboxData,
   type SpliceOfficeRoutinesData,
   type SpliceReview,
@@ -66,7 +67,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "routines" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -77,6 +78,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "issues", label: "Issues", icon: CircleDot },
   { value: "desk", label: "Work Desk", icon: SquarePen },
   { value: "reviews", label: "Review Gate", icon: ShieldAlert },
+  { value: "approvals", label: "Approvals", icon: CheckCircle2 },
   { value: "routines", label: "Routines", icon: Repeat2 },
   { value: "agents", label: "Agents", icon: Bot },
   { value: "comms", label: "Comms", icon: MessageSquare },
@@ -721,12 +723,14 @@ function PuzzleSidebarMiniItem({
 }
 
 function PuzzleSidebar({
+  approvalPendingCount,
   activeTab,
   data,
   inboxOpenCount,
   routineDueCount,
   onTabChange,
 }: {
+  approvalPendingCount: number;
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
@@ -746,6 +750,7 @@ function PuzzleSidebar({
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
   const reviewsItem = roomTabs.find((item) => item.value === "reviews")!;
+  const approvalsItem = roomTabs.find((item) => item.value === "approvals")!;
   const routinesItem = roomTabs.find((item) => item.value === "routines")!;
   const goalItem = roomTabs.find((item) => item.value === "goals")!;
   const projectItem = roomTabs.find((item) => item.value === "projects")!;
@@ -826,6 +831,12 @@ function PuzzleSidebar({
             <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={deskItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={reviewsItem} onSelect={selectTab} />
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
+              item={approvalsItem}
+              onSelect={selectTab}
+              textBadge={approvalPendingCount > 0 ? `${approvalPendingCount}` : undefined}
+            />
             <PuzzleSidebarNavItem activeTab={activeTab} item={goalItem} onSelect={selectTab} />
           </SidebarSection>
 
@@ -875,6 +886,7 @@ function PuzzleSidebar({
 }
 
 function PuzzleWorkspaceShell({
+  approvalPendingCount,
   activeTab,
   children,
   data,
@@ -884,6 +896,7 @@ function PuzzleWorkspaceShell({
   onTabChange,
   refreshing,
 }: {
+  approvalPendingCount: number;
   activeTab: RoomTab;
   children: ReactNode;
   data: SpliceWorkspaceRoomData;
@@ -908,6 +921,7 @@ function PuzzleWorkspaceShell({
         Skip to Main Content
       </a>
       <PuzzleSidebar
+        approvalPendingCount={approvalPendingCount}
         activeTab={activeTab}
         data={data}
         inboxOpenCount={inboxOpenCount}
@@ -933,6 +947,7 @@ function PuzzleWorkspaceShell({
 }
 
 function DashboardTab({
+  approvals,
   data,
   dispatchingRunner,
   inbox,
@@ -942,6 +957,7 @@ function DashboardTab({
   reviews,
   runnerNotice,
 }: {
+  approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
   inbox: SpliceOfficeInboxData | null;
@@ -965,6 +981,8 @@ function DashboardTab({
       <ExecutionLanesPanel data={data} limit={3} />
 
       <OfficeInboxSummary inbox={inbox} />
+
+      <OfficeApprovalsSummary approvals={approvals} data={data} />
 
       <OfficeRoutinesSummary data={data} routines={routines} />
 
@@ -1012,6 +1030,44 @@ function OfficeInboxSummary({ inbox }: { inbox: SpliceOfficeInboxData | null }) 
         )) : (
           <p className="px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function OfficeApprovalsSummary({ approvals, data }: { approvals: SpliceOfficeApprovalsData | null; data: SpliceWorkspaceRoomData }) {
+  const approvalItems = approvals?.approvals ?? [];
+  const pendingItems = approvalItems
+    .filter((approval) => approval.status === "requested" || approval.status === "changes_requested")
+    .slice(0, 5);
+  const visibleItems = pendingItems.length ? pendingItems : approvalItems.slice(0, 5);
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle
+        title="Office Approvals"
+        aside={`${approvals?.counts.pending ?? 0} pending · ${approvals?.counts.approved ?? 0} approved`}
+      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="Pending" description="needs operator" />
+          <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="Requests" description="approval history" />
+          <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="Changes" description="sent back" />
+          <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="Approved" description="cleared to run" />
+        </div>
+        <div className="min-w-0 border border-border">
+          {visibleItems.length ? visibleItems.map((approval) => (
+            <EntityRow
+              key={approval.id}
+              title={approval.title}
+              subtitle={`${approval.agentName ? compactAgentName(approval.agentName, data.name) : "operator"} · ${approval.kind}`}
+              leading={<CheckCircle2 className="h-4 w-4 text-muted-foreground" />}
+              trailing={<StatusBadge status={approval.status} />}
+            />
+          )) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground">No approval requests yet.</p>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -1923,6 +1979,273 @@ function ReviewGateTab({
   );
 }
 
+function ApprovalsTab({
+  approvals,
+  creatingApproval,
+  data,
+  decidingApprovalId,
+  onCreateApproval,
+  onDecideApproval,
+}: {
+  approvals: SpliceOfficeApprovalsData | null;
+  creatingApproval: boolean;
+  data: SpliceWorkspaceRoomData;
+  decidingApprovalId: string | null;
+  onCreateApproval: (input: { agentId?: string | null; kind: string; title: string; body: string }) => void;
+  onDecideApproval: (approvalId: string, decision: "approved" | "changes_requested" | "rejected", body: string, wakeAgent: boolean) => void;
+}) {
+  const approvalItems = approvals?.approvals ?? [];
+  const [selectedApprovalId, setSelectedApprovalId] = useState(approvalItems[0]?.id ?? "");
+  const [agentId, setAgentId] = useState(data.agents[0]?.id ?? "");
+  const [kind, setKind] = useState("agent_action");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [decisionBody, setDecisionBody] = useState("");
+  const [wakeAgent, setWakeAgent] = useState(true);
+
+  useEffect(() => {
+    if (!approvalItems.length) return;
+    if (!selectedApprovalId || !approvalItems.some((approval) => approval.id === selectedApprovalId)) {
+      setSelectedApprovalId(approvalItems[0].id);
+    }
+  }, [approvalItems, selectedApprovalId]);
+
+  useEffect(() => {
+    if (!data.agents.length) return;
+    if (!agentId || !data.agents.some((agent) => agent.id === agentId)) {
+      setAgentId(data.agents[0].id);
+    }
+  }, [agentId, data.agents]);
+
+  const selectedApproval = approvalItems.find((approval) => approval.id === selectedApprovalId) ?? approvalItems[0] ?? null;
+  const decidingApproval = Boolean(selectedApproval && decidingApprovalId === selectedApproval.id);
+  const pendingStatuses = new Set(["requested", "changes_requested"]);
+  const pending = approvalItems.filter((approval) => pendingStatuses.has(approval.status));
+  const decided = approvalItems.filter((approval) => !pendingStatuses.has(approval.status));
+
+  const submitApproval = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextTitle = title.trim();
+    const nextBody = body.trim();
+    if (!nextTitle || !nextBody || creatingApproval) return;
+    onCreateApproval({
+      agentId: agentId || null,
+      kind,
+      title: nextTitle,
+      body: nextBody,
+    });
+    setTitle("");
+    setBody("");
+  };
+
+  const submitDecision = (decision: "approved" | "changes_requested" | "rejected") => {
+    const note = decisionBody.trim();
+    if (!selectedApproval || !note || decidingApproval) return;
+    onDecideApproval(selectedApproval.id, decision, note, wakeAgent);
+    setDecisionBody("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Approvals" aside={`${pending.length} pending · ${decided.length} decided`} />
+
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="Pending" description="needs decision" />
+        <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="Requests" description="approval queue" />
+        <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="Changes" description="sent back" />
+        <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="Approved" description="cleared" />
+      </div>
+
+      <div className="grid min-h-[640px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <section className="min-w-0 border border-border">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Approval Queue</p>
+            <span className="text-xs text-muted-foreground">{approvalItems.length}</span>
+          </div>
+          <div className="max-h-[590px] overflow-y-auto">
+            {approvalItems.length ? approvalItems.map((approval) => {
+              const active = selectedApproval?.id === approval.id;
+              return (
+                <button
+                  key={approval.id}
+                  type="button"
+                  onClick={() => setSelectedApprovalId(approval.id)}
+                  className={cn(
+                    "w-full border-b border-border px-4 py-3 text-left last:border-b-0",
+                    active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold">{approval.title}</p>
+                    <StatusBadge status={approval.status} />
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {approval.agentName ? compactAgentName(approval.agentName, data.name) : "operator"} · {approval.kind}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">{formatIsoAge(approval.updatedAt || approval.createdAt)}</p>
+                </button>
+              );
+            }) : (
+              <p className="px-4 py-4 text-sm text-muted-foreground">No approval requests yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="min-w-0 space-y-4">
+          <form className="border border-border" onSubmit={submitApproval}>
+            <div className="border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold">Request Approval</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Create the same kind of board decision an agent would wait on.</p>
+            </div>
+            <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
+              <label className="min-w-0 text-xs font-medium text-muted-foreground">
+                Agent
+                <select
+                  value={agentId}
+                  onChange={(event) => setAgentId(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                  disabled={creatingApproval}
+                >
+                  {data.agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>{compactAgentName(agent.name, data.name)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-0 text-xs font-medium text-muted-foreground">
+                Kind
+                <select
+                  value={kind}
+                  onChange={(event) => setKind(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                  disabled={creatingApproval}
+                >
+                  <option value="agent_action">Agent action</option>
+                  <option value="branch_change">Branch change</option>
+                  <option value="release">Release</option>
+                  <option value="scope_change">Scope change</option>
+                  <option value="external_effect">External effect</option>
+                </select>
+              </label>
+              <label className="min-w-0 text-xs font-medium text-muted-foreground sm:col-span-2">
+                Title
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  placeholder="Approval title"
+                  disabled={creatingApproval}
+                />
+              </label>
+              <label className="min-w-0 text-xs font-medium text-muted-foreground sm:col-span-2">
+                Request
+                <textarea
+                  value={body}
+                  onChange={(event) => setBody(event.target.value)}
+                  className="mt-1 min-h-32 w-full resize-y border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                  placeholder="What should be approved, and why?"
+                  disabled={creatingApproval}
+                />
+              </label>
+              <div className="flex justify-end sm:col-span-2">
+                <Button type="submit" disabled={!title.trim() || !body.trim() || creatingApproval} className="gap-1.5">
+                  <CheckCircle2 className={cn("h-3.5 w-3.5", creatingApproval && "animate-pulse")} />
+                  Request
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          <section className="border border-border">
+            <div className="border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold">Selected Request</p>
+            </div>
+            {selectedApproval ? (
+              <article className="px-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={selectedApproval.status} />
+                  <span className="text-xs text-muted-foreground">{formatIsoAge(selectedApproval.createdAt)}</span>
+                  <span className="text-xs text-muted-foreground">{selectedApproval.kind}</span>
+                </div>
+                <h3 className="mt-3 text-base font-semibold">{selectedApproval.title}</h3>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/85">{selectedApproval.body}</p>
+                <div className="mt-4 border border-border">
+                  {selectedApproval.decisions.length ? selectedApproval.decisions.map((decision) => (
+                    <div key={decision.id} className="border-b border-border px-3 py-3 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <StatusBadge status={decision.decision} />
+                        <span className="text-xs text-muted-foreground">{formatIsoAge(decision.createdAt)}</span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-foreground/85">{decision.body}</p>
+                    </div>
+                  )) : (
+                    <p className="px-3 py-3 text-sm text-muted-foreground">No decisions yet.</p>
+                  )}
+                </div>
+              </article>
+            ) : (
+              <p className="px-4 py-4 text-sm text-muted-foreground">No approval selected.</p>
+            )}
+          </section>
+        </section>
+
+        <aside className="min-w-0 border border-border">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Decision</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Approved requests can wake the assigned agent.</p>
+          </div>
+          {selectedApproval ? (
+            <div className="space-y-3 px-4 py-4">
+              <textarea
+                value={decisionBody}
+                onChange={(event) => setDecisionBody(event.target.value)}
+                className="min-h-36 w-full resize-y border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="Decision note"
+                disabled={decidingApproval}
+              />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={wakeAgent}
+                  onChange={(event) => setWakeAgent(event.target.checked)}
+                  disabled={decidingApproval || !selectedApproval.agentId}
+                />
+                Wake agent after approval
+              </label>
+              <div className="grid gap-2">
+                <Button
+                  type="button"
+                  onClick={() => submitDecision("approved")}
+                  disabled={!decisionBody.trim() || decidingApproval}
+                >
+                  Approve
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => submitDecision("changes_requested")}
+                  disabled={!decisionBody.trim() || decidingApproval}
+                >
+                  Request Changes
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => submitDecision("rejected")}
+                  disabled={!decisionBody.trim() || decidingApproval}
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground">Select an approval first.</p>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 function RoutinesTab({
   data,
   onRunRoutine,
@@ -2776,6 +3099,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomRoutines(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const approvalsQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "approvals"],
+    queryFn: () => spliceApi.workspaceRoomApprovals(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => {
@@ -2806,6 +3134,24 @@ export function SpliceWorkspaceRoom() {
       void routinesQuery.refetch();
       void roomQuery.refetch();
       void inboxQuery.refetch();
+      void agentConsoleQuery.refetch();
+    },
+  });
+  const createApprovalMutation = useMutation({
+    mutationFn: (input: { agentId?: string | null; kind: string; title: string; body: string }) =>
+      spliceApi.createWorkspaceRoomApproval(PUZZLE_TESTBED_ID, input),
+    onSuccess: () => {
+      void approvalsQuery.refetch();
+      void inboxQuery.refetch();
+    },
+  });
+  const decideApprovalMutation = useMutation({
+    mutationFn: ({ approvalId, decision, body, wakeAgent }: { approvalId: string; decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent: boolean }) =>
+      spliceApi.createWorkspaceRoomApprovalDecision(PUZZLE_TESTBED_ID, approvalId, { decision, body, wakeAgent }),
+    onSuccess: () => {
+      void approvalsQuery.refetch();
+      void inboxQuery.refetch();
+      void roomQuery.refetch();
       void agentConsoleQuery.refetch();
     },
   });
@@ -2894,6 +3240,7 @@ export function SpliceWorkspaceRoom() {
   const workThread = workThreadQuery.data;
   const reviews = reviewsQuery.data?.reviews ?? [];
   const routines = routinesQuery.data ?? null;
+  const approvals = approvalsQuery.data ?? null;
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
     ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
     : null;
@@ -2907,10 +3254,12 @@ export function SpliceWorkspaceRoom() {
   const updatingInboxItemId = updateInboxMutation.isPending ? updateInboxMutation.variables?.itemId ?? null : null;
   const updatingRoutineId = updateRoutineMutation.isPending ? updateRoutineMutation.variables?.routineId ?? null : null;
   const runningRoutineId = runRoutineMutation.isPending ? runRoutineMutation.variables ?? null : null;
+  const decidingApprovalId = decideApprovalMutation.isPending ? decideApprovalMutation.variables?.approvalId ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
       data={data}
+      approvalPendingCount={approvals?.counts.pending ?? 0}
       activeTab={activeTab}
       inboxOpenCount={inbox?.counts.open ?? 0}
       routineDueCount={routines?.counts.due ?? 0}
@@ -2923,11 +3272,13 @@ export function SpliceWorkspaceRoom() {
         void workThreadQuery.refetch();
         void reviewsQuery.refetch();
         void routinesQuery.refetch();
+        void approvalsQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
+          approvals={approvals}
           data={data}
           dispatchingRunner={dispatchRunnerMutation.isPending}
           inbox={inbox}
@@ -2969,6 +3320,17 @@ export function SpliceWorkspaceRoom() {
           decidingReviewId={decidingReviewId}
           onRequestReview={(input) => requestReviewMutation.mutate(input)}
           onDecideReview={(reviewId, decision, body) => decideReviewMutation.mutate({ reviewId, decision, body })}
+        />
+      )}
+      {activeTab === "approvals" && (
+        <ApprovalsTab
+          approvals={approvals}
+          creatingApproval={createApprovalMutation.isPending}
+          data={data}
+          decidingApprovalId={decidingApprovalId}
+          onCreateApproval={(input) => createApprovalMutation.mutate(input)}
+          onDecideApproval={(approvalId, decision, body, wakeAgent) =>
+            decideApprovalMutation.mutate({ approvalId, decision, body, wakeAgent })}
         />
       )}
       {activeTab === "routines" && (

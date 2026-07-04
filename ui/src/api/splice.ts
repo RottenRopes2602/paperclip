@@ -277,6 +277,7 @@ export interface SpliceOfficeInboxData {
     reviews: number;
     runs: number;
     messages: number;
+    approvals?: number;
     blocked: number;
   };
   items: SpliceInboxItem[];
@@ -366,6 +367,72 @@ export interface SpliceOfficeRoutineRunPost {
   routine: SpliceOfficeRoutine | null;
   routineRun: SpliceOfficeRoutineRun;
   runRequest: SpliceAgentRunRequest;
+}
+
+export interface SpliceOfficeApprovalDecision {
+  id: string;
+  approvalId: string;
+  workspaceId: string;
+  workspaceName: string;
+  agentId: string | null;
+  agentName: string | null;
+  author: "operator" | "agent" | string;
+  decision: "approved" | "changes_requested" | "rejected" | string;
+  body: string;
+  createdAt: string;
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceOfficeApproval {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  agentId: string | null;
+  agentName: string | null;
+  requester: "operator" | "agent" | string;
+  kind: string;
+  title: string;
+  body: string;
+  status: "requested" | "approved" | "changes_requested" | "rejected" | string;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decisions: SpliceOfficeApprovalDecision[];
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceOfficeApprovalsData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  counts: {
+    total: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+    changesRequested: number;
+  };
+  approvals: SpliceOfficeApproval[];
+  decisions: SpliceOfficeApprovalDecision[];
+}
+
+export interface SpliceOfficeApprovalPost {
+  approval: SpliceOfficeApproval;
+}
+
+export interface SpliceOfficeApprovalDecisionPost {
+  approval: SpliceOfficeApproval | null;
+  decision: SpliceOfficeApprovalDecision;
+  runRequest: SpliceAgentRunRequest | null;
 }
 
 export interface SpliceWorkspaceRoomWorkItem {
@@ -582,6 +649,25 @@ export const spliceApi = {
     api.post<SpliceOfficeRoutineRunPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/routines/${encodeURIComponent(routineId)}/run`,
       {},
+    ),
+  workspaceRoomApprovals: (workspaceId: string) =>
+    api.get<SpliceOfficeApprovalsData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/approvals`),
+  createWorkspaceRoomApproval: (
+    workspaceId: string,
+    input: { agentId?: string | null; kind: string; title: string; body: string },
+  ) =>
+    api.post<SpliceOfficeApprovalPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/approvals`,
+      input,
+    ),
+  createWorkspaceRoomApprovalDecision: (
+    workspaceId: string,
+    approvalId: string,
+    input: { decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent?: boolean },
+  ) =>
+    api.post<SpliceOfficeApprovalDecisionPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/approvals/${encodeURIComponent(approvalId)}/decision`,
+      input,
     ),
   sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
     api.post<SpliceAgentMessagePost>(
