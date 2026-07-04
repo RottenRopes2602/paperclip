@@ -222,22 +222,40 @@ function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
   return actor.state.replace(/[-_]+/g, " ");
 }
 
-function actorSlotOffset(actor: SpliceWorkspaceRoomActor, slotIndex: number) {
-  const slotOffsets = [
-    { x: 0, y: 0 },
-    { x: 5, y: 15 },
-    { x: -5, y: 30 },
-    { x: 8, y: 45 },
-  ];
-  const zoneBase: Record<string, { x: number; y: number }> = {
-    strategy: { x: 7, y: 0 },
-    design: { x: -3, y: 0 },
-    build: { x: 0, y: 18 },
-    review: { x: -4, y: 4 },
+function actorOfficePosition(actor: SpliceWorkspaceRoomActor, slotIndex: number) {
+  if (actor.slug === "you" || actor.role === "operator") return { x: 17, y: 73 };
+  const seats: Record<string, Array<{ x: number; y: number }>> = {
+    strategy: [
+      { x: 22, y: 31 },
+      { x: 31, y: 31 },
+    ],
+    design: [
+      { x: 32, y: 46 },
+      { x: 42, y: 59 },
+      { x: 28, y: 61 },
+    ],
+    build: [
+      { x: 55, y: 54 },
+      { x: 58, y: 69 },
+    ],
+    review: [
+      { x: 72, y: 39 },
+      { x: 82, y: 59 },
+      { x: 72, y: 68 },
+    ],
+    backlog: [
+      { x: 18, y: 73 },
+      { x: 22, y: 82 },
+    ],
+    blocked: [
+      { x: 82, y: 76 },
+    ],
+    done: [
+      { x: 55, y: 82 },
+    ],
   };
-  const slot = slotOffsets[slotIndex % slotOffsets.length];
-  const base = zoneBase[actor.zone] ?? { x: 0, y: 0 };
-  return { x: base.x + slot.x, y: base.y + slot.y };
+  const zoneSeats = seats[actor.zone] ?? [{ x: actor.x, y: actor.y }];
+  return zoneSeats[slotIndex % zoneSeats.length];
 }
 
 function PixelGrid({
@@ -377,6 +395,78 @@ function PixelRoomProp({ kind, className }: { kind: "terminal" | "board"; classN
   );
 }
 
+function OfficeRoom({ label, className }: { label: string; className: string }) {
+  return (
+    <div className={cn(
+      "absolute z-0 border-4 border-[#25313b] bg-[#111821]/78 shadow-[5px_5px_0_rgba(0,0,0,0.45)]",
+      className,
+    )}>
+      <div className="absolute left-2 top-2 border-2 border-black bg-[#162536] px-2 py-1 font-mono text-[10px] font-bold uppercase leading-none text-cyan-100 shadow-[2px_2px_0_rgba(0,0,0,0.45)]">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function PixelFurniture({
+  kind,
+  className,
+}: {
+  kind: "meeting" | "desk-island" | "desk" | "server" | "shelf" | "plant";
+  className?: string;
+}) {
+  if (kind === "plant") {
+    return (
+      <div className={cn("absolute z-0", className)} aria-hidden="true">
+        <div className="mx-auto h-3 w-3 bg-emerald-500 shadow-[-4px_4px_0_#1f7a4c,4px_4px_0_#1f7a4c]" />
+        <div className="mx-auto h-4 w-4 border-2 border-black bg-[#7c4a2d]" />
+      </div>
+    );
+  }
+
+  const shared = "absolute z-0 border-4 border-black shadow-[4px_4px_0_rgba(0,0,0,0.45)]";
+  const classes = {
+    meeting: "h-16 w-28 bg-[#5f4935] before:absolute before:left-3 before:top-3 before:h-2 before:w-20 before:bg-[#9b7652] after:absolute after:bottom-2 after:left-5 after:h-2 after:w-14 after:bg-black/35",
+    "desk-island": "h-20 w-36 bg-[#263748] before:absolute before:left-4 before:top-4 before:h-4 before:w-24 before:bg-[#3c5a74] after:absolute after:bottom-3 after:left-8 after:h-3 after:w-20 after:bg-black/30",
+    desk: "h-14 w-24 bg-[#283b4e] before:absolute before:left-4 before:top-3 before:h-3 before:w-14 before:bg-[#4f7390] after:absolute after:bottom-2 after:left-5 after:h-2 after:w-14 after:bg-black/35",
+    server: "h-24 w-12 bg-[#141820] before:absolute before:left-2 before:top-3 before:h-2 before:w-6 before:bg-emerald-400 after:absolute after:left-2 after:top-9 after:h-2 after:w-7 after:bg-sky-400",
+    shelf: "h-16 w-28 bg-[#2d241c] before:absolute before:left-2 before:top-4 before:h-2 before:w-20 before:bg-[#806246] after:absolute after:left-2 after:bottom-4 after:h-2 after:w-20 after:bg-[#806246]",
+  } satisfies Record<Exclude<typeof kind, "plant">, string>;
+
+  return <div className={cn(shared, classes[kind], className)} aria-hidden="true" />;
+}
+
+function OfficeLayout() {
+  return (
+    <>
+      <div className="absolute inset-3 z-0 border-4 border-[#293640] shadow-[inset_0_0_0_4px_rgba(0,0,0,0.35)]" />
+      <div className="absolute left-[4%] right-[4%] top-[12%] z-0 h-1 bg-[#293640]" />
+      <div className="absolute left-[4%] right-[4%] bottom-[22%] z-0 h-1 bg-[#293640]" />
+      <div className="absolute bottom-[22%] left-[25%] top-[12%] z-0 w-1 bg-[#293640]" />
+      <div className="absolute bottom-[22%] left-[48%] top-[12%] z-0 w-1 bg-[#293640]" />
+      <div className="absolute bottom-[22%] right-[24%] top-[12%] z-0 w-1 bg-[#293640]" />
+      <OfficeRoom label="meeting" className="left-[5%] top-[5%] h-[27%] w-[24%]" />
+      <OfficeRoom label="design pod" className="left-[27%] top-[16%] h-[41%] w-[22%]" />
+      <OfficeRoom label="build bay" className="left-[50%] top-[16%] h-[48%] w-[24%]" />
+      <OfficeRoom label="review" className="right-[5%] top-[16%] h-[48%] w-[20%]" />
+      <OfficeRoom label="operator" className="bottom-[5%] left-[5%] h-[22%] w-[25%]" />
+      <OfficeRoom label="ship" className="bottom-[5%] left-[37%] h-[22%] w-[22%]" />
+      <OfficeRoom label="infra" className="bottom-[5%] right-[5%] h-[22%] w-[26%]" />
+      <PixelFurniture kind="meeting" className="left-[11%] top-[18%]" />
+      <PixelFurniture kind="desk-island" className="left-[31%] top-[35%]" />
+      <PixelFurniture kind="desk" className="left-[55%] top-[39%]" />
+      <PixelFurniture kind="desk" className="right-[9%] top-[31%]" />
+      <PixelFurniture kind="desk" className="left-[10%] bottom-[9%]" />
+      <PixelFurniture kind="shelf" className="left-[42%] bottom-[10%]" />
+      <PixelFurniture kind="server" className="right-[11%] bottom-[9%]" />
+      <PixelFurniture kind="plant" className="left-[3%] bottom-[30%]" />
+      <PixelFurniture kind="plant" className="right-[3%] top-[7%]" />
+      <PixelRoomProp kind="board" className="left-[7%] top-[9%]" />
+      <PixelRoomProp kind="terminal" className="right-[13%] bottom-[33%]" />
+    </>
+  );
+}
+
 function RoomActorSprite({
   actor,
   workspaceName,
@@ -387,9 +477,9 @@ function RoomActorSprite({
   slotIndex: number;
 }) {
   const label = compactAgentName(actor.name, workspaceName);
-  const offset = actorSlotOffset(actor, slotIndex);
-  const left = roomPercent(actor.x + offset.x, 18, 82);
-  const top = roomPercent(actor.y + offset.y, 24, 84);
+  const position = actorOfficePosition(actor, slotIndex);
+  const left = roomPercent(position.x, 12, 88);
+  const top = roomPercent(position.y, 22, 84);
   const tone = actorStateTone[actor.state] ?? actorStateTone.idle;
   const workLine = actorWorkLine(actor);
   const roomLine = actorRoomLine(actor);
@@ -1159,7 +1249,7 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="Workspace Room" aside="sample workspace map" />
+      <SectionTitle title="Workspace Room" aside="pixel office floor" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
         <div
           className="relative h-[430px] overflow-hidden border-2 border-border bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(0,0,0,0.24)]"
@@ -1171,20 +1261,7 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
             imageRendering: "pixelated",
           }}
         >
-          <div className="absolute inset-x-8 top-1/2 h-1 bg-black/35" />
-          <div className="absolute inset-y-8 left-1/2 w-1 bg-black/35" />
-          {data.room.zones.map((zone) => (
-            <div
-              key={zone.id}
-              className="absolute z-0 min-w-24 -translate-x-1/2 -translate-y-1/2 border-2 border-black bg-[#12151d]/95 px-3 py-2 font-mono shadow-[4px_4px_0_rgba(0,0,0,0.5)]"
-              style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
-            >
-              <p className="text-[11px] font-bold uppercase leading-none text-white">{zone.label}</p>
-              <p className="mt-1 text-[9px] uppercase leading-none text-cyan-200">{formatNumber(zone.workCount)} work</p>
-            </div>
-          ))}
-          <PixelRoomProp kind="board" className="left-[7%] top-[22%]" />
-          <PixelRoomProp kind="terminal" className="bottom-6 right-7" />
+          <OfficeLayout />
           {roomActorEntries.map(({ actor, slotIndex }) => (
             <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
           ))}
