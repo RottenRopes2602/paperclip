@@ -45,6 +45,8 @@ import {
   spliceApi,
   type SpliceAgentMessage,
   type SpliceExecutionLane,
+  type SpliceWorkProduct,
+  type SpliceWorkThreadComment,
   type SpliceWorkspaceRoomActor,
   type SpliceWorkspaceRoomData,
   type SpliceWorkspaceRoomGoal,
@@ -56,7 +58,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "desk" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -64,6 +66,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "goals", label: "Goals", icon: Target },
   { value: "projects", label: "Projects", icon: FolderOpen },
   { value: "issues", label: "Issues", icon: CircleDot },
+  { value: "desk", label: "Work Desk", icon: SquarePen },
   { value: "agents", label: "Agents", icon: Bot },
   { value: "comms", label: "Comms", icon: MessageSquare },
   { value: "activity", label: "Activity", icon: History },
@@ -715,6 +718,7 @@ function PuzzleSidebar({
   const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
   const laneItem = roomTabs.find((item) => item.value === "lanes")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
+  const deskItem = roomTabs.find((item) => item.value === "desk")!;
   const goalItem = roomTabs.find((item) => item.value === "goals")!;
   const projectItem = roomTabs.find((item) => item.value === "projects")!;
   const agentItem = roomTabs.find((item) => item.value === "agents")!;
@@ -786,6 +790,7 @@ function PuzzleSidebar({
 
           <SidebarSection label="Work">
             <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
+            <PuzzleSidebarNavItem activeTab={activeTab} item={deskItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={goalItem} onSelect={selectTab} />
           </SidebarSection>
 
@@ -1126,6 +1131,230 @@ function IssuesTab({ data }: { data: SpliceWorkspaceRoomData }) {
           <WorkItemList items={lane.items} empty={`No ${lane.title.toLowerCase()} issues.`} />
         </section>
       ))}
+    </div>
+  );
+}
+
+function workItemKey(item: Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">): string {
+  return `${item.type}:${item.id}`;
+}
+
+function WorkDeskTab({
+  comments,
+  data,
+  onAddComment,
+  onAddWorkProduct,
+  postingCommentKey,
+  savingProductKey,
+  workProducts,
+}: {
+  comments: SpliceWorkThreadComment[];
+  data: SpliceWorkspaceRoomData;
+  onAddComment: (input: { itemType: string; itemId: string; body: string }) => void;
+  onAddWorkProduct: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) => void;
+  postingCommentKey: string | null;
+  savingProductKey: string | null;
+  workProducts: SpliceWorkProduct[];
+}) {
+  const deskItems = [
+    ...data.lanes.active,
+    ...data.lanes.review,
+    ...data.lanes.next,
+    ...data.lanes.blocked,
+    ...data.projects,
+  ];
+  const firstKey = deskItems[0] ? workItemKey(deskItems[0]) : "";
+  const [selectedKey, setSelectedKey] = useState(firstKey);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [productTitle, setProductTitle] = useState("");
+  const [productBody, setProductBody] = useState("");
+
+  useEffect(() => {
+    if (!deskItems.length) return;
+    if (!selectedKey || !deskItems.some((item) => workItemKey(item) === selectedKey)) {
+      setSelectedKey(firstKey);
+    }
+  }, [deskItems, firstKey, selectedKey]);
+
+  const selectedItem = deskItems.find((item) => workItemKey(item) === selectedKey) ?? deskItems[0] ?? null;
+  const selectedComments = selectedItem
+    ? comments.filter((comment) => comment.itemType === selectedItem.type && comment.itemId === selectedItem.id).slice(0, 50).reverse()
+    : [];
+  const selectedProducts = selectedItem
+    ? workProducts.filter((product) => product.itemType === selectedItem.type && product.itemId === selectedItem.id)
+    : [];
+  const activeKey = selectedItem ? workItemKey(selectedItem) : "";
+  const postingComment = postingCommentKey === activeKey;
+  const savingProduct = savingProductKey === activeKey;
+
+  const submitComment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = commentDraft.trim();
+    if (!selectedItem || !body || postingComment) return;
+    setCommentDraft("");
+    onAddComment({ itemType: selectedItem.type, itemId: selectedItem.id, body });
+  };
+
+  const submitWorkProduct = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = productTitle.trim();
+    const body = productBody.trim();
+    if (!selectedItem || !title || !body || savingProduct) return;
+    setProductTitle("");
+    setProductBody("");
+    onAddWorkProduct({ itemType: selectedItem.type, itemId: selectedItem.id, title, body, kind: "note" });
+  };
+
+  if (!selectedItem) {
+    return (
+      <div className="space-y-4">
+        <SectionTitle title="Work Desk" aside="0 items" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No work items found.</p>
+      </div>
+    );
+  }
+
+  const body = displayMarkdownBody(selectedItem.description);
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Work Desk" aside={`${deskItems.length} items`} />
+      <div className="grid min-h-[620px] gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="min-w-0 border border-border">
+          {deskItems.map((item) => {
+            const key = workItemKey(item);
+            const active = key === activeKey;
+            const itemComments = comments.filter((comment) => comment.itemType === item.type && comment.itemId === item.id).length;
+            const itemProducts = workProducts.filter((product) => product.itemType === item.type && product.itemId === item.id).length;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSelectedKey(key)}
+                className={cn(
+                  "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
+                  active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                )}
+              >
+                {item.type === "project" ? (
+                  <Flag className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{item.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.ownerName} · {item.status}</p>
+                  <div className="mt-2 flex gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5">{itemComments} comments</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5">{itemProducts} products</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <section className="min-w-0 space-y-4">
+          <div className="border border-border px-4 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{selectedItem.type}</p>
+                <h2 className="mt-1 text-lg font-semibold">{selectedItem.title}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{selectedItem.ownerName} · {selectedItem.projectName}</p>
+              </div>
+              <StatusBadge status={selectedItem.status} ns={selectedItem.type === "project" ? "project" : "issue"} />
+            </div>
+            {body ? (
+              <MarkdownBody className="mt-4 text-sm text-muted-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                {body}
+              </MarkdownBody>
+            ) : (
+              <p className="mt-4 text-sm text-muted-foreground">No body found.</p>
+            )}
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="min-w-0 border border-border">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <p className="text-sm font-semibold">Thread</p>
+                <span className="text-xs text-muted-foreground">{selectedComments.length}</span>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto px-4 py-4">
+                {selectedComments.length ? selectedComments.map((comment) => (
+                  <article key={comment.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium">{comment.author}</span>
+                      <span className="text-xs text-muted-foreground">{formatIsoAge(comment.createdAt)}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm leading-6">{comment.body}</p>
+                  </article>
+                )) : (
+                  <p className="text-sm text-muted-foreground">No comments yet.</p>
+                )}
+              </div>
+              <form className="border-t border-border px-4 py-4" onSubmit={submitComment}>
+                <textarea
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                  className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                  placeholder="Comment"
+                  disabled={postingComment}
+                />
+                <div className="mt-3 flex justify-end">
+                  <Button type="submit" size="sm" disabled={!commentDraft.trim() || postingComment} className="gap-1.5">
+                    <MessageSquare className={cn("h-3.5 w-3.5", postingComment && "animate-pulse")} />
+                    {postingComment ? "Posting" : "Post Comment"}
+                  </Button>
+                </div>
+              </form>
+            </section>
+
+            <section className="min-w-0 border border-border">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <p className="text-sm font-semibold">Work Products</p>
+                <span className="text-xs text-muted-foreground">{selectedProducts.length}</span>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto px-4 py-4">
+                {selectedProducts.length ? selectedProducts.map((product) => (
+                  <article key={product.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold">{product.title}</p>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(product.createdAt)}</span>
+                    </div>
+                    <MarkdownBody className="text-sm text-muted-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                      {product.body}
+                    </MarkdownBody>
+                  </article>
+                )) : (
+                  <p className="text-sm text-muted-foreground">No work products yet.</p>
+                )}
+              </div>
+              <form className="space-y-3 border-t border-border px-4 py-4" onSubmit={submitWorkProduct}>
+                <input
+                  value={productTitle}
+                  onChange={(event) => setProductTitle(event.target.value)}
+                  className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                  placeholder="Result title"
+                  disabled={savingProduct}
+                />
+                <textarea
+                  value={productBody}
+                  onChange={(event) => setProductBody(event.target.value)}
+                  className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                  placeholder="Result body"
+                  disabled={savingProduct}
+                />
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={!productTitle.trim() || !productBody.trim() || savingProduct} className="gap-1.5">
+                    <FileText className={cn("h-3.5 w-3.5", savingProduct && "animate-pulse")} />
+                    {savingProduct ? "Saving" : "Save Product"}
+                  </Button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -1620,6 +1849,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomMessages(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const workThreadQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-thread"],
+    queryFn: () => spliceApi.workspaceRoomWorkThread(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => void roomQuery.refetch(),
@@ -1631,6 +1865,16 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void messagesQuery.refetch();
     },
+  });
+  const addCommentMutation = useMutation({
+    mutationFn: (input: { itemType: string; itemId: string; body: string }) =>
+      spliceApi.createWorkspaceRoomComment(PUZZLE_TESTBED_ID, input),
+    onSuccess: () => void workThreadQuery.refetch(),
+  });
+  const addWorkProductMutation = useMutation({
+    mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) =>
+      spliceApi.createWorkspaceRoomWorkProduct(PUZZLE_TESTBED_ID, input),
+    onSuccess: () => void workThreadQuery.refetch(),
   });
   const dispatchRunnerMutation = useMutation({
     mutationFn: (dryRun: boolean) => spliceApi.dispatchRunner(dryRun),
@@ -1679,6 +1923,13 @@ export function SpliceWorkspaceRoom() {
   const runningAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
   const sendingAgentId = sendMessageMutation.isPending ? sendMessageMutation.variables?.agentId ?? null : null;
   const messages = messagesQuery.data?.messages ?? [];
+  const workThread = workThreadQuery.data;
+  const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
+    ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
+    : null;
+  const savingProductKey = addWorkProductMutation.isPending && addWorkProductMutation.variables
+    ? `${addWorkProductMutation.variables.itemType}:${addWorkProductMutation.variables.itemId}`
+    : null;
 
   return (
     <PuzzleWorkspaceShell
@@ -1688,8 +1939,9 @@ export function SpliceWorkspaceRoom() {
       onRefresh={() => {
         void roomQuery.refetch();
         void messagesQuery.refetch();
+        void workThreadQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || messagesQuery.isFetching}
+      refreshing={roomQuery.isFetching || messagesQuery.isFetching || workThreadQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -1704,6 +1956,17 @@ export function SpliceWorkspaceRoom() {
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
       {activeTab === "issues" && <IssuesTab data={data} />}
+      {activeTab === "desk" && (
+        <WorkDeskTab
+          data={data}
+          comments={workThread?.comments ?? []}
+          workProducts={workThread?.workProducts ?? []}
+          postingCommentKey={postingCommentKey}
+          savingProductKey={savingProductKey}
+          onAddComment={(input) => addCommentMutation.mutate(input)}
+          onAddWorkProduct={(input) => addWorkProductMutation.mutate(input)}
+        />
+      )}
       {activeTab === "agents" && (
         <AgentsTab
           data={data}

@@ -138,6 +138,52 @@ export interface SpliceAgentMessagePost {
   runRequest: SpliceAgentRunRequest;
 }
 
+export interface SpliceWorkThreadEntry {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  itemType: "project" | "issue" | string;
+  itemId: string;
+  itemTitle: string;
+  ownerName: string;
+  author: "operator" | "agent" | string;
+  status: "posted" | "saved" | "done" | "failed" | string;
+  createdAt: string;
+  updatedAt: string;
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceWorkThreadComment extends SpliceWorkThreadEntry {
+  body: string;
+}
+
+export interface SpliceWorkProduct extends SpliceWorkThreadEntry {
+  kind: string;
+  title: string;
+  body: string;
+}
+
+export interface SpliceWorkThreadData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  comments: SpliceWorkThreadComment[];
+  workProducts: SpliceWorkProduct[];
+}
+
+export interface SpliceWorkThreadCommentPost {
+  comment: SpliceWorkThreadComment;
+}
+
+export interface SpliceWorkProductPost {
+  workProduct: SpliceWorkProduct;
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -313,6 +359,21 @@ export const spliceApi = {
     api.post<SpliceAgentMessagePost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,
       { agentId, body },
+    ),
+  workspaceRoomWorkThread: (workspaceId: string) =>
+    api.get<SpliceWorkThreadData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread`),
+  createWorkspaceRoomComment: (workspaceId: string, input: { itemType: string; itemId: string; body: string }) =>
+    api.post<SpliceWorkThreadCommentPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread/comments`,
+      input,
+    ),
+  createWorkspaceRoomWorkProduct: (
+    workspaceId: string,
+    input: { itemType: string; itemId: string; title: string; body: string; kind?: string },
+  ) =>
+    api.post<SpliceWorkProductPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread/work-products`,
+      input,
     ),
   dispatchRunner: (dryRun = false) =>
     api.post<SpliceRunnerDispatch>(`/splice/runner/dispatch${dryRun ? "?dryRun=1" : ""}`, {}),
