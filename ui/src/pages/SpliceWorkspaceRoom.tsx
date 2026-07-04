@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
@@ -88,12 +88,12 @@ const actorStateTone: Record<string, string> = {
 };
 
 const spritePalettes = [
-  { skin: "#f2c9a5", hair: "#27211f", shirt: "#2f7dd3", accent: "#9ad1ff", desk: "#273447" },
-  { skin: "#d7a47c", hair: "#16171a", shirt: "#2f9e77", accent: "#9be6c4", desk: "#263b35" },
-  { skin: "#f0b894", hair: "#5b3425", shirt: "#d97706", accent: "#ffd18a", desk: "#3d3328" },
-  { skin: "#c99673", hair: "#2d251f", shirt: "#7c5cff", accent: "#c7b8ff", desk: "#332d4a" },
-  { skin: "#f1d2b7", hair: "#3a2a24", shirt: "#d43f5e", accent: "#ffb3c1", desk: "#442a34" },
-  { skin: "#b98563", hair: "#1f1f1f", shirt: "#14a6a6", accent: "#9bf2f2", desk: "#233d43" },
+  { skin: "#f2c9a5", hair: "#27211f", shirt: "#2f7dd3", accent: "#9ad1ff", pants: "#24304a", desk: "#273447", deskTop: "#3f5870" },
+  { skin: "#d7a47c", hair: "#16171a", shirt: "#2f9e77", accent: "#9be6c4", pants: "#233c34", desk: "#263b35", deskTop: "#3e5d50" },
+  { skin: "#f0b894", hair: "#5b3425", shirt: "#d97706", accent: "#ffd18a", pants: "#3d2d25", desk: "#3d3328", deskTop: "#6b4d32" },
+  { skin: "#c99673", hair: "#2d251f", shirt: "#7c5cff", accent: "#c7b8ff", pants: "#2b2947", desk: "#332d4a", deskTop: "#52427c" },
+  { skin: "#f1d2b7", hair: "#3a2a24", shirt: "#d43f5e", accent: "#ffb3c1", pants: "#422636", desk: "#442a34", deskTop: "#713a50" },
+  { skin: "#b98563", hair: "#1f1f1f", shirt: "#14a6a6", accent: "#9bf2f2", pants: "#1f3b42", desk: "#233d43", deskTop: "#3b6870" },
 ];
 
 const laneStateClass: Record<string, string> = {
@@ -240,68 +240,139 @@ function actorSlotOffset(actor: SpliceWorkspaceRoomActor, slotIndex: number) {
   return { x: base.x + slot.x, y: base.y + slot.y };
 }
 
-function PixelAvatar({ actor }: { actor: SpliceWorkspaceRoomActor }) {
-  const palette = actorPalette(actor);
-  const active = actor.state === "working" || actor.state === "reviewing" || actor.state === "requested";
-  const style = {
-    "--sprite-skin": palette.skin,
-    "--sprite-hair": palette.hair,
-    "--sprite-shirt": palette.shirt,
-    "--sprite-accent": palette.accent,
-  } as CSSProperties;
+function PixelGrid({
+  rows,
+  colors,
+  pixel = 4,
+  className,
+}: {
+  rows: string[];
+  colors: Record<string, string>;
+  pixel?: number;
+  className?: string;
+}) {
+  const width = Math.max(...rows.map((row) => row.length));
+  const cells = rows.flatMap((row, y) =>
+    row.padEnd(width, " ").split("").map((key, x) => ({
+      key: `${y}-${x}`,
+      color: colors[key] ?? "transparent",
+    })),
+  );
 
   return (
-    <div className="absolute bottom-[15px] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center" style={style}>
-      <div className="relative h-5 w-6 border border-black/35 bg-[var(--sprite-skin)] shadow-[inset_0_-2px_rgba(0,0,0,0.16)]">
-        <span className="absolute left-0 top-0 h-2 w-full bg-[var(--sprite-hair)]" />
-        <span className="absolute left-1 top-2 h-1 w-1 bg-black/70" />
-        <span className="absolute right-1 top-2 h-1 w-1 bg-black/70" />
-        <span className="absolute bottom-1 left-2 h-px w-2 bg-black/45" />
-      </div>
-      <div className="relative h-6 w-8 border border-black/35 bg-[var(--sprite-shirt)] shadow-[inset_0_-2px_rgba(0,0,0,0.16)]">
-        <span className={cn(
-          "absolute -left-2 top-1 h-4 w-2 border border-black/30 bg-[var(--sprite-skin)]",
-          active ? "animate-pulse" : "",
-        )} />
-        <span className={cn(
-          "absolute -right-2 top-1 h-4 w-2 border border-black/30 bg-[var(--sprite-skin)]",
-          active ? "animate-pulse" : "",
-        )} />
-        <span className="absolute left-2 top-2 h-2 w-4 bg-[var(--sprite-accent)] opacity-80" />
-      </div>
-      <div className="flex gap-1">
-        <span className="h-3 w-2 border border-black/35 bg-slate-700" />
-        <span className="h-3 w-2 border border-black/35 bg-slate-700" />
-      </div>
+    <div
+      className={cn("grid shrink-0", className)}
+      style={{
+        gridTemplateColumns: `repeat(${width}, ${pixel}px)`,
+        gridAutoRows: `${pixel}px`,
+        imageRendering: "pixelated",
+      }}
+      aria-hidden="true"
+    >
+      {cells.map((cell) => (
+        <span key={cell.key} className="block" style={{ backgroundColor: cell.color }} />
+      ))}
+    </div>
+  );
+}
+
+function actorPixelColors(actor: SpliceWorkspaceRoomActor) {
+  const palette = actorPalette(actor);
+  return {
+    o: "#101014",
+    h: palette.hair,
+    s: palette.skin,
+    t: palette.shirt,
+    a: palette.accent,
+    p: palette.pants,
+    d: palette.desk,
+    D: palette.deskTop,
+    m: "#0b1017",
+    l: palette.accent,
+    k: "#050507",
+    w: "rgba(255,255,255,0.72)",
+    g: actor.state === "blocked" ? "#ef4444" : actor.state === "reviewing" ? "#38bdf8" : actor.state === "requested" ? "#f59e0b" : "#10b981",
+  };
+}
+
+function PixelAvatar({ actor }: { actor: SpliceWorkspaceRoomActor }) {
+  const rows = [
+    "      oooooo      ",
+    "     ohhhhho     ",
+    "     ohsssho     ",
+    "    ohswwsho     ",
+    "    ohssssho     ",
+    "     osssso      ",
+    "      ottto      ",
+    "    ootttttoo    ",
+    "   osstaaattso   ",
+    "   ossttttttso   ",
+    "      tttt       ",
+    "      p  p       ",
+    "     pp  pp      ",
+    "    opp  ppo     ",
+  ];
+
+  return (
+    <div className="absolute bottom-[34px] left-1/2 z-30 -translate-x-1/2">
+      <PixelGrid rows={rows} colors={actorPixelColors(actor)} pixel={4} />
     </div>
   );
 }
 
 function Workstation({ actor }: { actor: SpliceWorkspaceRoomActor }) {
-  const palette = actorPalette(actor);
   const active = actor.state === "working" || actor.state === "reviewing" || actor.state === "requested";
-  const style = {
-    "--desk": palette.desk,
-    "--monitor": palette.accent,
-  } as CSSProperties;
+  const rows = [
+    "        oooooooooo        ",
+    "        ommmmmmmmo        ",
+    "        omlglllmo        ",
+    "        omlllllmo        ",
+    "          oooooo         ",
+    "           oooo          ",
+    "   oDDDDDDDDDDDDDDDDo    ",
+    "   odDDDDDDDDDDDDDDdo    ",
+    "   oddddddddddddddddo    ",
+    "     od          do      ",
+    "     od          do      ",
+  ];
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center" style={style}>
-      <div className="relative h-8 w-14 border border-black/40 bg-zinc-950 shadow-sm">
-        <span className={cn(
-          "absolute left-2 top-2 h-1.5 w-8 bg-[var(--monitor)] opacity-70",
-          active ? "animate-pulse" : "",
-        )} />
-        <span className="absolute left-2 top-5 h-1 w-5 bg-white/30" />
-        <span className="absolute right-2 top-4 h-1 w-2 bg-white/20" />
-      </div>
-      <div className="h-2 w-5 bg-zinc-700" />
-      <div className="relative h-7 w-24 border border-black/35 bg-[var(--desk)] shadow-md">
-        <span className="absolute left-4 top-2 h-1 w-9 bg-white/25" />
-        <span className="absolute right-4 top-2 h-1 w-3 bg-white/20" />
-        <span className="absolute bottom-0 left-3 h-3 w-1.5 bg-black/30" />
-        <span className="absolute bottom-0 right-3 h-3 w-1.5 bg-black/30" />
-      </div>
+    <div className={cn("absolute inset-x-0 bottom-0 z-20 flex justify-center", active ? "brightness-110" : "")}>
+      <PixelGrid rows={rows} colors={actorPixelColors(actor)} pixel={4} />
+    </div>
+  );
+}
+
+function PixelRoomProp({ kind, className }: { kind: "terminal" | "board"; className?: string }) {
+  const colors = {
+    o: "#101014",
+    b: "#1b2230",
+    B: "#2e3c54",
+    g: "#20d18f",
+    w: "#c8f7ff",
+    y: "#f2c14e",
+    r: "#e25555",
+  };
+  const rows = kind === "terminal"
+    ? [
+      "  oooooooooooo  ",
+      "  obbbbbbbbbbo  ",
+      "  obgggggggbbo  ",
+      "  obbbbbbbbbbo  ",
+      "    oooooooo    ",
+      "     oooooo     ",
+    ]
+    : [
+      "oooooooooooooo",
+      "owwwwwwwwwwwo",
+      "owgywwwwryywo",
+      "owwwwwwwwwwwo",
+      "oooooooooooooo",
+    ];
+
+  return (
+    <div className={cn("absolute z-0 opacity-90", className)}>
+      <PixelGrid rows={rows} colors={colors} pixel={4} />
     </div>
   );
 }
@@ -326,25 +397,27 @@ function RoomActorSprite({
   return (
     <div
       data-testid="room-actor-sprite"
-      className="absolute z-20 flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+      className="absolute z-20 flex w-32 -translate-x-1/2 -translate-y-1/2 flex-col items-center"
       style={{ left: `${left}%`, top: `${top}%` }}
       title={`${actor.name} · ${actor.state} · ${workLine}`}
     >
-      <div className="relative h-[86px] w-28">
+      <div className="relative h-[92px] w-32">
         <Workstation actor={actor} />
         <PixelAvatar actor={actor} />
         <span className={cn(
-          "absolute right-2 top-3 z-30 h-3 w-3 rounded-full border border-background shadow-sm",
+          "absolute right-3 top-4 z-30 h-3 w-3 border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.55)]",
           stateDot[actor.state] ?? stateDot.idle,
-          actor.state === "working" || actor.state === "requested" ? "animate-pulse" : "",
         )} />
       </div>
-      <div className={cn("w-full border px-2 py-1 shadow-sm backdrop-blur-sm", tone)}>
+      <div className={cn(
+        "w-full border-2 px-2 py-1 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]",
+        tone,
+      )}>
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-[11px] font-semibold">{label}</span>
-          <span className="shrink-0 text-[10px] capitalize opacity-80">{actorStateLabel(actor)}</span>
+          <span className="min-w-0 truncate text-[10px] font-bold uppercase leading-none">{label}</span>
+          <span className="shrink-0 text-[9px] uppercase leading-none opacity-85">{actorStateLabel(actor)}</span>
         </div>
-        <p className="mt-0.5 truncate text-[10px] opacity-80">{roomLine}</p>
+        <p className="mt-1 truncate text-[9px] uppercase leading-none opacity-85">{roomLine}</p>
       </div>
     </div>
   );
@@ -1089,31 +1162,29 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
       <SectionTitle title="Workspace Room" aside="sample workspace map" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
         <div
-          className="relative h-[390px] overflow-hidden border border-border bg-muted/20"
+          className="relative h-[430px] overflow-hidden border-2 border-border bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(0,0,0,0.24)]"
           style={{
             backgroundImage:
-              "linear-gradient(to right, hsl(var(--border) / 0.42) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border) / 0.42) 1px, transparent 1px), linear-gradient(135deg, hsl(var(--muted) / 0.18), transparent 58%)",
-            backgroundSize: "48px 48px",
+              "linear-gradient(45deg, rgba(255,255,255,0.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.035) 75%), linear-gradient(45deg, rgba(0,0,0,0.22) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.22) 75%), linear-gradient(to right, rgba(255,255,255,0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(255,255,255,0.06) 2px, transparent 2px)",
+            backgroundPosition: "0 0, 16px 16px, 0 0, 0 0",
+            backgroundSize: "32px 32px, 32px 32px, 32px 32px, 32px 32px",
+            imageRendering: "pixelated",
           }}
         >
-          <div className="absolute inset-x-10 top-1/2 h-px bg-border/60" />
-          <div className="absolute inset-y-8 left-1/2 w-px bg-border/60" />
+          <div className="absolute inset-x-8 top-1/2 h-1 bg-black/35" />
+          <div className="absolute inset-y-8 left-1/2 w-1 bg-black/35" />
           {data.room.zones.map((zone) => (
             <div
               key={zone.id}
-              className="absolute z-0 min-w-24 -translate-x-1/2 -translate-y-1/2 border border-border bg-background/80 px-3 py-2 shadow-sm"
+              className="absolute z-0 min-w-24 -translate-x-1/2 -translate-y-1/2 border-2 border-black bg-[#12151d]/95 px-3 py-2 font-mono shadow-[4px_4px_0_rgba(0,0,0,0.5)]"
               style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
             >
-              <p className="text-xs font-semibold">{zone.label}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{formatNumber(zone.workCount)} work</p>
+              <p className="text-[11px] font-bold uppercase leading-none text-white">{zone.label}</p>
+              <p className="mt-1 text-[9px] uppercase leading-none text-cyan-200">{formatNumber(zone.workCount)} work</p>
             </div>
           ))}
-          <div className="absolute bottom-5 right-5 z-0 h-16 w-24 border border-border bg-background/70">
-            <div className="mx-auto mt-3 h-6 w-14 border border-border bg-zinc-950">
-              <div className="ml-2 mt-2 h-1 w-8 bg-emerald-300/50" />
-            </div>
-            <div className="mx-auto mt-1 h-1 w-8 bg-muted-foreground/40" />
-          </div>
+          <PixelRoomProp kind="board" className="left-[7%] top-[22%]" />
+          <PixelRoomProp kind="terminal" className="bottom-6 right-7" />
           {roomActorEntries.map(({ actor, slotIndex }) => (
             <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
           ))}
