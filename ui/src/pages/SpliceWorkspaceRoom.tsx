@@ -53,6 +53,8 @@ import {
   type SpliceOfficeApprovalsData,
   type SpliceOfficeInboxData,
   type SpliceOfficeRoutinesData,
+  type SpliceOfficeTimelineData,
+  type SpliceOfficeTimelineEvent,
   type SpliceReview,
   type SpliceWorkProduct,
   type SpliceWorkThreadComment,
@@ -2767,45 +2769,194 @@ function CommsTab({
   );
 }
 
-function ActivityTab({ data, messages }: { data: SpliceWorkspaceRoomData; messages: SpliceAgentMessage[] }) {
+function timelineKindIcon(kind: string): LucideIcon {
+  if (kind === "message") return MessageSquare;
+  if (kind === "run") return Rocket;
+  if (kind === "routine") return Repeat2;
+  if (kind === "approval" || kind === "approval_decision") return CheckCircle2;
+  if (kind === "review" || kind === "review_decision") return ShieldAlert;
+  if (kind === "comment" || kind === "work_product") return SquarePen;
+  if (kind === "work") return CircleDot;
+  return Activity;
+}
+
+function timelineKindLabel(kind: string): string {
+  return kind
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function timelineSeverityClass(severity: string): string {
+  if (severity === "high") return "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-200";
+  if (severity === "medium") return "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-200";
+  return "border-border bg-muted/40 text-muted-foreground";
+}
+
+function TimelineEventRow({
+  event,
+  onOpenTab,
+}: {
+  event: SpliceOfficeTimelineEvent;
+  onOpenTab: (tab: RoomTab) => void;
+}) {
+  const Icon = timelineKindIcon(event.kind);
+  const targetTab = roomTabs.some((tab) => tab.value === event.targetTab) ? event.targetTab as RoomTab : null;
+
+  return (
+    <article className="grid gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:grid-cols-[42px_minmax(0,1fr)]">
+      <div className="flex h-9 w-9 items-center justify-center border border-border bg-background">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 break-words text-sm font-semibold">{event.title}</p>
+          <span className={cn("inline-flex shrink-0 items-center border px-1.5 py-0.5 text-[10px] font-medium", timelineSeverityClass(event.severity))}>
+            {timelineKindLabel(event.kind)}
+          </span>
+        </div>
+        <p className="mt-1 break-words text-xs text-muted-foreground">
+          {event.actorName} · {event.status.replace(/_/g, " ")} · {formatIsoAge(event.createdAt)}
+        </p>
+        {event.subtitle ? <p className="mt-1 break-words text-xs text-muted-foreground">{event.subtitle}</p> : null}
+        {event.body ? <p className="mt-2 break-words text-sm text-muted-foreground">{event.body}</p> : null}
+        {targetTab ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab(targetTab)} className="mt-3 max-w-full gap-1.5">
+            <FolderOpen className="h-3.5 w-3.5" />
+            <span className="truncate">Open {roomTabLabel(targetTab)}</span>
+          </Button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function OfficeZoneSignalBoard({
+  data,
+  timeline,
+  messages,
+  onOpenTab,
+}: {
+  data: SpliceWorkspaceRoomData;
+  timeline: SpliceOfficeTimelineData | null;
+  messages: SpliceAgentMessage[];
+  onOpenTab: (tab: RoomTab) => void;
+}) {
+  const counts = timeline?.counts;
+  const zones: Array<{ tab: RoomTab; title: string; value: number; subtitle: string; icon: LucideIcon }> = [
+    { tab: "desk", title: "Work Desks", value: counts?.work ?? data.activity.length, subtitle: `${data.lanes.active.length} active · ${data.lanes.review.length} review`, icon: SquarePen },
+    { tab: "comms", title: "Comms", value: counts?.messages ?? messages.length, subtitle: `${messages.length} queued messages`, icon: MessageSquare },
+    { tab: "agents", title: "Runner", value: counts?.runs ?? data.requests.length, subtitle: `${data.requests.length} wake requests`, icon: Rocket },
+    { tab: "approvals", title: "Gates", value: (counts?.approvals ?? 0) + (counts?.reviews ?? 0), subtitle: `${counts?.approvals ?? 0} approvals · ${counts?.reviews ?? 0} reviews`, icon: ShieldAlert },
+    { tab: "routines", title: "Routines", value: counts?.routines ?? 0, subtitle: "heartbeat and manual wake logs", icon: Repeat2 },
+  ];
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Office Zones" aside="click a desk" />
+      <div className="border border-border">
+        {zones.map((zone) => {
+          const Icon = zone.icon;
+          return (
+            <button
+              key={zone.tab}
+              type="button"
+              onClick={() => onOpenTab(zone.tab)}
+              className="grid w-full grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-accent/50"
+            >
+              <span className="flex h-8 w-8 items-center justify-center border border-border bg-background">
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">{zone.title}</span>
+                <span className="block truncate text-xs text-muted-foreground">{zone.subtitle}</span>
+              </span>
+              <span className="text-lg font-semibold tabular-nums">{formatNumber(zone.value)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ActivityTab({
+  data,
+  messages,
+  timeline,
+  onOpenTab,
+}: {
+  data: SpliceWorkspaceRoomData;
+  messages: SpliceAgentMessage[];
+  timeline: SpliceOfficeTimelineData | null;
+  onOpenTab: (tab: RoomTab) => void;
+}) {
+  const events = timeline?.events ?? [];
+  const counts = timeline?.counts;
+
   return (
     <div className="space-y-4">
-      <SectionTitle title="Activity" aside={`${data.activity.length} events`} />
-      <ActivityList items={data.activity} />
-
       <section className="space-y-3">
-        <SectionTitle title="Run Queue" aside={`${data.requests.length} requests`} />
-        <div className="border border-border">
-          {data.requests.length ? data.requests.map((request) => (
-            <EntityRow
-              key={request.id}
-              title={request.agentName}
-              subtitle={request.note ?? "No note"}
-              leading={<Activity className="h-4 w-4 text-muted-foreground" />}
-              trailing={<StatusBadge status={request.status} />}
-            />
-          )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No queued agent runs.</p>
-          )}
+        <SectionTitle title="Office Timeline" aside={`${events.length || data.activity.length} events`} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard icon={Activity} value={counts?.total ?? data.activity.length} label="Office Events" description="timeline signals" />
+          <MetricCard icon={SquarePen} value={counts?.work ?? data.activity.length} label="Work" description="desk and board activity" />
+          <MetricCard icon={MessageSquare} value={counts?.messages ?? messages.length} label="Comms" description="operator to agents" />
+          <MetricCard icon={ShieldAlert} value={(counts?.approvals ?? 0) + (counts?.reviews ?? 0)} label="Gates" description="review and approvals" />
         </div>
       </section>
 
-      <section className="space-y-3">
-        <SectionTitle title="Office Messages" aside={`${messages.length} messages`} />
-        <div className="border border-border">
-          {messages.length ? messages.slice(0, 12).map((message) => (
-            <EntityRow
-              key={message.id}
-              title={compactAgentName(message.agentName, data.name)}
-              subtitle={message.body.length > 140 ? `${message.body.slice(0, 137)}...` : message.body}
-              leading={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
-              trailing={<span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>}
-            />
-          )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No office messages yet.</p>
-          )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="space-y-3">
+          <SectionTitle title="Live Office Log" aside={timeline ? `updated ${formatIsoAge(timeline.generatedAt)}` : "waiting"} />
+          <div className="border border-border">
+            {events.length ? events.map((event) => (
+              <TimelineEventRow key={event.id} event={event} onOpenTab={onOpenTab} />
+            )) : (
+              <div className="space-y-3 px-4 py-4">
+                <p className="text-sm text-muted-foreground">No office timeline signals yet.</p>
+                <ActivityList items={data.activity} />
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="space-y-4">
+          <OfficeZoneSignalBoard data={data} timeline={timeline} messages={messages} onOpenTab={onOpenTab} />
+          <section className="space-y-3">
+            <SectionTitle title="Run Queue" aside={`${data.requests.length} requests`} />
+            <div className="border border-border">
+              {data.requests.length ? data.requests.map((request) => (
+                <EntityRow
+                  key={request.id}
+                  title={request.agentName}
+                  subtitle={request.note ?? "No note"}
+                  leading={<Activity className="h-4 w-4 text-muted-foreground" />}
+                  trailing={<StatusBadge status={request.status} />}
+                />
+              )) : (
+                <p className="px-4 py-4 text-sm text-muted-foreground">No queued agent runs.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <SectionTitle title="Office Messages" aside={`${messages.length} messages`} />
+            <div className="border border-border">
+              {messages.length ? messages.slice(0, 8).map((message) => (
+                <EntityRow
+                  key={message.id}
+                  title={compactAgentName(message.agentName, data.name)}
+                  subtitle={message.body.length > 120 ? `${message.body.slice(0, 117)}...` : message.body}
+                  leading={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+                  trailing={<span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>}
+                />
+              )) : (
+                <p className="px-4 py-4 text-sm text-muted-foreground">No office messages yet.</p>
+              )}
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -3104,6 +3255,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomApprovals(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const timelineQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "timeline"],
+    queryFn: () => spliceApi.workspaceRoomTimeline(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => {
@@ -3111,6 +3267,7 @@ export function SpliceWorkspaceRoom() {
       void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
       void routinesQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const sendMessageMutation = useMutation({
@@ -3121,12 +3278,16 @@ export function SpliceWorkspaceRoom() {
       void inboxQuery.refetch();
       void messagesQuery.refetch();
       void agentConsoleQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const updateRoutineMutation = useMutation({
     mutationFn: ({ routineId, input }: { routineId: string; input: { enabled?: boolean; intervalMinutes?: number } }) =>
       spliceApi.updateWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId, input),
-    onSuccess: () => void routinesQuery.refetch(),
+    onSuccess: () => {
+      void routinesQuery.refetch();
+      void timelineQuery.refetch();
+    },
   });
   const runRoutineMutation = useMutation({
     mutationFn: (routineId: string) => spliceApi.runWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId),
@@ -3135,6 +3296,7 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const createApprovalMutation = useMutation({
@@ -3143,6 +3305,7 @@ export function SpliceWorkspaceRoom() {
     onSuccess: () => {
       void approvalsQuery.refetch();
       void inboxQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const decideApprovalMutation = useMutation({
@@ -3153,17 +3316,24 @@ export function SpliceWorkspaceRoom() {
       void inboxQuery.refetch();
       void roomQuery.refetch();
       void agentConsoleQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const addCommentMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; body: string }) =>
       spliceApi.createWorkspaceRoomComment(PUZZLE_TESTBED_ID, input),
-    onSuccess: () => void workThreadQuery.refetch(),
+    onSuccess: () => {
+      void workThreadQuery.refetch();
+      void timelineQuery.refetch();
+    },
   });
   const addWorkProductMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) =>
       spliceApi.createWorkspaceRoomWorkProduct(PUZZLE_TESTBED_ID, input),
-    onSuccess: () => void workThreadQuery.refetch(),
+    onSuccess: () => {
+      void workThreadQuery.refetch();
+      void timelineQuery.refetch();
+    },
   });
   const requestReviewMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) =>
@@ -3171,6 +3341,7 @@ export function SpliceWorkspaceRoom() {
     onSuccess: () => {
       void reviewsQuery.refetch();
       void inboxQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const decideReviewMutation = useMutation({
@@ -3179,12 +3350,16 @@ export function SpliceWorkspaceRoom() {
     onSuccess: () => {
       void reviewsQuery.refetch();
       void inboxQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
   const updateInboxMutation = useMutation({
     mutationFn: ({ itemId, status }: { itemId: string; status: "open" | "done" }) =>
       spliceApi.updateWorkspaceRoomInboxStatus(PUZZLE_TESTBED_ID, itemId, status),
-    onSuccess: () => void inboxQuery.refetch(),
+    onSuccess: () => {
+      void inboxQuery.refetch();
+      void timelineQuery.refetch();
+    },
   });
   const dispatchRunnerMutation = useMutation({
     mutationFn: (dryRun: boolean) => spliceApi.dispatchRunner(dryRun),
@@ -3195,6 +3370,7 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void routinesQuery.refetch();
+      void timelineQuery.refetch();
     },
     onError: (error) => {
       setRunnerNotice(error instanceof Error ? error.message : "Runner dispatch failed.");
@@ -3241,6 +3417,7 @@ export function SpliceWorkspaceRoom() {
   const reviews = reviewsQuery.data?.reviews ?? [];
   const routines = routinesQuery.data ?? null;
   const approvals = approvalsQuery.data ?? null;
+  const timeline = timelineQuery.data ?? null;
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
     ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
     : null;
@@ -3273,8 +3450,9 @@ export function SpliceWorkspaceRoom() {
         void reviewsQuery.refetch();
         void routinesQuery.refetch();
         void approvalsQuery.refetch();
+        void timelineQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching || timelineQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -3362,7 +3540,7 @@ export function SpliceWorkspaceRoom() {
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
         />
       )}
-      {activeTab === "activity" && <ActivityTab data={data} messages={messages} />}
+      {activeTab === "activity" && <ActivityTab data={data} messages={messages} timeline={timeline} onOpenTab={setActiveTab} />}
       {activeTab === "details" && <DetailsTab data={data} />}
     </PuzzleWorkspaceShell>
   );

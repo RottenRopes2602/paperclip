@@ -435,6 +435,38 @@ export interface SpliceOfficeApprovalDecisionPost {
   runRequest: SpliceAgentRunRequest | null;
 }
 
+export interface SpliceOfficeTimelineEvent {
+  id: string;
+  kind: "run" | "message" | "comment" | "work_product" | "review" | "review_decision" | "approval" | "approval_decision" | "routine" | "work" | string;
+  title: string;
+  subtitle: string;
+  body: string;
+  actorName: string;
+  status: string;
+  createdAt: string;
+  targetTab: string;
+  targetType: string;
+  targetId: string;
+  severity: "low" | "medium" | "high" | string;
+}
+
+export interface SpliceOfficeTimelineData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  counts: {
+    total: number;
+    runs: number;
+    messages: number;
+    approvals: number;
+    reviews: number;
+    routines: number;
+    work: number;
+    signals: number;
+  };
+  events: SpliceOfficeTimelineEvent[];
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -607,6 +639,8 @@ export const spliceApi = {
   overview: () => api.get<SpliceOverviewData>("/splice/overview"),
   workspaceRoom: (workspaceId: string) =>
     api.get<SpliceWorkspaceRoomData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/room`),
+  workspaceRoomTimeline: (workspaceId: string) =>
+    api.get<SpliceOfficeTimelineData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/timeline`),
   puzzleRoom: () => api.get<SpliceWorkspaceRoomData>("/splice/puzzle-room"),
   runAgent: (companyId: string, agentId: string) =>
     api.post<SpliceAgentRunRequest>(
