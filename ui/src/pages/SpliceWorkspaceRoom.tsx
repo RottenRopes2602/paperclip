@@ -48,6 +48,7 @@ import {
   spliceApi,
   type SpliceAgentConsoleData,
   type SpliceAgentMessage,
+  type SpliceAgentRunRequest,
   type SpliceExecutionLane,
   type SpliceInboxItem,
   type SpliceOfficeApprovalsData,
@@ -56,6 +57,7 @@ import {
   type SpliceOfficeTimelineData,
   type SpliceOfficeTimelineEvent,
   type SpliceReview,
+  type SpliceRunMonitorData,
   type SpliceWorkOrder,
   type SpliceWorkOrdersData,
   type SpliceWorkProduct,
@@ -71,12 +73,13 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { value: "inbox", label: "Inbox", icon: Inbox },
   { value: "lanes", label: "Lanes", icon: GitBranch },
+  { value: "runs", label: "Runs", icon: Rocket },
   { value: "intake", label: "Intake", icon: SquarePen },
   { value: "goals", label: "Goals", icon: Target },
   { value: "projects", label: "Projects", icon: FolderOpen },
@@ -732,6 +735,7 @@ function PuzzleSidebar({
   activeTab,
   data,
   inboxOpenCount,
+  runActiveCount,
   routineDueCount,
   workOrderOpenCount,
   onTabChange,
@@ -740,12 +744,12 @@ function PuzzleSidebar({
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
+  runActiveCount: number;
   routineDueCount: number;
   workOrderOpenCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
-  const activeRuns = data.requests.filter((request) => request.status === "requested" || request.status === "launched").length;
   const selectTab = (tab: RoomTab) => {
     onTabChange(tab);
     if (isMobile) setSidebarOpen(false);
@@ -754,6 +758,7 @@ function PuzzleSidebar({
   const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
   const inboxItem = roomTabs.find((item) => item.value === "inbox")!;
   const laneItem = roomTabs.find((item) => item.value === "lanes")!;
+  const runsItem = roomTabs.find((item) => item.value === "runs")!;
   const intakeItem = roomTabs.find((item) => item.value === "intake")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
@@ -820,7 +825,7 @@ function PuzzleSidebar({
                 Intake
               </span>
             </button>
-            <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={activeRuns} onSelect={selectTab} />
+            <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={runActiveCount} onSelect={selectTab} />
             <PuzzleSidebarNavItem
               activeTab={activeTab}
               item={inboxItem}
@@ -832,6 +837,12 @@ function PuzzleSidebar({
               item={laneItem}
               onSelect={selectTab}
               textBadge={`${data.executionLanes?.length ?? 0}`}
+            />
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
+              item={runsItem}
+              onSelect={selectTab}
+              textBadge={runActiveCount > 0 ? `${runActiveCount}` : undefined}
             />
           </div>
 
@@ -905,6 +916,7 @@ function PuzzleWorkspaceShell({
   children,
   data,
   inboxOpenCount,
+  runActiveCount,
   routineDueCount,
   workOrderOpenCount,
   onRefresh,
@@ -916,6 +928,7 @@ function PuzzleWorkspaceShell({
   children: ReactNode;
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
+  runActiveCount: number;
   routineDueCount: number;
   workOrderOpenCount: number;
   onRefresh: () => void;
@@ -941,6 +954,7 @@ function PuzzleWorkspaceShell({
         activeTab={activeTab}
         data={data}
         inboxOpenCount={inboxOpenCount}
+        runActiveCount={runActiveCount}
         routineDueCount={routineDueCount}
         workOrderOpenCount={workOrderOpenCount}
         onTabChange={onTabChange}
@@ -971,6 +985,7 @@ function DashboardTab({
   messages,
   onDispatchRunner,
   routines,
+  runs,
   reviews,
   runnerNotice,
   workOrders,
@@ -982,6 +997,7 @@ function DashboardTab({
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
   routines: SpliceOfficeRoutinesData | null;
+  runs: SpliceRunMonitorData | null;
   reviews: SpliceReview[];
   runnerNotice: string | null;
   workOrders: SpliceWorkOrdersData | null;
@@ -998,6 +1014,8 @@ function DashboardTab({
       </div>
 
       <ExecutionLanesPanel data={data} limit={3} />
+
+      <OfficeRunsSummary data={data} runs={runs} />
 
       <OfficeWorkOrdersSummary data={data} workOrders={workOrders} />
 
@@ -1031,6 +1049,54 @@ function DashboardTab({
         </div>
       </div>
     </div>
+  );
+}
+
+function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs: SpliceRunMonitorData | null }) {
+  const monitorRuns = runs?.runs ?? data.requests;
+  const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
+  const activeRuns = monitorRuns
+    .filter((run) => activeStatuses.has(String(run.status)))
+    .slice(0, 5);
+  const visibleRuns = activeRuns.length ? activeRuns : monitorRuns.slice(0, 5);
+  const fallbackCounts = {
+    total: monitorRuns.length,
+    active: activeRuns.length,
+    requested: monitorRuns.filter((run) => run.status === "requested").length,
+    launchReady: monitorRuns.filter((run) => run.status === "launch_ready").length,
+    launched: monitorRuns.filter((run) => run.status === "launched").length,
+    done: monitorRuns.filter((run) => run.status === "done").length,
+    failed: monitorRuns.filter((run) => run.status === "failed").length,
+    cancelled: monitorRuns.filter((run) => run.status === "cancelled").length,
+    terminal: monitorRuns.filter((run) => ["done", "failed", "cancelled"].includes(String(run.status))).length,
+  };
+  const counts = runs?.counts ?? fallbackCounts;
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Run Monitor" aside={`${counts.active} active · ${counts.total} total`} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${counts.requested} queued`} />
+          <MetricCard icon={Clock3} value={counts.launchReady} label="Ready" description="runner pickup" />
+          <MetricCard icon={Activity} value={counts.launched} label="Launched" description="process started" />
+          <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.done} done · ${counts.cancelled} canceled`} />
+        </div>
+        <div className="min-w-0 border border-border">
+          {visibleRuns.length ? visibleRuns.map((run) => (
+            <EntityRow
+              key={run.id}
+              title={compactAgentName(run.agentName, data.name)}
+              subtitle={run.note ?? run.launch?.outPath ?? "Wake request"}
+              leading={<Rocket className="h-4 w-4 text-muted-foreground" />}
+              trailing={<StatusBadge status={run.status} />}
+            />
+          )) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground">No run requests yet.</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1300,6 +1366,219 @@ function RunQueueBoard({
         ))}
       </div>
     </section>
+  );
+}
+
+function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
+  const terminalStatuses = new Set(["done", "failed", "cancelled"]);
+  const terminal = runs.filter((run) => terminalStatuses.has(String(run.status))).length;
+  return {
+    total: runs.length,
+    active: runs.length - terminal,
+    requested: runs.filter((run) => run.status === "requested").length,
+    launchReady: runs.filter((run) => run.status === "launch_ready").length,
+    launched: runs.filter((run) => run.status === "launched").length,
+    done: runs.filter((run) => run.status === "done").length,
+    failed: runs.filter((run) => run.status === "failed").length,
+    cancelled: runs.filter((run) => run.status === "cancelled").length,
+    terminal,
+  };
+}
+
+function RunMonitorCard({
+  data,
+  run,
+  onUpdateRunStatus,
+  updatingRunId,
+}: {
+  data: SpliceWorkspaceRoomData;
+  run: SpliceAgentRunRequest;
+  onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
+  updatingRunId: string | null;
+}) {
+  const status = String(run.status);
+  const isUpdating = updatingRunId === run.id;
+  const terminal = ["done", "failed", "cancelled"].includes(status);
+  const isLaunched = status === "launched";
+  const isQueued = status === "requested" || status === "launch_ready";
+  const runPath = run.launch?.outPath || run.launch?.promptPath || run.workspacePath || run.queue?.path || "";
+
+  return (
+    <article className="border border-border bg-background px-4 py-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={status} />
+            <span className="text-xs text-muted-foreground">{formatIsoAge(run.updatedAt || run.requestedAt)}</span>
+            {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
+          </div>
+          <h3 className="mt-2 truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</h3>
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{run.note ?? "Wake request"}</p>
+          {run.error ? <p className="mt-2 line-clamp-2 text-xs text-red-600 dark:text-red-300">{run.error}</p> : null}
+          <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+            <p className="min-w-0 truncate font-mono">{run.id}</p>
+            <p className="min-w-0 truncate font-mono">{runPath || "No launch path yet"}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {isQueued || isLaunched ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onUpdateRunStatus(run.id, "cancelled")}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+          ) : null}
+          {isLaunched ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onUpdateRunStatus(run.id, "failed", "Marked failed from Run Monitor.")}
+                disabled={isUpdating}
+              >
+                Fail
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onUpdateRunStatus(run.id, "done")}
+                disabled={isUpdating}
+                className="gap-1.5"
+              >
+                <CheckCircle2 className={cn("h-3.5 w-3.5", isUpdating && "animate-pulse")} />
+                Done
+              </Button>
+            </>
+          ) : null}
+          {terminal ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onUpdateRunStatus(run.id, "requested")}
+              disabled={isUpdating}
+              className="gap-1.5"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", isUpdating && "animate-spin")} />
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RunsTab({
+  data,
+  dispatchingRunner,
+  onDispatchRunner,
+  onUpdateRunStatus,
+  runnerNotice,
+  runs,
+  updatingRunId,
+}: {
+  data: SpliceWorkspaceRoomData;
+  dispatchingRunner: boolean;
+  onDispatchRunner: (dryRun: boolean) => void;
+  onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
+  runnerNotice: string | null;
+  runs: SpliceRunMonitorData | null;
+  updatingRunId: string | null;
+}) {
+  const runList = runs?.runs ?? data.requests;
+  const counts = runs?.counts ?? runMonitorFallbackCounts(runList);
+  const queuedCount = counts.requested + counts.launchReady;
+  const activeRuns = runList.filter((run) => ["requested", "launch_ready", "launched"].includes(String(run.status)));
+  const historyRuns = runList.filter((run) => !["requested", "launch_ready", "launched"].includes(String(run.status)));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <SectionTitle title="Run Monitor" aside={`${counts.active} active · ${counts.total} total`} />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onDispatchRunner(true)}
+            disabled={dispatchingRunner || queuedCount === 0}
+            className="gap-1.5"
+          >
+            <Activity className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+            Dry Run
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onDispatchRunner(false)}
+            disabled={dispatchingRunner || queuedCount === 0}
+            className="gap-1.5"
+          >
+            <Rocket className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+            Dispatch
+          </Button>
+        </div>
+      </div>
+
+      {runnerNotice ? (
+        <div className="border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {runnerNotice}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${queuedCount} queued`} />
+        <MetricCard icon={Clock3} value={counts.requested} label="Requested" description={`${counts.launchReady} ready`} />
+        <MetricCard icon={Activity} value={counts.launched} label="Launched" description="runner started" />
+        <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.done} done · ${counts.cancelled} canceled`} />
+      </div>
+
+      <section className="border border-border">
+        <div className="border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold">Queue</p>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{runs?.queuePath ?? data.requests[0]?.queue?.path ?? "No run queue path yet"}</p>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-w-0 space-y-3">
+          <SectionTitle title="Active Runs" aside={`${activeRuns.length}`} />
+          {activeRuns.length ? activeRuns.map((run) => (
+            <RunMonitorCard
+              key={run.id}
+              data={data}
+              run={run}
+              updatingRunId={updatingRunId}
+              onUpdateRunStatus={onUpdateRunStatus}
+            />
+          )) : (
+            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No active runs.</p>
+          )}
+        </section>
+
+        <aside className="min-w-0 space-y-3">
+          <SectionTitle title="Run History" aside={`${historyRuns.length}`} />
+          <div className="space-y-3">
+            {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
+              <RunMonitorCard
+                key={run.id}
+                data={data}
+                run={run}
+                updatingRunId={updatingRunId}
+                onUpdateRunStatus={onUpdateRunStatus}
+              />
+            )) : (
+              <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed runs yet.</p>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -3484,6 +3763,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomAgentConsole(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const runsQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "runs"],
+    queryFn: () => spliceApi.workspaceRoomRuns(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const workThreadQuery = useQuery({
     queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-thread"],
     queryFn: () => spliceApi.workspaceRoomWorkThread(PUZZLE_TESTBED_ID),
@@ -3520,6 +3804,7 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void routinesQuery.refetch();
       void timelineQuery.refetch();
     },
@@ -3532,6 +3817,7 @@ export function SpliceWorkspaceRoom() {
       void inboxQuery.refetch();
       void messagesQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void timelineQuery.refetch();
     },
   });
@@ -3550,6 +3836,7 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void timelineQuery.refetch();
     },
   });
@@ -3570,6 +3857,7 @@ export function SpliceWorkspaceRoom() {
       void inboxQuery.refetch();
       void roomQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void timelineQuery.refetch();
     },
   });
@@ -3623,6 +3911,7 @@ export function SpliceWorkspaceRoom() {
         : `Runner dispatched ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`);
       void roomQuery.refetch();
       void inboxQuery.refetch();
+      void runsQuery.refetch();
       void routinesQuery.refetch();
       void timelineQuery.refetch();
     },
@@ -3639,6 +3928,7 @@ export function SpliceWorkspaceRoom() {
       void timelineQuery.refetch();
       void roomQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
     },
   });
   const updateWorkOrderStatusMutation = useMutation({
@@ -3650,6 +3940,18 @@ export function SpliceWorkspaceRoom() {
       void timelineQuery.refetch();
       void roomQuery.refetch();
       void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
+    },
+  });
+  const updateRunStatusMutation = useMutation({
+    mutationFn: ({ runId, status, error }: { runId: string; status: string; error?: string }) =>
+      spliceApi.updateWorkspaceRoomRunStatus(PUZZLE_TESTBED_ID, runId, { status, error }),
+    onSuccess: () => {
+      void runsQuery.refetch();
+      void roomQuery.refetch();
+      void inboxQuery.refetch();
+      void agentConsoleQuery.refetch();
+      void timelineQuery.refetch();
     },
   });
 
@@ -3689,6 +3991,7 @@ export function SpliceWorkspaceRoom() {
   const inbox = inboxQuery.data ?? null;
   const messages = messagesQuery.data?.messages ?? [];
   const agentConsole = agentConsoleQuery.data ?? null;
+  const runs = runsQuery.data ?? null;
   const workThread = workThreadQuery.data;
   const reviews = reviewsQuery.data?.reviews ?? [];
   const routines = routinesQuery.data ?? null;
@@ -3710,6 +4013,7 @@ export function SpliceWorkspaceRoom() {
   const runningRoutineId = runRoutineMutation.isPending ? runRoutineMutation.variables ?? null : null;
   const decidingApprovalId = decideApprovalMutation.isPending ? decideApprovalMutation.variables?.approvalId ?? null : null;
   const updatingWorkOrderId = updateWorkOrderStatusMutation.isPending ? updateWorkOrderStatusMutation.variables?.workOrderId ?? null : null;
+  const updatingRunId = updateRunStatusMutation.isPending ? updateRunStatusMutation.variables?.runId ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
@@ -3717,6 +4021,7 @@ export function SpliceWorkspaceRoom() {
       approvalPendingCount={approvals?.counts.pending ?? 0}
       activeTab={activeTab}
       inboxOpenCount={inbox?.counts.open ?? 0}
+      runActiveCount={runs?.counts.active ?? data.requests.filter((request) => ["requested", "launch_ready", "launched"].includes(String(request.status))).length}
       routineDueCount={routines?.counts.due ?? 0}
       workOrderOpenCount={workOrders?.counts.open ?? 0}
       onTabChange={setActiveTab}
@@ -3725,6 +4030,7 @@ export function SpliceWorkspaceRoom() {
         void inboxQuery.refetch();
         void messagesQuery.refetch();
         void agentConsoleQuery.refetch();
+        void runsQuery.refetch();
         void workThreadQuery.refetch();
         void reviewsQuery.refetch();
         void routinesQuery.refetch();
@@ -3732,7 +4038,7 @@ export function SpliceWorkspaceRoom() {
         void timelineQuery.refetch();
         void workOrdersQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching || timelineQuery.isFetching || workOrdersQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || runsQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching || timelineQuery.isFetching || workOrdersQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -3743,6 +4049,7 @@ export function SpliceWorkspaceRoom() {
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
           routines={routines}
+          runs={runs}
           reviews={reviews}
           runnerNotice={runnerNotice}
           workOrders={workOrders}
@@ -3757,6 +4064,17 @@ export function SpliceWorkspaceRoom() {
         />
       )}
       {activeTab === "lanes" && <LanesTab data={data} />}
+      {activeTab === "runs" && (
+        <RunsTab
+          data={data}
+          dispatchingRunner={dispatchRunnerMutation.isPending}
+          runs={runs}
+          runnerNotice={runnerNotice}
+          updatingRunId={updatingRunId}
+          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onUpdateRunStatus={(runId, status, error) => updateRunStatusMutation.mutate({ runId, status, error })}
+        />
+      )}
       {activeTab === "intake" && (
         <IntakeTab
           creatingWorkOrder={createWorkOrderMutation.isPending}

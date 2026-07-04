@@ -4,14 +4,36 @@ export interface SpliceAgentRunRequest {
   id: string;
   companyId: string;
   companyName: string;
+  workspacePath?: string;
   agentId: string;
   agentName: string;
-  status: "requested" | "launch_ready" | "launched" | "failed" | string;
+  status: "requested" | "launch_ready" | "launched" | "done" | "failed" | "cancelled" | string;
   requestedAt: string;
   updatedAt: string;
+  launchedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  failedAt?: string | null;
+  error?: string | null;
   note?: string;
+  operatorNote?: string | null;
   ageSeconds?: number;
-  state?: "fresh" | "waiting" | "launched";
+  state?: "fresh" | "waiting" | "launched" | "terminal";
+  queue?: {
+    store: string;
+    path: string;
+  };
+  process?: {
+    pid: number | null;
+  } | null;
+  launch?: {
+    card?: string;
+    promptPath?: string;
+    outPath?: string;
+    workspacePath?: string;
+    dryRun?: boolean;
+    codexHome?: string;
+  } | null;
 }
 
 export interface SpliceWorkspaceAgent {
@@ -103,6 +125,30 @@ export interface SpliceRunnerDispatch {
   pending: number;
   requestId: string;
   runner: SpliceOverviewData["runner"];
+}
+
+export interface SpliceRunMonitorData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  runner: SpliceOverviewData["runner"];
+  counts: {
+    total: number;
+    active: number;
+    requested: number;
+    launchReady: number;
+    launched: number;
+    done: number;
+    failed: number;
+    cancelled: number;
+    terminal: number;
+  };
+  runs: SpliceAgentRunRequest[];
+}
+
+export interface SpliceRunStatusPost {
+  run: SpliceAgentRunRequest | null;
 }
 
 export interface SpliceAgentMessage {
@@ -732,6 +778,17 @@ export const spliceApi = {
     api.get<SpliceAgentMessagesData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`),
   workspaceRoomAgentConsole: (workspaceId: string) =>
     api.get<SpliceAgentConsoleData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/agent-console`),
+  workspaceRoomRuns: (workspaceId: string) =>
+    api.get<SpliceRunMonitorData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/runs`),
+  updateWorkspaceRoomRunStatus: (
+    workspaceId: string,
+    runId: string,
+    input: { status: string; error?: string; note?: string },
+  ) =>
+    api.post<SpliceRunStatusPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/status`,
+      input,
+    ),
   workspaceRoomInbox: (workspaceId: string) =>
     api.get<SpliceOfficeInboxData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/inbox`),
   updateWorkspaceRoomInboxStatus: (workspaceId: string, itemId: string, status: "open" | "done") =>
