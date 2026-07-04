@@ -278,6 +278,7 @@ export interface SpliceOfficeInboxData {
     runs: number;
     messages: number;
     approvals?: number;
+    workOrders?: number;
     blocked: number;
   };
   items: SpliceInboxItem[];
@@ -461,10 +462,61 @@ export interface SpliceOfficeTimelineData {
     approvals: number;
     reviews: number;
     routines: number;
+    workOrders?: number;
     work: number;
     signals: number;
   };
   events: SpliceOfficeTimelineEvent[];
+}
+
+export interface SpliceWorkOrder {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  title: string;
+  body: string;
+  status: "requested" | "queued" | "in_progress" | "review" | "done" | "blocked" | "cancelled" | string;
+  priority: "low" | "medium" | "high" | "urgent" | string;
+  agentId: string | null;
+  agentName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  requester: "operator" | string;
+  createdAt: string;
+  updatedAt: string;
+  runRequestId: string | null;
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceWorkOrdersData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  counts: {
+    total: number;
+    open: number;
+    requested: number;
+    queued: number;
+    inProgress: number;
+    blocked: number;
+    done: number;
+  };
+  workOrders: SpliceWorkOrder[];
+}
+
+export interface SpliceWorkOrderPost {
+  workOrder: SpliceWorkOrder;
+  runRequest: SpliceAgentRunRequest | null;
+}
+
+export interface SpliceWorkOrderStatusPost {
+  workOrder: SpliceWorkOrder | null;
+  runRequest: SpliceAgentRunRequest | null;
 }
 
 export interface SpliceWorkspaceRoomWorkItem {
@@ -641,6 +693,25 @@ export const spliceApi = {
     api.get<SpliceWorkspaceRoomData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/room`),
   workspaceRoomTimeline: (workspaceId: string) =>
     api.get<SpliceOfficeTimelineData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/timeline`),
+  workspaceRoomWorkOrders: (workspaceId: string) =>
+    api.get<SpliceWorkOrdersData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/work-orders`),
+  createWorkspaceRoomWorkOrder: (
+    workspaceId: string,
+    input: { title: string; body: string; agentId?: string | null; projectId?: string | null; priority?: string; wakeAgent?: boolean },
+  ) =>
+    api.post<SpliceWorkOrderPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-orders`,
+      input,
+    ),
+  updateWorkspaceRoomWorkOrderStatus: (
+    workspaceId: string,
+    workOrderId: string,
+    input: { status: string; wakeAgent?: boolean },
+  ) =>
+    api.post<SpliceWorkOrderStatusPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-orders/${encodeURIComponent(workOrderId)}/status`,
+      input,
+    ),
   puzzleRoom: () => api.get<SpliceWorkspaceRoomData>("/splice/puzzle-room"),
   runAgent: (companyId: string, agentId: string) =>
     api.post<SpliceAgentRunRequest>(

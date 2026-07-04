@@ -56,6 +56,8 @@ import {
   type SpliceOfficeTimelineData,
   type SpliceOfficeTimelineEvent,
   type SpliceReview,
+  type SpliceWorkOrder,
+  type SpliceWorkOrdersData,
   type SpliceWorkProduct,
   type SpliceWorkThreadComment,
   type SpliceWorkspaceRoomActor,
@@ -69,12 +71,13 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { value: "inbox", label: "Inbox", icon: Inbox },
   { value: "lanes", label: "Lanes", icon: GitBranch },
+  { value: "intake", label: "Intake", icon: SquarePen },
   { value: "goals", label: "Goals", icon: Target },
   { value: "projects", label: "Projects", icon: FolderOpen },
   { value: "issues", label: "Issues", icon: CircleDot },
@@ -730,6 +733,7 @@ function PuzzleSidebar({
   data,
   inboxOpenCount,
   routineDueCount,
+  workOrderOpenCount,
   onTabChange,
 }: {
   approvalPendingCount: number;
@@ -737,6 +741,7 @@ function PuzzleSidebar({
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
   routineDueCount: number;
+  workOrderOpenCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
@@ -749,6 +754,7 @@ function PuzzleSidebar({
   const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
   const inboxItem = roomTabs.find((item) => item.value === "inbox")!;
   const laneItem = roomTabs.find((item) => item.value === "lanes")!;
+  const intakeItem = roomTabs.find((item) => item.value === "intake")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
   const reviewsItem = roomTabs.find((item) => item.value === "reviews")!;
@@ -805,13 +811,13 @@ function PuzzleSidebar({
           <div className="flex flex-col gap-0.5">
             <button
               type="button"
-              disabled
-              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground/60"
+              onClick={() => selectTab("intake")}
+              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
             >
               <SquarePen className="h-4 w-4 shrink-0" />
               <span className="flex-1 truncate">New Issue</span>
               <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                Read-only
+                Intake
               </span>
             </button>
             <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={activeRuns} onSelect={selectTab} />
@@ -830,6 +836,12 @@ function PuzzleSidebar({
           </div>
 
           <SidebarSection label="Work">
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
+              item={intakeItem}
+              onSelect={selectTab}
+              textBadge={workOrderOpenCount > 0 ? `${workOrderOpenCount}` : undefined}
+            />
             <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={deskItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={reviewsItem} onSelect={selectTab} />
@@ -894,6 +906,7 @@ function PuzzleWorkspaceShell({
   data,
   inboxOpenCount,
   routineDueCount,
+  workOrderOpenCount,
   onRefresh,
   onTabChange,
   refreshing,
@@ -904,6 +917,7 @@ function PuzzleWorkspaceShell({
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
   routineDueCount: number;
+  workOrderOpenCount: number;
   onRefresh: () => void;
   onTabChange: (tab: RoomTab) => void;
   refreshing: boolean;
@@ -928,6 +942,7 @@ function PuzzleWorkspaceShell({
         data={data}
         inboxOpenCount={inboxOpenCount}
         routineDueCount={routineDueCount}
+        workOrderOpenCount={workOrderOpenCount}
         onTabChange={onTabChange}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -958,6 +973,7 @@ function DashboardTab({
   routines,
   reviews,
   runnerNotice,
+  workOrders,
 }: {
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
@@ -968,6 +984,7 @@ function DashboardTab({
   routines: SpliceOfficeRoutinesData | null;
   reviews: SpliceReview[];
   runnerNotice: string | null;
+  workOrders: SpliceWorkOrdersData | null;
 }) {
   const issues = [...data.lanes.active, ...data.lanes.review, ...data.lanes.next, ...data.lanes.blocked];
 
@@ -981,6 +998,8 @@ function DashboardTab({
       </div>
 
       <ExecutionLanesPanel data={data} limit={3} />
+
+      <OfficeWorkOrdersSummary data={data} workOrders={workOrders} />
 
       <OfficeInboxSummary inbox={inbox} />
 
@@ -1012,6 +1031,36 @@ function DashboardTab({
         </div>
       </div>
     </div>
+  );
+}
+
+function OfficeWorkOrdersSummary({ data, workOrders }: { data: SpliceWorkspaceRoomData; workOrders: SpliceWorkOrdersData | null }) {
+  const visibleOrders = workOrders?.workOrders.slice(0, 5) ?? [];
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Work Intake" aside={`${workOrders?.counts.open ?? 0} open · ${workOrders?.counts.queued ?? 0} queued`} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MetricCard icon={SquarePen} value={workOrders?.counts.open ?? 0} label="Open" description={`${workOrders?.counts.total ?? 0} total`} />
+          <MetricCard icon={Rocket} value={workOrders?.counts.queued ?? 0} label="Queued" description="agent wake linked" />
+          <MetricCard icon={Activity} value={workOrders?.counts.inProgress ?? 0} label="Active" description="in progress" />
+          <MetricCard icon={ShieldAlert} value={workOrders?.counts.blocked ?? 0} label="Blocked" description={`${workOrders?.counts.done ?? 0} done`} />
+        </div>
+        <div className="min-w-0 border border-border">
+          {visibleOrders.length ? visibleOrders.map((workOrder) => (
+            <EntityRow
+              key={workOrder.id}
+              title={workOrder.title}
+              subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
+              leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
+              trailing={<StatusBadge status={workOrder.status} />}
+            />
+          )) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground">No work orders yet.</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1363,7 +1412,7 @@ function InboxTab({
         <MetricCard icon={Inbox} value={inbox?.counts.open ?? 0} label="Open" description={`${inbox?.counts.total ?? 0} total`} />
         <MetricCard icon={ShieldAlert} value={inbox?.counts.reviews ?? 0} label="Reviews" description="needs decision" />
         <MetricCard icon={Activity} value={inbox?.counts.runs ?? 0} label="Wakes" description="queued or running" />
-        <MetricCard icon={AlertTriangle} value={inbox?.counts.blocked ?? 0} label="Blocked" description={`${inbox?.counts.messages ?? 0} messages`} />
+        <MetricCard icon={SquarePen} value={inbox?.counts.workOrders ?? 0} label="Intake" description={`${inbox?.counts.messages ?? 0} messages · ${inbox?.counts.blocked ?? 0} blocked`} />
       </div>
 
       <section className="space-y-3">
@@ -1445,6 +1494,204 @@ function ProjectsTab({ projects }: { projects: SpliceWorkspaceRoomProject[] }) {
             )}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function IntakeTab({
+  creatingWorkOrder,
+  data,
+  onCreateWorkOrder,
+  onUpdateWorkOrderStatus,
+  updatingWorkOrderId,
+  workOrders,
+}: {
+  creatingWorkOrder: boolean;
+  data: SpliceWorkspaceRoomData;
+  onCreateWorkOrder: (input: { title: string; body: string; agentId?: string | null; projectId?: string | null; priority?: string; wakeAgent?: boolean }) => void;
+  onUpdateWorkOrderStatus: (workOrderId: string, status: string, wakeAgent?: boolean) => void;
+  updatingWorkOrderId: string | null;
+  workOrders: SpliceWorkOrdersData | null;
+}) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [agentId, setAgentId] = useState(data.agents[0]?.id ?? "");
+  const [projectId, setProjectId] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [wakeAgent, setWakeAgent] = useState(true);
+  const orders = workOrders?.workOrders ?? [];
+
+  useEffect(() => {
+    if (!data.agents.length) return;
+    if (!agentId || !data.agents.some((agent) => agent.id === agentId)) {
+      setAgentId(data.agents[0].id);
+    }
+  }, [agentId, data.agents]);
+
+  const submitWorkOrder = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+    if (!trimmedTitle || !trimmedBody || creatingWorkOrder) return;
+    setTitle("");
+    setBody("");
+    onCreateWorkOrder({
+      title: trimmedTitle,
+      body: trimmedBody,
+      agentId: agentId || null,
+      projectId: projectId || null,
+      priority,
+      wakeAgent,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Work Intake" aside={`${workOrders?.counts.open ?? 0} open`} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <section className="border border-border">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">New Work Order</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Create a PaperClip-style task signal for this office.</p>
+          </div>
+          <form className="space-y-3 px-4 py-4" onSubmit={submitWorkOrder}>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+              placeholder="Task title"
+              disabled={creatingWorkOrder}
+            />
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              className="min-h-36 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+              placeholder="What should the agent do?"
+              disabled={creatingWorkOrder}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="min-w-0 text-xs font-medium text-muted-foreground">
+                Agent
+                <select
+                  value={agentId}
+                  onChange={(event) => setAgentId(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  disabled={creatingWorkOrder}
+                >
+                  {data.agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {compactAgentName(agent.name, data.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-0 text-xs font-medium text-muted-foreground">
+                Project
+                <select
+                  value={projectId}
+                  onChange={(event) => setProjectId(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  disabled={creatingWorkOrder}
+                >
+                  <option value="">No project link</option>
+                  {data.projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <label className="min-w-0 text-xs font-medium text-muted-foreground">
+                Priority
+                <select
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value)}
+                  className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  disabled={creatingWorkOrder}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 self-end border border-border px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={wakeAgent}
+                  onChange={(event) => setWakeAgent(event.target.checked)}
+                  disabled={creatingWorkOrder}
+                />
+                Wake agent
+              </label>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={!title.trim() || !body.trim() || creatingWorkOrder} className="gap-1.5">
+                <Rocket className={cn("h-3.5 w-3.5", creatingWorkOrder && "animate-pulse")} />
+                {creatingWorkOrder ? "Creating" : "Create + Queue"}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        <section className="border border-border">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Intake Queue</p>
+            <span className="text-xs text-muted-foreground">{orders.length}</span>
+          </div>
+          <div className="divide-y divide-border">
+            {orders.length ? orders.map((order) => {
+              const updating = updatingWorkOrderId === order.id;
+              return (
+                <article key={order.id} className="px-4 py-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="break-words text-sm font-semibold">{order.title}</p>
+                      <StatusBadge status={order.status} />
+                    </div>
+                    <p className="mt-1 break-words text-xs text-muted-foreground">
+                      {order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"} · {order.projectName || "No project"} · {order.priority} · {formatIsoAge(order.createdAt)}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{order.body}</p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={updating || order.status === "in_progress"}
+                      onClick={() => onUpdateWorkOrderStatus(order.id, "in_progress", true)}
+                    >
+                      Start + Wake
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={updating || order.status === "blocked"}
+                      onClick={() => onUpdateWorkOrderStatus(order.id, "blocked")}
+                    >
+                      Block
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={updating || order.status === "done"}
+                      onClick={() => onUpdateWorkOrderStatus(order.id, "done")}
+                    >
+                      Done
+                    </Button>
+                  </div>
+                </article>
+              );
+            }) : (
+              <p className="px-4 py-4 text-sm text-muted-foreground">No work orders yet.</p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -2775,6 +3022,7 @@ function timelineKindIcon(kind: string): LucideIcon {
   if (kind === "routine") return Repeat2;
   if (kind === "approval" || kind === "approval_decision") return CheckCircle2;
   if (kind === "review" || kind === "review_decision") return ShieldAlert;
+  if (kind === "work_order") return SquarePen;
   if (kind === "comment" || kind === "work_product") return SquarePen;
   if (kind === "work") return CircleDot;
   return Activity;
@@ -2843,6 +3091,7 @@ function OfficeZoneSignalBoard({
 }) {
   const counts = timeline?.counts;
   const zones: Array<{ tab: RoomTab; title: string; value: number; subtitle: string; icon: LucideIcon }> = [
+    { tab: "intake", title: "Work Intake", value: counts?.workOrders ?? 0, subtitle: "new work orders", icon: SquarePen },
     { tab: "desk", title: "Work Desks", value: counts?.work ?? data.activity.length, subtitle: `${data.lanes.active.length} active · ${data.lanes.review.length} review`, icon: SquarePen },
     { tab: "comms", title: "Comms", value: counts?.messages ?? messages.length, subtitle: `${messages.length} queued messages`, icon: MessageSquare },
     { tab: "agents", title: "Runner", value: counts?.runs ?? data.requests.length, subtitle: `${data.requests.length} wake requests`, icon: Rocket },
@@ -3260,6 +3509,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomTimeline(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const workOrdersQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-orders"],
+    queryFn: () => spliceApi.workspaceRoomWorkOrders(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => {
@@ -3376,6 +3630,28 @@ export function SpliceWorkspaceRoom() {
       setRunnerNotice(error instanceof Error ? error.message : "Runner dispatch failed.");
     },
   });
+  const createWorkOrderMutation = useMutation({
+    mutationFn: (input: { title: string; body: string; agentId?: string | null; projectId?: string | null; priority?: string; wakeAgent?: boolean }) =>
+      spliceApi.createWorkspaceRoomWorkOrder(PUZZLE_TESTBED_ID, input),
+    onSuccess: () => {
+      void workOrdersQuery.refetch();
+      void inboxQuery.refetch();
+      void timelineQuery.refetch();
+      void roomQuery.refetch();
+      void agentConsoleQuery.refetch();
+    },
+  });
+  const updateWorkOrderStatusMutation = useMutation({
+    mutationFn: ({ workOrderId, status, wakeAgent }: { workOrderId: string; status: string; wakeAgent?: boolean }) =>
+      spliceApi.updateWorkspaceRoomWorkOrderStatus(PUZZLE_TESTBED_ID, workOrderId, { status, wakeAgent }),
+    onSuccess: () => {
+      void workOrdersQuery.refetch();
+      void inboxQuery.refetch();
+      void timelineQuery.refetch();
+      void roomQuery.refetch();
+      void agentConsoleQuery.refetch();
+    },
+  });
 
   const data = roomQuery.data;
   const paperGoals = useMemo(() => (data?.goals ?? []).map(toPaperGoal), [data?.goals]);
@@ -3418,6 +3694,7 @@ export function SpliceWorkspaceRoom() {
   const routines = routinesQuery.data ?? null;
   const approvals = approvalsQuery.data ?? null;
   const timeline = timelineQuery.data ?? null;
+  const workOrders = workOrdersQuery.data ?? null;
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
     ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
     : null;
@@ -3432,6 +3709,7 @@ export function SpliceWorkspaceRoom() {
   const updatingRoutineId = updateRoutineMutation.isPending ? updateRoutineMutation.variables?.routineId ?? null : null;
   const runningRoutineId = runRoutineMutation.isPending ? runRoutineMutation.variables ?? null : null;
   const decidingApprovalId = decideApprovalMutation.isPending ? decideApprovalMutation.variables?.approvalId ?? null : null;
+  const updatingWorkOrderId = updateWorkOrderStatusMutation.isPending ? updateWorkOrderStatusMutation.variables?.workOrderId ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
@@ -3440,6 +3718,7 @@ export function SpliceWorkspaceRoom() {
       activeTab={activeTab}
       inboxOpenCount={inbox?.counts.open ?? 0}
       routineDueCount={routines?.counts.due ?? 0}
+      workOrderOpenCount={workOrders?.counts.open ?? 0}
       onTabChange={setActiveTab}
       onRefresh={() => {
         void roomQuery.refetch();
@@ -3451,8 +3730,9 @@ export function SpliceWorkspaceRoom() {
         void routinesQuery.refetch();
         void approvalsQuery.refetch();
         void timelineQuery.refetch();
+        void workOrdersQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching || timelineQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching || approvalsQuery.isFetching || timelineQuery.isFetching || workOrdersQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -3465,6 +3745,7 @@ export function SpliceWorkspaceRoom() {
           routines={routines}
           reviews={reviews}
           runnerNotice={runnerNotice}
+          workOrders={workOrders}
         />
       )}
       {activeTab === "inbox" && (
@@ -3476,6 +3757,17 @@ export function SpliceWorkspaceRoom() {
         />
       )}
       {activeTab === "lanes" && <LanesTab data={data} />}
+      {activeTab === "intake" && (
+        <IntakeTab
+          creatingWorkOrder={createWorkOrderMutation.isPending}
+          data={data}
+          updatingWorkOrderId={updatingWorkOrderId}
+          workOrders={workOrders}
+          onCreateWorkOrder={(input) => createWorkOrderMutation.mutate(input)}
+          onUpdateWorkOrderStatus={(workOrderId, status, wakeAgent) =>
+            updateWorkOrderStatusMutation.mutate({ workOrderId, status, wakeAgent })}
+        />
+      )}
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
       {activeTab === "issues" && <IssuesTab data={data} />}
