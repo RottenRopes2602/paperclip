@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
@@ -75,6 +75,26 @@ const stateDot: Record<string, string> = {
   blocked: "bg-red-500",
   idle: "bg-muted-foreground/40",
 };
+
+const actorStateTone: Record<string, string> = {
+  working: "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+  reviewing: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+  requested: "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-200",
+  queued: "border-stone-500/35 bg-stone-500/10 text-stone-700 dark:text-stone-200",
+  present: "border-indigo-500/45 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200",
+  away: "border-border bg-muted/50 text-muted-foreground",
+  blocked: "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-200",
+  idle: "border-border bg-muted/50 text-muted-foreground",
+};
+
+const spritePalettes = [
+  { skin: "#f2c9a5", hair: "#27211f", shirt: "#2f7dd3", accent: "#9ad1ff", desk: "#273447" },
+  { skin: "#d7a47c", hair: "#16171a", shirt: "#2f9e77", accent: "#9be6c4", desk: "#263b35" },
+  { skin: "#f0b894", hair: "#5b3425", shirt: "#d97706", accent: "#ffd18a", desk: "#3d3328" },
+  { skin: "#c99673", hair: "#2d251f", shirt: "#7c5cff", accent: "#c7b8ff", desk: "#332d4a" },
+  { skin: "#f1d2b7", hair: "#3a2a24", shirt: "#d43f5e", accent: "#ffb3c1", desk: "#442a34" },
+  { skin: "#b98563", hair: "#1f1f1f", shirt: "#14a6a6", accent: "#9bf2f2", desk: "#233d43" },
+];
 
 const laneStateClass: Record<string, string> = {
   active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
@@ -153,6 +173,181 @@ function laneIcon(lane: SpliceExecutionLane): LucideIcon {
 
 function Dot({ state }: { state: string }) {
   return <span className={cn("h-2.5 w-2.5 rounded-full", stateDot[state] ?? stateDot.idle)} />;
+}
+
+function textHash(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function roomPercent(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : 50));
+}
+
+function actorPalette(actor: SpliceWorkspaceRoomActor) {
+  if (actor.slug === "you" || actor.role === "operator") return spritePalettes[3];
+  return spritePalettes[textHash(`${actor.slug}-${actor.role}`) % spritePalettes.length];
+}
+
+function actorWorkLine(actor: SpliceWorkspaceRoomActor): string {
+  const current = actor.currentWork[0]?.title;
+  if (current) return current;
+  if (actor.session) return `${actor.session.branch} · ${actor.session.dirty} dirty`;
+  if (actor.request) return "Run requested";
+  return actor.state === "away" ? "Away from room" : "Waiting for work";
+}
+
+function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
+  const counts = [
+    actor.activeCount ? `${actor.activeCount} active` : null,
+    actor.reviewCount ? `${actor.reviewCount} review` : null,
+    actor.queuedCount ? `${actor.queuedCount} queued` : null,
+  ].filter(Boolean);
+  if (counts.length) return counts.join(" · ");
+  if (actor.session) return `${actor.session.branch} · ${actor.session.dirty} dirty`;
+  if (actor.request) return "run requested";
+  return actor.state === "away" ? "no active lane" : "standing by";
+}
+
+function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
+  if (actor.state === "working") return "typing";
+  if (actor.state === "reviewing") return "reviewing";
+  if (actor.state === "requested") return "queued run";
+  if (actor.state === "blocked") return "blocked";
+  if (actor.state === "present") return "present";
+  if (actor.state === "away") return "away";
+  return actor.state.replace(/[-_]+/g, " ");
+}
+
+function actorSlotOffset(actor: SpliceWorkspaceRoomActor, slotIndex: number) {
+  const slotOffsets = [
+    { x: 0, y: 0 },
+    { x: 5, y: 15 },
+    { x: -5, y: 30 },
+    { x: 8, y: 45 },
+  ];
+  const zoneBase: Record<string, { x: number; y: number }> = {
+    strategy: { x: 7, y: 0 },
+    design: { x: -3, y: 0 },
+    build: { x: 0, y: 18 },
+    review: { x: -4, y: 4 },
+  };
+  const slot = slotOffsets[slotIndex % slotOffsets.length];
+  const base = zoneBase[actor.zone] ?? { x: 0, y: 0 };
+  return { x: base.x + slot.x, y: base.y + slot.y };
+}
+
+function PixelAvatar({ actor }: { actor: SpliceWorkspaceRoomActor }) {
+  const palette = actorPalette(actor);
+  const active = actor.state === "working" || actor.state === "reviewing" || actor.state === "requested";
+  const style = {
+    "--sprite-skin": palette.skin,
+    "--sprite-hair": palette.hair,
+    "--sprite-shirt": palette.shirt,
+    "--sprite-accent": palette.accent,
+  } as CSSProperties;
+
+  return (
+    <div className="absolute bottom-[15px] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center" style={style}>
+      <div className="relative h-5 w-6 border border-black/35 bg-[var(--sprite-skin)] shadow-[inset_0_-2px_rgba(0,0,0,0.16)]">
+        <span className="absolute left-0 top-0 h-2 w-full bg-[var(--sprite-hair)]" />
+        <span className="absolute left-1 top-2 h-1 w-1 bg-black/70" />
+        <span className="absolute right-1 top-2 h-1 w-1 bg-black/70" />
+        <span className="absolute bottom-1 left-2 h-px w-2 bg-black/45" />
+      </div>
+      <div className="relative h-6 w-8 border border-black/35 bg-[var(--sprite-shirt)] shadow-[inset_0_-2px_rgba(0,0,0,0.16)]">
+        <span className={cn(
+          "absolute -left-2 top-1 h-4 w-2 border border-black/30 bg-[var(--sprite-skin)]",
+          active ? "animate-pulse" : "",
+        )} />
+        <span className={cn(
+          "absolute -right-2 top-1 h-4 w-2 border border-black/30 bg-[var(--sprite-skin)]",
+          active ? "animate-pulse" : "",
+        )} />
+        <span className="absolute left-2 top-2 h-2 w-4 bg-[var(--sprite-accent)] opacity-80" />
+      </div>
+      <div className="flex gap-1">
+        <span className="h-3 w-2 border border-black/35 bg-slate-700" />
+        <span className="h-3 w-2 border border-black/35 bg-slate-700" />
+      </div>
+    </div>
+  );
+}
+
+function Workstation({ actor }: { actor: SpliceWorkspaceRoomActor }) {
+  const palette = actorPalette(actor);
+  const active = actor.state === "working" || actor.state === "reviewing" || actor.state === "requested";
+  const style = {
+    "--desk": palette.desk,
+    "--monitor": palette.accent,
+  } as CSSProperties;
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center" style={style}>
+      <div className="relative h-8 w-14 border border-black/40 bg-zinc-950 shadow-sm">
+        <span className={cn(
+          "absolute left-2 top-2 h-1.5 w-8 bg-[var(--monitor)] opacity-70",
+          active ? "animate-pulse" : "",
+        )} />
+        <span className="absolute left-2 top-5 h-1 w-5 bg-white/30" />
+        <span className="absolute right-2 top-4 h-1 w-2 bg-white/20" />
+      </div>
+      <div className="h-2 w-5 bg-zinc-700" />
+      <div className="relative h-7 w-24 border border-black/35 bg-[var(--desk)] shadow-md">
+        <span className="absolute left-4 top-2 h-1 w-9 bg-white/25" />
+        <span className="absolute right-4 top-2 h-1 w-3 bg-white/20" />
+        <span className="absolute bottom-0 left-3 h-3 w-1.5 bg-black/30" />
+        <span className="absolute bottom-0 right-3 h-3 w-1.5 bg-black/30" />
+      </div>
+    </div>
+  );
+}
+
+function RoomActorSprite({
+  actor,
+  workspaceName,
+  slotIndex,
+}: {
+  actor: SpliceWorkspaceRoomActor;
+  workspaceName: string;
+  slotIndex: number;
+}) {
+  const label = compactAgentName(actor.name, workspaceName);
+  const offset = actorSlotOffset(actor, slotIndex);
+  const left = roomPercent(actor.x + offset.x, 18, 82);
+  const top = roomPercent(actor.y + offset.y, 24, 84);
+  const tone = actorStateTone[actor.state] ?? actorStateTone.idle;
+  const workLine = actorWorkLine(actor);
+  const roomLine = actorRoomLine(actor);
+
+  return (
+    <div
+      data-testid="room-actor-sprite"
+      className="absolute z-20 flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+      style={{ left: `${left}%`, top: `${top}%` }}
+      title={`${actor.name} · ${actor.state} · ${workLine}`}
+    >
+      <div className="relative h-[86px] w-28">
+        <Workstation actor={actor} />
+        <PixelAvatar actor={actor} />
+        <span className={cn(
+          "absolute right-2 top-3 z-30 h-3 w-3 rounded-full border border-background shadow-sm",
+          stateDot[actor.state] ?? stateDot.idle,
+          actor.state === "working" || actor.state === "requested" ? "animate-pulse" : "",
+        )} />
+      </div>
+      <div className={cn("w-full border px-2 py-1 shadow-sm backdrop-blur-sm", tone)}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[11px] font-semibold">{label}</span>
+          <span className="shrink-0 text-[10px] capitalize opacity-80">{actorStateLabel(actor)}</span>
+        </div>
+        <p className="mt-0.5 truncate text-[10px] opacity-80">{roomLine}</p>
+      </div>
+    </div>
+  );
 }
 
 function goalKindLabel(goal: SpliceWorkspaceRoomGoal): string {
@@ -881,44 +1076,46 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
 }
 
 function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
+  const roomActors = [...data.room.humans, ...data.room.agents];
+  const zoneCounts = new Map<string, number>();
+  const roomActorEntries = roomActors.map((actor) => {
+    const slotIndex = zoneCounts.get(actor.zone) ?? 0;
+    zoneCounts.set(actor.zone, slotIndex + 1);
+    return { actor, slotIndex };
+  });
+
   return (
     <section className="space-y-3">
       <SectionTitle title="Workspace Room" aside="sample workspace map" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
         <div
-          className="relative h-[300px] overflow-hidden border border-border bg-muted/20"
+          className="relative h-[390px] overflow-hidden border border-border bg-muted/20"
           style={{
             backgroundImage:
-              "linear-gradient(to right, hsl(var(--border) / 0.45) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border) / 0.45) 1px, transparent 1px)",
+              "linear-gradient(to right, hsl(var(--border) / 0.42) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border) / 0.42) 1px, transparent 1px), linear-gradient(135deg, hsl(var(--muted) / 0.18), transparent 58%)",
             backgroundSize: "48px 48px",
           }}
         >
+          <div className="absolute inset-x-10 top-1/2 h-px bg-border/60" />
+          <div className="absolute inset-y-8 left-1/2 w-px bg-border/60" />
           {data.room.zones.map((zone) => (
             <div
               key={zone.id}
-              className="absolute min-w-24 -translate-x-1/2 -translate-y-1/2 border border-border bg-background/90 px-3 py-2"
+              className="absolute z-0 min-w-24 -translate-x-1/2 -translate-y-1/2 border border-border bg-background/80 px-3 py-2 shadow-sm"
               style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
             >
               <p className="text-xs font-semibold">{zone.label}</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">{formatNumber(zone.workCount)} work</p>
             </div>
           ))}
-          {[...data.room.humans, ...data.room.agents].map((actor) => (
-            <div
-              key={actor.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${actor.x}%`, top: `${actor.y}%` }}
-              title={`${actor.name} · ${actor.state}`}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold shadow-sm">
-                  {actor.initials}
-                </span>
-                <span className="max-w-24 truncate bg-background/95 px-1.5 py-0.5 text-[11px] shadow-sm">
-                  {compactAgentName(actor.name, data.name)}
-                </span>
-              </div>
+          <div className="absolute bottom-5 right-5 z-0 h-16 w-24 border border-border bg-background/70">
+            <div className="mx-auto mt-3 h-6 w-14 border border-border bg-zinc-950">
+              <div className="ml-2 mt-2 h-1 w-8 bg-emerald-300/50" />
             </div>
+            <div className="mx-auto mt-1 h-1 w-8 bg-muted-foreground/40" />
+          </div>
+          {roomActorEntries.map(({ actor, slotIndex }) => (
+            <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
           ))}
         </div>
         <div className="border border-border">
