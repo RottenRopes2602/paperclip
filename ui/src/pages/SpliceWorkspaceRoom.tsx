@@ -43,6 +43,7 @@ import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useSidebar } from "@/context/SidebarContext";
 import {
   spliceApi,
+  type SpliceAgentConsoleData,
   type SpliceAgentMessage,
   type SpliceExecutionLane,
   type SpliceReview,
@@ -1679,50 +1680,234 @@ function ReviewGateTab({
 }
 
 function AgentsTab({
+  agentConsole,
   data,
+  messages,
+  onSend,
   runningAgentId,
+  sendingAgentId,
   onRunAgent,
 }: {
+  agentConsole: SpliceAgentConsoleData | null;
   data: SpliceWorkspaceRoomData;
+  messages: SpliceAgentMessage[];
+  onSend: (agentId: string, body: string) => void;
   runningAgentId: string | null;
+  sendingAgentId: string | null;
   onRunAgent: (agentId: string) => void;
 }) {
+  const consoleAgents = useMemo(() => {
+    if (agentConsole?.agents.length) return agentConsole.agents;
+    return data.agents.map((agent) => ({
+      ...agent,
+      requests: data.requests.filter((request) =>
+        request.agentId === agent.id ||
+        request.agentId === agent.slug ||
+        request.agentName === agent.name
+      ),
+      messages: messages.filter((message) =>
+        message.agentId === agent.id ||
+        message.agentId === agent.slug ||
+        message.agentName === agent.name
+      ),
+      lastEventAt: agent.request?.updatedAt ?? agent.request?.requestedAt ?? null,
+    }));
+  }, [agentConsole?.agents, data.agents, data.requests, messages]);
+  const [selectedAgentId, setSelectedAgentId] = useState(consoleAgents[0]?.id ?? "");
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (!consoleAgents.length) return;
+    if (!selectedAgentId || !consoleAgents.some((agent) => agent.id === selectedAgentId)) {
+      setSelectedAgentId(consoleAgents[0].id);
+    }
+  }, [consoleAgents, selectedAgentId]);
+
+  const selectedAgent = consoleAgents.find((agent) => agent.id === selectedAgentId) ?? consoleAgents[0] ?? null;
+  const isRunning = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
+  const isSending = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
+  const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
+  const selectedRequests = selectedAgent?.requests ?? [];
+  const selectedMessages = selectedAgent?.messages ?? [];
+  const activeRequestCount = selectedRequests.filter((request) => activeStatuses.has(String(request.status))).length;
+
+  const submitInstruction = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = draft.trim();
+    if (!selectedAgent || !body || isSending) return;
+    setDraft("");
+    onSend(selectedAgent.id, body);
+  };
+
+  if (!selectedAgent) {
+    return (
+      <div className="space-y-4">
+        <SectionTitle title="Agent Console" aside="0 agents" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No agents found.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <SectionTitle title="Agents" aside={`${data.agents.length} agents`} />
-      <div className="border border-border">
-        {data.agents.map((agent) => {
-          const isRunning = runningAgentId === agent.id;
-          return (
-            <EntityRow
-              key={agent.id}
-              title={compactAgentName(agent.name, data.name)}
-              subtitle={`${agent.role} · ${agent.currentWork[0]?.title ?? "No assigned work"}`}
-              leading={(
-                <>
-                  <Dot state={agent.state} />
-                  <Identity name={compactAgentName(agent.name, data.name)} initials={agent.initials} size="sm" />
-                </>
-              )}
-              trailing={(
-                <div className="flex items-center gap-2">
-                  <span className="hidden text-xs text-muted-foreground sm:inline">{agent.state}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onRunAgent(agent.id)}
-                    disabled={Boolean(runningAgentId)}
-                    className="h-8 gap-1.5"
-                  >
-                    <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
-                    {isRunning ? "Queued" : "Wake"}
-                  </Button>
+      <SectionTitle title="Agent Console" aside={`${consoleAgents.length} desks · ${activeRequestCount} active wakes`} />
+      <div className="grid min-h-[640px] gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="min-w-0 border border-border">
+          {consoleAgents.map((agent) => {
+            const active = agent.id === selectedAgent.id;
+            const pending = agent.requests.filter((request) => activeStatuses.has(String(request.status))).length;
+            return (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => setSelectedAgentId(agent.id)}
+                className={cn(
+                  "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
+                  active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                )}
+              >
+                <Identity name={compactAgentName(agent.name, data.name)} initials={agent.initials} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Dot state={agent.state} />
+                    <p className="truncate text-sm font-semibold">{compactAgentName(agent.name, data.name)}</p>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{agent.role} · {agent.zone}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.currentWork.length} work</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.requests.length} runs</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.messages.length} msgs</span>
+                    {pending ? <span className="rounded-full bg-muted px-2 py-0.5">{pending} active</span> : null}
+                  </div>
                 </div>
-              )}
-            />
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
+
+        <section className="min-w-0 space-y-4">
+          <div className="border border-border">
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <Identity name={compactAgentName(selectedAgent.name, data.name)} initials={selectedAgent.initials} size="default" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="truncate text-base font-semibold">{compactAgentName(selectedAgent.name, data.name)}</h2>
+                    <StatusBadge status={selectedAgent.state} />
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {selectedAgent.role} · {selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onRunAgent(selectedAgent.id)}
+                disabled={Boolean(runningAgentId)}
+                className="h-8 gap-1.5 self-start lg:self-auto"
+              >
+                <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
+                {isRunning ? "Queued" : "Wake"}
+              </Button>
+            </div>
+
+            <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Assigned Work" value={selectedAgent.currentWork.length} icon={CircleDot} />
+              <MetricCard label="Run History" value={selectedRequests.length} icon={Activity} />
+              <MetricCard label="Messages" value={selectedMessages.length} icon={MessageSquare} />
+              <MetricCard label="Last Event" value={selectedAgent.lastEventAt ? formatIsoAge(selectedAgent.lastEventAt) : "none"} icon={Clock3} />
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-w-0 space-y-4">
+              <div className="border border-border">
+                <div className="border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold">Assigned Work</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">PaperClip ownership projected from ops frontmatter.</p>
+                </div>
+                {selectedAgent.currentWork.length ? selectedAgent.currentWork.map((item) => (
+                  <EntityRow
+                    key={`${item.type}:${item.id}`}
+                    title={item.title}
+                    subtitle={`${item.type} · ${item.projectName || item.id}`}
+                    leading={<CircleDot className="h-4 w-4 text-muted-foreground" />}
+                    trailing={<StatusBadge status={item.status} />}
+                  />
+                )) : (
+                  <p className="px-4 py-4 text-sm text-muted-foreground">No assigned work yet.</p>
+                )}
+              </div>
+
+              <form className="border border-border" onSubmit={submitInstruction}>
+                <div className="border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold">Instruction</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Message is stored and paired with a wake request.</p>
+                </div>
+                <div className="space-y-3 px-4 py-4">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    className="min-h-28 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                    placeholder={`Message ${compactAgentName(selectedAgent.name, data.name)}`}
+                    disabled={isSending}
+                  />
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={!draft.trim() || isSending} className="gap-1.5">
+                      <Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />
+                      {isSending ? "Sending" : "Send + Wake"}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <aside className="min-w-0 space-y-4">
+              <section className="border border-border">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold">Run History</p>
+                  <span className="text-xs text-muted-foreground">{selectedRequests.length}</span>
+                </div>
+                <div className="max-h-[310px] overflow-y-auto">
+                  {selectedRequests.length ? selectedRequests.slice(0, 12).map((request) => (
+                    <article key={request.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <StatusBadge status={request.status} />
+                        <span className="text-xs text-muted-foreground">{formatIsoAge(request.updatedAt || request.requestedAt)}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "No note"}</p>
+                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{request.id}</p>
+                    </article>
+                  )) : (
+                    <p className="px-4 py-4 text-sm text-muted-foreground">No run history yet.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="border border-border">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold">Recent Messages</p>
+                  <span className="text-xs text-muted-foreground">{selectedMessages.length}</span>
+                </div>
+                <div className="max-h-[310px] overflow-y-auto">
+                  {selectedMessages.length ? selectedMessages.slice(0, 10).map((message) => (
+                    <article key={message.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-xs font-medium">{message.author}</p>
+                        <span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
+                    </article>
+                  )) : (
+                    <p className="px-4 py-4 text-sm text-muted-foreground">No messages yet.</p>
+                  )}
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -2168,6 +2353,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomMessages(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const agentConsoleQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "agent-console"],
+    queryFn: () => spliceApi.workspaceRoomAgentConsole(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const workThreadQuery = useQuery({
     queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-thread"],
     queryFn: () => spliceApi.workspaceRoomWorkThread(PUZZLE_TESTBED_ID),
@@ -2257,6 +2447,7 @@ export function SpliceWorkspaceRoom() {
   const runningAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
   const sendingAgentId = sendMessageMutation.isPending ? sendMessageMutation.variables?.agentId ?? null : null;
   const messages = messagesQuery.data?.messages ?? [];
+  const agentConsole = agentConsoleQuery.data ?? null;
   const workThread = workThreadQuery.data;
   const reviews = reviewsQuery.data?.reviews ?? [];
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
@@ -2278,10 +2469,11 @@ export function SpliceWorkspaceRoom() {
       onRefresh={() => {
         void roomQuery.refetch();
         void messagesQuery.refetch();
+        void agentConsoleQuery.refetch();
         void workThreadQuery.refetch();
         void reviewsQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || messagesQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
+      refreshing={roomQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -2320,8 +2512,12 @@ export function SpliceWorkspaceRoom() {
       )}
       {activeTab === "agents" && (
         <AgentsTab
+          agentConsole={agentConsole}
           data={data}
+          messages={messages}
+          sendingAgentId={sendingAgentId}
           runningAgentId={runningAgentId}
+          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
           onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
         />
       )}

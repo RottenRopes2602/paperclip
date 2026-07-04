@@ -298,6 +298,25 @@ export interface SpliceWorkspaceRoomActor {
   } | null;
 }
 
+export interface SpliceAgentConsoleAgent extends SpliceWorkspaceRoomActor {
+  requests: SpliceAgentRunRequest[];
+  messages: SpliceAgentMessage[];
+  lastEventAt: string | null;
+}
+
+export interface SpliceAgentConsoleData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePaths: {
+    runRequests: string;
+    messages: string;
+  };
+  agents: SpliceAgentConsoleAgent[];
+  requests: SpliceAgentRunRequest[];
+  messages: SpliceAgentMessage[];
+}
+
 export interface SpliceWorkspaceRoomGoal {
   slug: string;
   kind: "mission" | "vision" | "objective" | "key_result" | "goal" | string;
@@ -418,6 +437,8 @@ export const spliceApi = {
     ),
   workspaceRoomMessages: (workspaceId: string) =>
     api.get<SpliceAgentMessagesData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`),
+  workspaceRoomAgentConsole: (workspaceId: string) =>
+    api.get<SpliceAgentConsoleData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/agent-console`),
   sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
     api.post<SpliceAgentMessagePost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,
