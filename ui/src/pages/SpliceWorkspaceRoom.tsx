@@ -45,6 +45,7 @@ import {
   spliceApi,
   type SpliceAgentMessage,
   type SpliceExecutionLane,
+  type SpliceReview,
   type SpliceWorkProduct,
   type SpliceWorkThreadComment,
   type SpliceWorkspaceRoomActor,
@@ -58,7 +59,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "desk" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -67,6 +68,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "projects", label: "Projects", icon: FolderOpen },
   { value: "issues", label: "Issues", icon: CircleDot },
   { value: "desk", label: "Work Desk", icon: SquarePen },
+  { value: "reviews", label: "Review Gate", icon: ShieldAlert },
   { value: "agents", label: "Agents", icon: Bot },
   { value: "comms", label: "Comms", icon: MessageSquare },
   { value: "activity", label: "Activity", icon: History },
@@ -719,6 +721,7 @@ function PuzzleSidebar({
   const laneItem = roomTabs.find((item) => item.value === "lanes")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
+  const reviewsItem = roomTabs.find((item) => item.value === "reviews")!;
   const goalItem = roomTabs.find((item) => item.value === "goals")!;
   const projectItem = roomTabs.find((item) => item.value === "projects")!;
   const agentItem = roomTabs.find((item) => item.value === "agents")!;
@@ -791,6 +794,7 @@ function PuzzleSidebar({
           <SidebarSection label="Work">
             <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={deskItem} onSelect={selectTab} />
+            <PuzzleSidebarNavItem activeTab={activeTab} item={reviewsItem} onSelect={selectTab} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={goalItem} onSelect={selectTab} />
           </SidebarSection>
 
@@ -886,12 +890,14 @@ function DashboardTab({
   dispatchingRunner,
   messages,
   onDispatchRunner,
+  reviews,
   runnerNotice,
 }: {
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
+  reviews: SpliceReview[];
   runnerNotice: string | null;
 }) {
   const issues = [...data.lanes.active, ...data.lanes.review, ...data.lanes.next, ...data.lanes.blocked];
@@ -917,6 +923,8 @@ function DashboardTab({
         onDispatchRunner={onDispatchRunner}
         runnerNotice={runnerNotice}
       />
+
+      <ReviewGateSummary data={data} reviews={reviews} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="min-w-0 space-y-3">
@@ -1067,6 +1075,30 @@ function RunQueueBoard({
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ReviewGateSummary({ data, reviews }: { data: SpliceWorkspaceRoomData; reviews: SpliceReview[] }) {
+  const requested = reviews.filter((review) => review.status === "requested");
+  const decided = reviews.filter((review) => review.status !== "requested");
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Review Gate" aside={`${requested.length} pending · ${decided.length} decided`} />
+      <div className="border border-border">
+        {reviews.length ? reviews.slice(0, 6).map((review) => (
+          <EntityRow
+            key={review.id}
+            title={review.title}
+            subtitle={`${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned reviewer"}`}
+            leading={<ShieldAlert className="h-4 w-4 text-muted-foreground" />}
+            trailing={<StatusBadge status={review.status} />}
+          />
+        )) : (
+          <p className="px-4 py-4 text-sm text-muted-foreground">No reviews requested yet.</p>
+        )}
       </div>
     </section>
   );
@@ -1353,6 +1385,293 @@ function WorkDeskTab({
               </form>
             </section>
           </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ReviewGateTab({
+  data,
+  decidingReviewId,
+  onDecideReview,
+  onRequestReview,
+  requestingReviewKey,
+  reviews,
+}: {
+  data: SpliceWorkspaceRoomData;
+  decidingReviewId: string | null;
+  onDecideReview: (reviewId: string, decision: "approved" | "changes_requested" | "rejected", body: string) => void;
+  onRequestReview: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) => void;
+  requestingReviewKey: string | null;
+  reviews: SpliceReview[];
+}) {
+  const reviewItems = [
+    ...data.lanes.review,
+    ...data.lanes.active,
+    ...data.lanes.next,
+    ...data.lanes.blocked,
+    ...data.projects,
+  ];
+  const firstItemKey = reviewItems[0] ? workItemKey(reviewItems[0]) : "";
+  const [selectedItemKey, setSelectedItemKey] = useState(firstItemKey);
+  const [selectedReviewId, setSelectedReviewId] = useState(reviews[0]?.id ?? "");
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewerAgentId, setReviewerAgentId] = useState(data.agents[0]?.id ?? "");
+  const [decisionBody, setDecisionBody] = useState("");
+
+  useEffect(() => {
+    if (reviewItems.length && (!selectedItemKey || !reviewItems.some((item) => workItemKey(item) === selectedItemKey))) {
+      setSelectedItemKey(firstItemKey);
+    }
+  }, [firstItemKey, reviewItems, selectedItemKey]);
+
+  useEffect(() => {
+    if (!reviews.length) {
+      setSelectedReviewId("");
+      return;
+    }
+    if (!selectedReviewId || !reviews.some((review) => review.id === selectedReviewId)) {
+      setSelectedReviewId(reviews[0].id);
+    }
+  }, [reviews, selectedReviewId]);
+
+  useEffect(() => {
+    if (!data.agents.length) return;
+    if (!reviewerAgentId || !data.agents.some((agent) => agent.id === reviewerAgentId)) {
+      setReviewerAgentId(data.agents[0].id);
+    }
+  }, [data.agents, reviewerAgentId]);
+
+  const selectedItem = reviewItems.find((item) => workItemKey(item) === selectedItemKey) ?? reviewItems[0] ?? null;
+  const selectedReview = reviews.find((review) => review.id === selectedReviewId) ?? reviews[0] ?? null;
+  const activeItemKey = selectedItem ? workItemKey(selectedItem) : "";
+  const requestingReview = requestingReviewKey === activeItemKey;
+  const decidingReview = Boolean(selectedReview && decidingReviewId === selectedReview.id);
+
+  const submitReview = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedItem || requestingReview) return;
+    const title = reviewTitle.trim() || `Review ${selectedItem.title}`;
+    const body = reviewBody.trim();
+    if (!body) return;
+    setReviewTitle("");
+    setReviewBody("");
+    onRequestReview({
+      itemType: selectedItem.type,
+      itemId: selectedItem.id,
+      title,
+      body,
+      reviewerAgentId: reviewerAgentId || null,
+    });
+  };
+
+  const submitDecision = (decision: "approved" | "changes_requested" | "rejected") => {
+    if (!selectedReview || decidingReview) return;
+    const body = decisionBody.trim();
+    if (!body) return;
+    setDecisionBody("");
+    onDecideReview(selectedReview.id, decision, body);
+  };
+
+  if (!selectedItem) {
+    return (
+      <div className="space-y-4">
+        <SectionTitle title="Review Gate" aside="0 items" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No work items found.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Review Gate" aside={`${reviews.length} reviews`} />
+      <div className="grid min-h-[620px] gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="min-w-0 border border-border">
+          {reviewItems.map((item) => {
+            const key = workItemKey(item);
+            const active = key === activeItemKey;
+            const itemReviews = reviews.filter((review) => review.itemType === item.type && review.itemId === item.id);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSelectedItemKey(key)}
+                className={cn(
+                  "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
+                  active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                )}
+              >
+                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{item.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.ownerName} · {item.status}</p>
+                  <div className="mt-2 flex gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5">{itemReviews.length} reviews</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5">
+                      {itemReviews.filter((review) => review.status === "requested").length} pending
+                    </span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <section className="min-w-0 space-y-4">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="border border-border">
+              <div className="border-b border-border px-4 py-3">
+                <p className="text-sm font-semibold">Request Review</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedItem.title}</p>
+              </div>
+              <form className="space-y-3 px-4 py-4" onSubmit={submitReview}>
+                <input
+                  value={reviewTitle}
+                  onChange={(event) => setReviewTitle(event.target.value)}
+                  className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                  placeholder={`Review ${selectedItem.title}`}
+                  disabled={requestingReview}
+                />
+                <select
+                  value={reviewerAgentId}
+                  onChange={(event) => setReviewerAgentId(event.target.value)}
+                  className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                  disabled={requestingReview}
+                >
+                  {data.agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {compactAgentName(agent.name, data.name)}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  value={reviewBody}
+                  onChange={(event) => setReviewBody(event.target.value)}
+                  className="min-h-28 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                  placeholder="Review request"
+                  disabled={requestingReview}
+                />
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={!reviewBody.trim() || requestingReview} className="gap-1.5">
+                    <ShieldAlert className={cn("h-3.5 w-3.5", requestingReview && "animate-pulse")} />
+                    {requestingReview ? "Requesting" : "Request Review"}
+                  </Button>
+                </div>
+              </form>
+            </section>
+
+            <section className="border border-border">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <p className="text-sm font-semibold">Review Queue</p>
+                <span className="text-xs text-muted-foreground">{reviews.length}</span>
+              </div>
+              <div className="max-h-[330px] overflow-y-auto">
+                {reviews.length ? reviews.map((review) => {
+                  const active = selectedReview?.id === review.id;
+                  return (
+                    <button
+                      key={review.id}
+                      type="button"
+                      onClick={() => setSelectedReviewId(review.id)}
+                      className={cn(
+                        "flex w-full items-start justify-between gap-3 border-b border-border px-4 py-3 text-left last:border-b-0",
+                        active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{review.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {review.itemTitle} · {review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned"}
+                        </p>
+                      </div>
+                      <StatusBadge status={review.status} />
+                    </button>
+                  );
+                }) : (
+                  <p className="px-4 py-4 text-sm text-muted-foreground">No reviews requested yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <section className="border border-border">
+            <div className="border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold">Decision Desk</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {selectedReview ? selectedReview.title : "No review selected"}
+              </p>
+            </div>
+            {selectedReview ? (
+              <div className="grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+                <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{selectedReview.itemTitle}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Requested {formatIsoAge(selectedReview.createdAt)} · {selectedReview.ownerName}
+                      </p>
+                    </div>
+                    <StatusBadge status={selectedReview.status} />
+                  </div>
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-foreground/90">{selectedReview.body}</p>
+                  <div className="mt-4 space-y-3">
+                    {selectedReview.decisions.length ? selectedReview.decisions.map((decision) => (
+                      <article key={decision.id} className="border border-border px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{decision.decision}</p>
+                          <span className="text-xs text-muted-foreground">{formatIsoAge(decision.createdAt)}</span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{decision.body}</p>
+                      </article>
+                    )) : (
+                      <p className="text-sm text-muted-foreground">No decisions yet.</p>
+                    )}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <textarea
+                    value={decisionBody}
+                    onChange={(event) => setDecisionBody(event.target.value)}
+                    className="min-h-32 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+                    placeholder="Decision note"
+                    disabled={decidingReview}
+                  />
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => submitDecision("approved")}
+                      disabled={!decisionBody.trim() || decidingReview}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => submitDecision("changes_requested")}
+                      disabled={!decisionBody.trim() || decidingReview}
+                    >
+                      Request Changes
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => submitDecision("rejected")}
+                      disabled={!decisionBody.trim() || decidingReview}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="px-4 py-4 text-sm text-muted-foreground">No review selected.</p>
+            )}
+          </section>
         </section>
       </div>
     </div>
@@ -1854,6 +2173,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomWorkThread(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const reviewsQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "reviews"],
+    queryFn: () => spliceApi.workspaceRoomReviews(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => void roomQuery.refetch(),
@@ -1875,6 +2199,16 @@ export function SpliceWorkspaceRoom() {
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) =>
       spliceApi.createWorkspaceRoomWorkProduct(PUZZLE_TESTBED_ID, input),
     onSuccess: () => void workThreadQuery.refetch(),
+  });
+  const requestReviewMutation = useMutation({
+    mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) =>
+      spliceApi.createWorkspaceRoomReview(PUZZLE_TESTBED_ID, input),
+    onSuccess: () => void reviewsQuery.refetch(),
+  });
+  const decideReviewMutation = useMutation({
+    mutationFn: ({ reviewId, decision, body }: { reviewId: string; decision: "approved" | "changes_requested" | "rejected"; body: string }) =>
+      spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body }),
+    onSuccess: () => void reviewsQuery.refetch(),
   });
   const dispatchRunnerMutation = useMutation({
     mutationFn: (dryRun: boolean) => spliceApi.dispatchRunner(dryRun),
@@ -1924,12 +2258,17 @@ export function SpliceWorkspaceRoom() {
   const sendingAgentId = sendMessageMutation.isPending ? sendMessageMutation.variables?.agentId ?? null : null;
   const messages = messagesQuery.data?.messages ?? [];
   const workThread = workThreadQuery.data;
+  const reviews = reviewsQuery.data?.reviews ?? [];
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
     ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
     : null;
   const savingProductKey = addWorkProductMutation.isPending && addWorkProductMutation.variables
     ? `${addWorkProductMutation.variables.itemType}:${addWorkProductMutation.variables.itemId}`
     : null;
+  const requestingReviewKey = requestReviewMutation.isPending && requestReviewMutation.variables
+    ? `${requestReviewMutation.variables.itemType}:${requestReviewMutation.variables.itemId}`
+    : null;
+  const decidingReviewId = decideReviewMutation.isPending ? decideReviewMutation.variables?.reviewId ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
@@ -1940,8 +2279,9 @@ export function SpliceWorkspaceRoom() {
         void roomQuery.refetch();
         void messagesQuery.refetch();
         void workThreadQuery.refetch();
+        void reviewsQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || messagesQuery.isFetching || workThreadQuery.isFetching}
+      refreshing={roomQuery.isFetching || messagesQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -1949,6 +2289,7 @@ export function SpliceWorkspaceRoom() {
           dispatchingRunner={dispatchRunnerMutation.isPending}
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          reviews={reviews}
           runnerNotice={runnerNotice}
         />
       )}
@@ -1965,6 +2306,16 @@ export function SpliceWorkspaceRoom() {
           savingProductKey={savingProductKey}
           onAddComment={(input) => addCommentMutation.mutate(input)}
           onAddWorkProduct={(input) => addWorkProductMutation.mutate(input)}
+        />
+      )}
+      {activeTab === "reviews" && (
+        <ReviewGateTab
+          data={data}
+          reviews={reviews}
+          requestingReviewKey={requestingReviewKey}
+          decidingReviewId={decidingReviewId}
+          onRequestReview={(input) => requestReviewMutation.mutate(input)}
+          onDecideReview={(reviewId, decision, body) => decideReviewMutation.mutate({ reviewId, decision, body })}
         />
       )}
       {activeTab === "agents" && (

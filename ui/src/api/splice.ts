@@ -184,6 +184,69 @@ export interface SpliceWorkProductPost {
   workProduct: SpliceWorkProduct;
 }
 
+export interface SpliceReviewDecision {
+  id: string;
+  reviewId: string;
+  workspaceId: string;
+  workspaceName: string;
+  itemType: "project" | "issue" | string;
+  itemId: string;
+  itemTitle: string;
+  author: "operator" | "agent" | string;
+  decision: "approved" | "changes_requested" | "rejected" | string;
+  body: string;
+  resultingStatus: string;
+  createdAt: string;
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceReview {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  itemType: "project" | "issue" | string;
+  itemId: string;
+  itemTitle: string;
+  ownerName: string;
+  requester: "operator" | "agent" | string;
+  reviewerAgentId: string | null;
+  reviewerAgentName: string | null;
+  title: string;
+  body: string;
+  status: "requested" | "approved" | "changes_requested" | "rejected" | string;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt?: string | null;
+  decidedBy?: string | null;
+  decisions: SpliceReviewDecision[];
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceReviewGateData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  reviews: SpliceReview[];
+  decisions: SpliceReviewDecision[];
+}
+
+export interface SpliceReviewPost {
+  review: SpliceReview;
+}
+
+export interface SpliceReviewDecisionPost {
+  review: SpliceReview | null;
+  decision: SpliceReviewDecision;
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -373,6 +436,25 @@ export const spliceApi = {
   ) =>
     api.post<SpliceWorkProductPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread/work-products`,
+      input,
+    ),
+  workspaceRoomReviews: (workspaceId: string) =>
+    api.get<SpliceReviewGateData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews`),
+  createWorkspaceRoomReview: (
+    workspaceId: string,
+    input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null },
+  ) =>
+    api.post<SpliceReviewPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews`,
+      input,
+    ),
+  createWorkspaceRoomReviewDecision: (
+    workspaceId: string,
+    reviewId: string,
+    input: { decision: "approved" | "changes_requested" | "rejected"; body: string },
+  ) =>
+    api.post<SpliceReviewDecisionPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews/${encodeURIComponent(reviewId)}/decision`,
       input,
     ),
   dispatchRunner: (dryRun = false) =>
