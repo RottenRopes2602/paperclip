@@ -105,6 +105,39 @@ export interface SpliceRunnerDispatch {
   runner: SpliceOverviewData["runner"];
 }
 
+export interface SpliceAgentMessage {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  agentId: string;
+  agentName: string;
+  author: "operator" | "agent" | string;
+  kind: "instruction" | "message" | string;
+  body: string;
+  status: "queued" | "sent" | "done" | "failed" | string;
+  createdAt: string;
+  updatedAt: string;
+  runRequestId: string | null;
+  queue?: {
+    store: string;
+    path: string;
+  };
+}
+
+export interface SpliceAgentMessagesData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  messages: SpliceAgentMessage[];
+}
+
+export interface SpliceAgentMessagePost {
+  message: SpliceAgentMessage;
+  runRequest: SpliceAgentRunRequest;
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -273,6 +306,13 @@ export const spliceApi = {
     api.post<SpliceAgentRunRequest>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}/run`,
       {},
+    ),
+  workspaceRoomMessages: (workspaceId: string) =>
+    api.get<SpliceAgentMessagesData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`),
+  sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
+    api.post<SpliceAgentMessagePost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,
+      { agentId, body },
     ),
   dispatchRunner: () => api.post<SpliceRunnerDispatch>("/splice/runner/dispatch", {}),
 };
