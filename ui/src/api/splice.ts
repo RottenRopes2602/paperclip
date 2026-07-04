@@ -247,6 +247,52 @@ export interface SpliceReviewDecisionPost {
   decision: SpliceReviewDecision;
 }
 
+export interface SpliceInboxItem {
+  id: string;
+  kind: "review" | "run" | "message" | "blocked" | string;
+  severity: "low" | "medium" | "high" | string;
+  title: string;
+  subtitle: string;
+  body: string;
+  sourceId: string;
+  sourceStatus: string;
+  actorName: string;
+  createdAt: string;
+  targetTab: string;
+  targetType: string;
+  targetId: string;
+  inboxStatus: "open" | "done" | string;
+  acknowledgedAt: string | null;
+}
+
+export interface SpliceOfficeInboxData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePath: string;
+  counts: {
+    total: number;
+    open: number;
+    done: number;
+    reviews: number;
+    runs: number;
+    messages: number;
+    blocked: number;
+  };
+  items: SpliceInboxItem[];
+}
+
+export interface SpliceOfficeInboxStatusPost {
+  action: {
+    workspaceId: string;
+    workspaceName: string;
+    itemId: string;
+    status: "open" | "done" | string;
+    actor: string;
+    updatedAt: string;
+  };
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -439,6 +485,13 @@ export const spliceApi = {
     api.get<SpliceAgentMessagesData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`),
   workspaceRoomAgentConsole: (workspaceId: string) =>
     api.get<SpliceAgentConsoleData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/agent-console`),
+  workspaceRoomInbox: (workspaceId: string) =>
+    api.get<SpliceOfficeInboxData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/inbox`),
+  updateWorkspaceRoomInboxStatus: (workspaceId: string, itemId: string, status: "open" | "done") =>
+    api.post<SpliceOfficeInboxStatusPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/inbox/${encodeURIComponent(itemId)}/status`,
+      { status },
+    ),
   sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
     api.post<SpliceAgentMessagePost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,

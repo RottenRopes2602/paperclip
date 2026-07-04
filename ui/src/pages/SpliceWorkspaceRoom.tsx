@@ -5,6 +5,7 @@ import {
   Activity,
   AlertTriangle,
   Bot,
+  CheckCircle2,
   CircleDot,
   Clock3,
   FileText,
@@ -13,6 +14,7 @@ import {
   GitBranch,
   GitCommit,
   History,
+  Inbox,
   Layers,
   LayoutDashboard,
   MessageSquare,
@@ -46,6 +48,8 @@ import {
   type SpliceAgentConsoleData,
   type SpliceAgentMessage,
   type SpliceExecutionLane,
+  type SpliceInboxItem,
+  type SpliceOfficeInboxData,
   type SpliceReview,
   type SpliceWorkProduct,
   type SpliceWorkThreadComment,
@@ -60,10 +64,11 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { value: "inbox", label: "Inbox", icon: Inbox },
   { value: "lanes", label: "Lanes", icon: GitBranch },
   { value: "goals", label: "Goals", icon: Target },
   { value: "projects", label: "Projects", icon: FolderOpen },
@@ -705,10 +710,12 @@ function PuzzleSidebarMiniItem({
 function PuzzleSidebar({
   activeTab,
   data,
+  inboxOpenCount,
   onTabChange,
 }: {
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
+  inboxOpenCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
@@ -719,6 +726,7 @@ function PuzzleSidebar({
   };
 
   const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
+  const inboxItem = roomTabs.find((item) => item.value === "inbox")!;
   const laneItem = roomTabs.find((item) => item.value === "lanes")!;
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
@@ -786,6 +794,12 @@ function PuzzleSidebar({
             <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={activeRuns} onSelect={selectTab} />
             <PuzzleSidebarNavItem
               activeTab={activeTab}
+              item={inboxItem}
+              onSelect={selectTab}
+              textBadge={inboxOpenCount > 0 ? `${inboxOpenCount}` : undefined}
+            />
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
               item={laneItem}
               onSelect={selectTab}
               textBadge={`${data.executionLanes?.length ?? 0}`}
@@ -842,6 +856,7 @@ function PuzzleWorkspaceShell({
   activeTab,
   children,
   data,
+  inboxOpenCount,
   onRefresh,
   onTabChange,
   refreshing,
@@ -849,6 +864,7 @@ function PuzzleWorkspaceShell({
   activeTab: RoomTab;
   children: ReactNode;
   data: SpliceWorkspaceRoomData;
+  inboxOpenCount: number;
   onRefresh: () => void;
   onTabChange: (tab: RoomTab) => void;
   refreshing: boolean;
@@ -867,7 +883,7 @@ function PuzzleWorkspaceShell({
       >
         Skip to Main Content
       </a>
-      <PuzzleSidebar activeTab={activeTab} data={data} onTabChange={onTabChange} />
+      <PuzzleSidebar activeTab={activeTab} data={data} inboxOpenCount={inboxOpenCount} onTabChange={onTabChange} />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <BreadcrumbBar scope="splice" />
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 outline-none md:p-6">
@@ -889,6 +905,7 @@ function PuzzleWorkspaceShell({
 function DashboardTab({
   data,
   dispatchingRunner,
+  inbox,
   messages,
   onDispatchRunner,
   reviews,
@@ -896,6 +913,7 @@ function DashboardTab({
 }: {
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
+  inbox: SpliceOfficeInboxData | null;
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
   reviews: SpliceReview[];
@@ -913,6 +931,8 @@ function DashboardTab({
       </div>
 
       <ExecutionLanesPanel data={data} limit={3} />
+
+      <OfficeInboxSummary inbox={inbox} />
 
       <RoomMap data={data} />
 
@@ -938,6 +958,28 @@ function DashboardTab({
         </div>
       </div>
     </div>
+  );
+}
+
+function OfficeInboxSummary({ inbox }: { inbox: SpliceOfficeInboxData | null }) {
+  const openItems = inbox?.items.filter((item) => item.inboxStatus === "open").slice(0, 5) ?? [];
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Office Inbox" aside={`${inbox?.counts.open ?? 0} open`} />
+      <div className="border border-border">
+        {openItems.length ? openItems.map((item) => (
+          <EntityRow
+            key={item.id}
+            title={item.title}
+            subtitle={`${item.kind} · ${item.subtitle}`}
+            leading={<Inbox className="h-4 w-4 text-muted-foreground" />}
+            trailing={<StatusBadge status={item.sourceStatus} />}
+          />
+        )) : (
+          <p className="px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1102,6 +1144,135 @@ function ReviewGateSummary({ data, reviews }: { data: SpliceWorkspaceRoomData; r
         )}
       </div>
     </section>
+  );
+}
+
+function InboxItemCard({
+  item,
+  onOpenTab,
+  onUpdateStatus,
+  updatingItemId,
+}: {
+  item: SpliceInboxItem;
+  onOpenTab: (tab: RoomTab) => void;
+  onUpdateStatus: (itemId: string, status: "open" | "done") => void;
+  updatingItemId: string | null;
+}) {
+  const updating = updatingItemId === item.id;
+  const targetTab = roomTabs.some((tab) => tab.value === item.targetTab) ? item.targetTab as RoomTab : "dashboard";
+  return (
+    <article className={cn(
+      "border border-border px-4 py-4",
+      item.inboxStatus === "done" && "bg-muted/30 text-muted-foreground",
+    )}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={item.kind} />
+            <StatusBadge status={item.sourceStatus} />
+            <span className="text-xs text-muted-foreground">{formatIsoAge(item.createdAt)}</span>
+          </div>
+          <h3 className="mt-2 truncate text-sm font-semibold">{item.title}</h3>
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.subtitle}</p>
+          {item.body ? <p className="mt-3 line-clamp-3 text-sm leading-6 text-foreground/80">{item.body}</p> : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab(targetTab)}>
+            Open {roomTabLabel(targetTab)}
+          </Button>
+          {item.inboxStatus === "done" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onUpdateStatus(item.id, "open")}
+              disabled={updating}
+              className="gap-1.5"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", updating && "animate-spin")} />
+              Reopen
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onUpdateStatus(item.id, "done")}
+              disabled={updating}
+              className="gap-1.5"
+            >
+              <CheckCircle2 className={cn("h-3.5 w-3.5", updating && "animate-pulse")} />
+              Done
+            </Button>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InboxTab({
+  inbox,
+  onOpenTab,
+  onUpdateStatus,
+  updatingItemId,
+}: {
+  inbox: SpliceOfficeInboxData | null;
+  onOpenTab: (tab: RoomTab) => void;
+  onUpdateStatus: (itemId: string, status: "open" | "done") => void;
+  updatingItemId: string | null;
+}) {
+  const items = inbox?.items ?? [];
+  const openItems = items.filter((item) => item.inboxStatus === "open");
+  const doneItems = items.filter((item) => item.inboxStatus === "done");
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Office Inbox" aside={`${openItems.length} open · ${doneItems.length} done`} />
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <MetricCard icon={Inbox} value={inbox?.counts.open ?? 0} label="Open" description={`${inbox?.counts.total ?? 0} total`} />
+        <MetricCard icon={ShieldAlert} value={inbox?.counts.reviews ?? 0} label="Reviews" description="needs decision" />
+        <MetricCard icon={Activity} value={inbox?.counts.runs ?? 0} label="Wakes" description="queued or running" />
+        <MetricCard icon={AlertTriangle} value={inbox?.counts.blocked ?? 0} label="Blocked" description={`${inbox?.counts.messages ?? 0} messages`} />
+      </div>
+
+      <section className="space-y-3">
+        <SectionTitle title="Open Items" aside={`${openItems.length}`} />
+        {openItems.length ? (
+          <div className="grid gap-3">
+            {openItems.map((item) => (
+              <InboxItemCard
+                key={item.id}
+                item={item}
+                onOpenTab={onOpenTab}
+                onUpdateStatus={onUpdateStatus}
+                updatingItemId={updatingItemId}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle title="Done" aside={`${doneItems.length}`} />
+        {doneItems.length ? (
+          <div className="grid gap-3">
+            {doneItems.slice(0, 12).map((item) => (
+              <InboxItemCard
+                key={item.id}
+                item={item}
+                onOpenTab={onOpenTab}
+                onUpdateStatus={onUpdateStatus}
+                updatingItemId={updatingItemId}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed inbox items yet.</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -2348,6 +2519,11 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoom(PUZZLE_TESTBED_ID),
     refetchInterval: 10000,
   });
+  const inboxQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "inbox"],
+    queryFn: () => spliceApi.workspaceRoomInbox(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const messagesQuery = useQuery({
     queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "messages"],
     queryFn: () => spliceApi.workspaceRoomMessages(PUZZLE_TESTBED_ID),
@@ -2370,14 +2546,20 @@ export function SpliceWorkspaceRoom() {
   });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
-    onSuccess: () => void roomQuery.refetch(),
+    onSuccess: () => {
+      void roomQuery.refetch();
+      void inboxQuery.refetch();
+      void agentConsoleQuery.refetch();
+    },
   });
   const sendMessageMutation = useMutation({
     mutationFn: ({ agentId, body }: { agentId: string; body: string }) =>
       spliceApi.sendWorkspaceRoomMessage(PUZZLE_TESTBED_ID, agentId, body),
     onSuccess: () => {
       void roomQuery.refetch();
+      void inboxQuery.refetch();
       void messagesQuery.refetch();
+      void agentConsoleQuery.refetch();
     },
   });
   const addCommentMutation = useMutation({
@@ -2393,12 +2575,23 @@ export function SpliceWorkspaceRoom() {
   const requestReviewMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) =>
       spliceApi.createWorkspaceRoomReview(PUZZLE_TESTBED_ID, input),
-    onSuccess: () => void reviewsQuery.refetch(),
+    onSuccess: () => {
+      void reviewsQuery.refetch();
+      void inboxQuery.refetch();
+    },
   });
   const decideReviewMutation = useMutation({
     mutationFn: ({ reviewId, decision, body }: { reviewId: string; decision: "approved" | "changes_requested" | "rejected"; body: string }) =>
       spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body }),
-    onSuccess: () => void reviewsQuery.refetch(),
+    onSuccess: () => {
+      void reviewsQuery.refetch();
+      void inboxQuery.refetch();
+    },
+  });
+  const updateInboxMutation = useMutation({
+    mutationFn: ({ itemId, status }: { itemId: string; status: "open" | "done" }) =>
+      spliceApi.updateWorkspaceRoomInboxStatus(PUZZLE_TESTBED_ID, itemId, status),
+    onSuccess: () => void inboxQuery.refetch(),
   });
   const dispatchRunnerMutation = useMutation({
     mutationFn: (dryRun: boolean) => spliceApi.dispatchRunner(dryRun),
@@ -2407,6 +2600,7 @@ export function SpliceWorkspaceRoom() {
         ? `Dry run checked ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`
         : `Runner dispatched ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`);
       void roomQuery.refetch();
+      void inboxQuery.refetch();
     },
     onError: (error) => {
       setRunnerNotice(error instanceof Error ? error.message : "Runner dispatch failed.");
@@ -2446,6 +2640,7 @@ export function SpliceWorkspaceRoom() {
 
   const runningAgentId = runAgentMutation.isPending ? runAgentMutation.variables ?? null : null;
   const sendingAgentId = sendMessageMutation.isPending ? sendMessageMutation.variables?.agentId ?? null : null;
+  const inbox = inboxQuery.data ?? null;
   const messages = messagesQuery.data?.messages ?? [];
   const agentConsole = agentConsoleQuery.data ?? null;
   const workThread = workThreadQuery.data;
@@ -2460,29 +2655,41 @@ export function SpliceWorkspaceRoom() {
     ? `${requestReviewMutation.variables.itemType}:${requestReviewMutation.variables.itemId}`
     : null;
   const decidingReviewId = decideReviewMutation.isPending ? decideReviewMutation.variables?.reviewId ?? null : null;
+  const updatingInboxItemId = updateInboxMutation.isPending ? updateInboxMutation.variables?.itemId ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
       data={data}
       activeTab={activeTab}
+      inboxOpenCount={inbox?.counts.open ?? 0}
       onTabChange={setActiveTab}
       onRefresh={() => {
         void roomQuery.refetch();
+        void inboxQuery.refetch();
         void messagesQuery.refetch();
         void agentConsoleQuery.refetch();
         void workThreadQuery.refetch();
         void reviewsQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
           data={data}
           dispatchingRunner={dispatchRunnerMutation.isPending}
+          inbox={inbox}
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
           reviews={reviews}
           runnerNotice={runnerNotice}
+        />
+      )}
+      {activeTab === "inbox" && (
+        <InboxTab
+          inbox={inbox}
+          updatingItemId={updatingInboxItemId}
+          onOpenTab={setActiveTab}
+          onUpdateStatus={(itemId, status) => updateInboxMutation.mutate({ itemId, status })}
         />
       )}
       {activeTab === "lanes" && <LanesTab data={data} />}
