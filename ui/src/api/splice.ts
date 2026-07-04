@@ -18,7 +18,8 @@ export interface SpliceAgentRunRequest {
   note?: string;
   operatorNote?: string | null;
   ageSeconds?: number;
-  state?: "fresh" | "waiting" | "launched" | "terminal";
+  state?: "fresh" | "waiting" | "launched" | "terminal" | string;
+  runtime?: SpliceRunRuntime | null;
   queue?: {
     store: string;
     path: string;
@@ -33,6 +34,23 @@ export interface SpliceAgentRunRequest {
     workspacePath?: string;
     dryRun?: boolean;
     codexHome?: string;
+  } | null;
+}
+
+export interface SpliceRunRuntime {
+  state: "queued" | "ready" | "launched" | "running" | "exited" | "terminal" | "verdict_seen" | string;
+  ageSeconds: number;
+  stale: boolean;
+  process: {
+    pid: number | null;
+    known: boolean;
+    alive: boolean;
+    state: "unknown" | "running" | "exited" | string;
+  };
+  verdict: {
+    value: "done" | "noop" | "blocked" | "failed" | string;
+    label: string;
+    line: string;
   } | null;
 }
 

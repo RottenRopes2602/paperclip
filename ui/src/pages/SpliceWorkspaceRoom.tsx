@@ -59,6 +59,7 @@ import {
   type SpliceReview,
   type SpliceRunDetailData,
   type SpliceRunMonitorData,
+  type SpliceRunRuntime,
   type SpliceWorkOrder,
   type SpliceWorkOrdersData,
   type SpliceWorkProduct,
@@ -148,6 +149,43 @@ function formatIsoAge(value: string | null | undefined): string {
   const time = Date.parse(value ?? "");
   if (!Number.isFinite(time)) return "No signal";
   return formatAge((Date.now() - time) / 60000);
+}
+
+const runtimeTone: Record<string, string> = {
+  queued: "border-stone-500/40 bg-stone-500/10 text-stone-600 dark:text-stone-300",
+  ready: "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-300",
+  launched: "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-300",
+  running: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  exited: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  stale: "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300",
+  terminal: "border-border bg-muted/45 text-muted-foreground",
+  verdict_seen: "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+};
+
+function runtimeLabel(runtime: SpliceRunRuntime | null | undefined, status: string): string {
+  if (runtime?.verdict?.label) return runtime.verdict.label;
+  if (runtime?.stale) return "process exited";
+  if (runtime?.state) return runtime.state.replace(/_/g, " ");
+  return status.replace(/_/g, " ");
+}
+
+function RunRuntimePill({
+  runtime,
+  status,
+}: {
+  runtime?: SpliceRunRuntime | null;
+  status: string;
+}) {
+  const state = runtime?.stale ? "stale" : runtime?.state ?? status;
+  const label = runtimeLabel(runtime, status);
+  return (
+    <span className={cn(
+      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+      runtimeTone[state] ?? runtimeTone.terminal,
+    )}>
+      {label}
+    </span>
+  );
 }
 
 function formatIsoSchedule(value: string | null | undefined): string {
@@ -297,8 +335,8 @@ function actorOfficePosition(actor: SpliceWorkspaceRoomActor, slotIndex: number)
       { x: 72, y: 68 },
     ],
     backlog: [
-      { x: 18, y: 73 },
-      { x: 22, y: 82 },
+      { x: 32, y: 73 },
+      { x: 31, y: 83 },
     ],
     blocked: [
       { x: 82, y: 76 },
@@ -540,7 +578,7 @@ function RoomActorSprite({
   return (
     <div
       data-testid="room-actor-sprite"
-      className="absolute z-20 flex w-32 -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+      className="absolute z-20 flex w-32 -translate-x-1/2 -translate-y-1/2 scale-[0.72] flex-col items-center sm:scale-[0.82] md:scale-100"
       style={{ left: `${left}%`, top: `${top}%` }}
       title={`${actor.name} · ${actor.state} · ${workLine}`}
     >
@@ -807,7 +845,7 @@ function PuzzleSidebar({
             <CompanyPatternIcon companyName={data.name} className="h-7 w-7 shrink-0 rounded-md" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{data.name}</p>
-              <p className="truncate text-[11px] text-muted-foreground">PZ · sample workspace</p>
+              <p className="truncate text-[11px] text-muted-foreground">PZ · office testbed</p>
             </div>
           </div>
           <button
@@ -992,6 +1030,7 @@ function DashboardTab({
   inbox,
   messages,
   onDispatchRunner,
+  onOpenTab,
   routines,
   runs,
   reviews,
@@ -1004,6 +1043,7 @@ function DashboardTab({
   inbox: SpliceOfficeInboxData | null;
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
+  onOpenTab: (tab: RoomTab) => void;
   routines: SpliceOfficeRoutinesData | null;
   runs: SpliceRunMonitorData | null;
   reviews: SpliceReview[];
@@ -1014,6 +1054,19 @@ function DashboardTab({
 
   return (
     <div className="space-y-6">
+      <RoomMap
+        approvals={approvals}
+        data={data}
+        dispatchingRunner={dispatchingRunner}
+        inbox={inbox}
+        onDispatchRunner={onDispatchRunner}
+        onOpenTab={onOpenTab}
+        routines={routines}
+        runnerNotice={runnerNotice}
+        runs={runs}
+        workOrders={workOrders}
+      />
+
       <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
         <MetricCard icon={Bot} value={data.totals.activeAgents} label="Agents Enabled" description={`${data.totals.agents} total`} />
         <MetricCard icon={CircleDot} value={data.totals.activeIssues} label="Tasks In Progress" description={`${data.totals.issues} total issues`} />
@@ -1032,8 +1085,6 @@ function DashboardTab({
       <OfficeApprovalsSummary approvals={approvals} data={data} />
 
       <OfficeRoutinesSummary data={data} routines={routines} />
-
-      <RoomMap data={data} />
 
       <OfficeSignalPanel data={data} messages={messages} />
 
@@ -1097,7 +1148,12 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
               title={compactAgentName(run.agentName, data.name)}
               subtitle={run.note ?? run.launch?.outPath ?? "Wake request"}
               leading={<Rocket className="h-4 w-4 text-muted-foreground" />}
-              trailing={<StatusBadge status={run.status} />}
+              trailing={(
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <RunRuntimePill runtime={run.runtime} status={run.status} />
+                  <StatusBadge status={run.status} />
+                </div>
+              )}
             />
           )) : (
             <p className="px-4 py-4 text-sm text-muted-foreground">No run requests yet.</p>
@@ -1421,6 +1477,7 @@ function RunMonitorCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={status} />
+            <RunRuntimePill runtime={run.runtime} status={status} />
             <span className="text-xs text-muted-foreground">{formatIsoAge(run.updatedAt || run.requestedAt)}</span>
             {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
           </div>
@@ -1551,9 +1608,15 @@ function RunInspector({
       <section className="border border-border px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={run.status} />
+          <RunRuntimePill runtime={detail?.run.runtime ?? run.runtime} status={run.status} />
           <span className="text-xs text-muted-foreground">{formatIsoAge(run.updatedAt || run.requestedAt)}</span>
           {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
         </div>
+        {detail?.run.runtime?.verdict ? (
+          <p className="mt-3 border border-border bg-muted/30 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            {detail.run.runtime.verdict.line}
+          </p>
+        ) : null}
         <h3 className="mt-3 truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</h3>
         <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{run.note ?? "Wake request"}</p>
         <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground">
@@ -3866,7 +3929,29 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
   );
 }
 
-function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
+function RoomMap({
+  approvals,
+  data,
+  dispatchingRunner,
+  inbox,
+  onDispatchRunner,
+  onOpenTab,
+  routines,
+  runnerNotice,
+  runs,
+  workOrders,
+}: {
+  approvals: SpliceOfficeApprovalsData | null;
+  data: SpliceWorkspaceRoomData;
+  dispatchingRunner: boolean;
+  inbox: SpliceOfficeInboxData | null;
+  onDispatchRunner: (dryRun: boolean) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  routines: SpliceOfficeRoutinesData | null;
+  runnerNotice: string | null;
+  runs: SpliceRunMonitorData | null;
+  workOrders: SpliceWorkOrdersData | null;
+}) {
   const roomActors = [...data.room.humans, ...data.room.agents];
   const zoneCounts = new Map<string, number>();
   const roomActorEntries = roomActors.map((actor) => {
@@ -3874,13 +3959,44 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
     zoneCounts.set(actor.zone, slotIndex + 1);
     return { actor, slotIndex };
   });
+  const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
+  const queuedRuns = runCounts.requested + runCounts.launchReady;
+  const activeActors = roomActors.filter((actor) =>
+    ["working", "reviewing", "requested", "present"].includes(actor.state),
+  ).length;
+  const officeSignals: Array<{
+    tab: RoomTab;
+    title: string;
+    value: number;
+    subtitle: string;
+    icon: LucideIcon;
+  }> = [
+    { tab: "runs", title: "Active Runs", value: runCounts.active, subtitle: `${queuedRuns} queued`, icon: Rocket },
+    { tab: "inbox", title: "Inbox", value: inbox?.counts.open ?? 0, subtitle: "open signals", icon: Inbox },
+    { tab: "intake", title: "Work Orders", value: workOrders?.counts.open ?? 0, subtitle: `${workOrders?.counts.queued ?? 0} queued`, icon: SquarePen },
+    { tab: "approvals", title: "Approvals", value: approvals?.counts.pending ?? 0, subtitle: "pending", icon: CheckCircle2 },
+    { tab: "routines", title: "Routines", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} enabled`, icon: Repeat2 },
+    { tab: "lanes", title: "Work Copies", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length} lanes`, icon: GitBranch },
+  ];
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="Workspace Room" aside="pixel office floor" />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <SectionTitle title="Puzzle Game Office" aside={`${activeActors} on floor · ${data.totals.progress}% progress`} />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
+            <Rocket className="h-3.5 w-3.5" />
+            Runs
+          </Button>
+          <Button type="button" size="sm" onClick={() => onOpenTab("intake")} className="h-8 gap-1.5">
+            <SquarePen className="h-3.5 w-3.5" />
+            New Work
+          </Button>
+        </div>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div
-          className="relative h-[430px] overflow-hidden border-2 border-border bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(0,0,0,0.24)]"
+          className="relative h-[500px] min-h-[420px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[580px]"
           style={{
             backgroundImage:
               "linear-gradient(45deg, rgba(255,255,255,0.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.035) 75%), linear-gradient(45deg, rgba(0,0,0,0.22) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.22) 75%), linear-gradient(to right, rgba(255,255,255,0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(255,255,255,0.06) 2px, transparent 2px)",
@@ -3889,21 +4005,84 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
             imageRendering: "pixelated",
           }}
         >
+          <div className="absolute left-4 top-4 z-10 border-2 border-black bg-[#101820] px-3 py-2 font-mono text-[11px] font-bold uppercase leading-none text-cyan-100 shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
+            Puzzle Office
+            <span className="ml-2 text-emerald-300">
+              {`· ${runCounts.active} run${runCounts.active === 1 ? "" : "s"}`}
+            </span>
+          </div>
           <OfficeLayout />
           {roomActorEntries.map(({ actor, slotIndex }) => (
             <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
           ))}
         </div>
-        <div className="border border-border">
-          {data.agents.slice(0, 5).map((agent) => (
-            <EntityRow
-              key={agent.id}
-              title={compactAgentName(agent.name, data.name)}
-              subtitle={agent.currentWork[0]?.title ?? "No assigned work"}
-              leading={<Dot state={agent.state} />}
-              trailing={<span className="text-xs text-muted-foreground">{agent.state}</span>}
-            />
-          ))}
+        <div className="min-w-0 border-2 border-border bg-background">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Office Board</p>
+            <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{data.shortPath}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-px bg-border">
+            {officeSignals.map((signal) => {
+              const Icon = signal.icon;
+              return (
+                <button
+                  key={signal.tab}
+                  type="button"
+                  onClick={() => onOpenTab(signal.tab)}
+                  className="min-w-0 bg-background px-3 py-3 text-left transition-colors hover:bg-accent/50"
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {signal.title}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{formatNumber(signal.value)}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{signal.subtitle}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-border px-4 py-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onDispatchRunner(true)}
+                disabled={dispatchingRunner || queuedRuns === 0}
+                className="h-8 gap-1.5"
+              >
+                <Activity className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+                Dry Run
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onDispatchRunner(false)}
+                disabled={dispatchingRunner || queuedRuns === 0}
+                className="h-8 gap-1.5"
+              >
+                <Rocket className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+                Dispatch
+              </Button>
+            </div>
+            {runnerNotice ? <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{runnerNotice}</p> : null}
+          </div>
+
+          <div className="border-t border-border">
+            {data.agents.slice(0, 7).map((agent) => (
+              <EntityRow
+                key={agent.id}
+                title={compactAgentName(agent.name, data.name)}
+                subtitle={agent.currentWork[0]?.title ?? "No assigned work"}
+                leading={<Dot state={agent.state} />}
+                trailing={<span className="text-xs text-muted-foreground">{agent.state}</span>}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -4219,6 +4398,7 @@ export function SpliceWorkspaceRoom() {
           inbox={inbox}
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onOpenTab={setActiveTab}
           routines={routines}
           runs={runs}
           reviews={reviews}
