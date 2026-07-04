@@ -314,5 +314,6 @@ export const spliceApi = {
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,
       { agentId, body },
     ),
-  dispatchRunner: () => api.post<SpliceRunnerDispatch>("/splice/runner/dispatch", {}),
+  dispatchRunner: (dryRun = false) =>
+    api.post<SpliceRunnerDispatch>(`/splice/runner/dispatch${dryRun ? "?dryRun=1" : ""}`, {}),
 };

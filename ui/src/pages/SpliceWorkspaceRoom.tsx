@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Play,
   RefreshCw,
+  Rocket,
   Search,
   Send,
   ShieldAlert,
@@ -875,7 +876,19 @@ function PuzzleWorkspaceShell({
   );
 }
 
-function DashboardTab({ data, messages }: { data: SpliceWorkspaceRoomData; messages: SpliceAgentMessage[] }) {
+function DashboardTab({
+  data,
+  dispatchingRunner,
+  messages,
+  onDispatchRunner,
+  runnerNotice,
+}: {
+  data: SpliceWorkspaceRoomData;
+  dispatchingRunner: boolean;
+  messages: SpliceAgentMessage[];
+  onDispatchRunner: (dryRun: boolean) => void;
+  runnerNotice: string | null;
+}) {
   const issues = [...data.lanes.active, ...data.lanes.review, ...data.lanes.next, ...data.lanes.blocked];
 
   return (
@@ -892,6 +905,13 @@ function DashboardTab({ data, messages }: { data: SpliceWorkspaceRoomData; messa
       <RoomMap data={data} />
 
       <OfficeSignalPanel data={data} messages={messages} />
+
+      <RunQueueBoard
+        data={data}
+        dispatchingRunner={dispatchingRunner}
+        onDispatchRunner={onDispatchRunner}
+        runnerNotice={runnerNotice}
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="min-w-0 space-y-3">
@@ -943,6 +963,105 @@ function OfficeSignalPanel({ data, messages }: { data: SpliceWorkspaceRoomData; 
             <p className="px-4 py-4 text-sm text-muted-foreground">No active wake requests.</p>
           )}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function RunQueueBoard({
+  data,
+  dispatchingRunner,
+  onDispatchRunner,
+  runnerNotice,
+}: {
+  data: SpliceWorkspaceRoomData;
+  dispatchingRunner: boolean;
+  onDispatchRunner: (dryRun: boolean) => void;
+  runnerNotice: string | null;
+}) {
+  const columns = [
+    {
+      id: "queued",
+      title: "Queued",
+      items: data.requests.filter((request) => request.status === "requested" || request.status === "launch_ready"),
+    },
+    {
+      id: "launched",
+      title: "Launched",
+      items: data.requests.filter((request) => request.status === "launched"),
+    },
+    {
+      id: "failed",
+      title: "Failed",
+      items: data.requests.filter((request) => request.status === "failed"),
+    },
+  ];
+  const pendingCount = columns[0].items.length;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SectionTitle title="Runner Board" aside={`${formatNumber(data.requests.length)} requests`} />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onDispatchRunner(true)}
+            disabled={dispatchingRunner || pendingCount === 0}
+            className="h-8 gap-1.5"
+          >
+            <Activity className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+            Dry Run
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onDispatchRunner(false)}
+            disabled={dispatchingRunner || pendingCount === 0}
+            className="h-8 gap-1.5"
+          >
+            <Rocket className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
+            Dispatch
+          </Button>
+        </div>
+      </div>
+
+      {runnerNotice ? (
+        <div className="border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {runnerNotice}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {columns.map((column) => (
+          <div key={column.id} className="min-w-0 border border-border bg-background">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{column.title}</p>
+              <span className="text-xs tabular-nums text-muted-foreground">{column.items.length}</span>
+            </div>
+            <div className="min-h-36">
+              {column.items.length ? column.items.slice(0, 6).map((request) => (
+                <div key={request.id} className="border-b border-border px-3 py-3 last:border-b-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{compactAgentName(request.agentName, data.name)}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{request.note ?? "Wake request"}</p>
+                    </div>
+                    <StatusBadge status={request.status} />
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                    <span>{formatIsoAge(request.requestedAt)}</span>
+                    <span className="min-w-0 truncate font-mono">{request.id}</span>
+                  </div>
+                </div>
+              )) : (
+                <p className="px-3 py-4 text-sm text-muted-foreground">No {column.title.toLowerCase()} runs.</p>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -1490,6 +1609,7 @@ function RoomMap({ data }: { data: SpliceWorkspaceRoomData }) {
 export function SpliceWorkspaceRoom() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
   const [activeTab, setActiveTab] = useState<RoomTab>("dashboard");
+  const [runnerNotice, setRunnerNotice] = useState<string | null>(null);
   const roomQuery = useQuery({
     queryKey: WORKSPACE_ROOM_QUERY_ROOT,
     queryFn: () => spliceApi.workspaceRoom(PUZZLE_TESTBED_ID),
@@ -1510,6 +1630,18 @@ export function SpliceWorkspaceRoom() {
     onSuccess: () => {
       void roomQuery.refetch();
       void messagesQuery.refetch();
+    },
+  });
+  const dispatchRunnerMutation = useMutation({
+    mutationFn: (dryRun: boolean) => spliceApi.dispatchRunner(dryRun),
+    onSuccess: (result, dryRun) => {
+      setRunnerNotice(dryRun
+        ? `Dry run checked ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`
+        : `Runner dispatched ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`);
+      void roomQuery.refetch();
+    },
+    onError: (error) => {
+      setRunnerNotice(error instanceof Error ? error.message : "Runner dispatch failed.");
     },
   });
 
@@ -1553,10 +1685,21 @@ export function SpliceWorkspaceRoom() {
       data={data}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      onRefresh={() => void roomQuery.refetch()}
-      refreshing={roomQuery.isFetching}
+      onRefresh={() => {
+        void roomQuery.refetch();
+        void messagesQuery.refetch();
+      }}
+      refreshing={roomQuery.isFetching || messagesQuery.isFetching}
     >
-      {activeTab === "dashboard" && <DashboardTab data={data} messages={messages} />}
+      {activeTab === "dashboard" && (
+        <DashboardTab
+          data={data}
+          dispatchingRunner={dispatchRunnerMutation.isPending}
+          messages={messages}
+          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          runnerNotice={runnerNotice}
+        />
+      )}
       {activeTab === "lanes" && <LanesTab data={data} />}
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
       {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
