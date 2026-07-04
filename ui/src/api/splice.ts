@@ -151,6 +151,34 @@ export interface SpliceRunStatusPost {
   run: SpliceAgentRunRequest | null;
 }
 
+export interface SpliceRunArtifact {
+  path: string | null;
+  exists: boolean;
+  readable: boolean;
+  size: number;
+  updatedAt: string | null;
+  text: string;
+  truncated: boolean;
+  mode: "none" | "full" | "tail" | string;
+  error?: string;
+}
+
+export interface SpliceRunDetailData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  run: SpliceAgentRunRequest;
+  artifacts: {
+    prompt: SpliceRunArtifact;
+    output: SpliceRunArtifact;
+  };
+  related: {
+    messages: SpliceAgentMessage[];
+    workOrders: SpliceWorkOrder[];
+    routineRuns: SpliceOfficeRoutineRun[];
+  };
+}
+
 export interface SpliceAgentMessage {
   id: string;
   workspaceId: string;
@@ -780,6 +808,10 @@ export const spliceApi = {
     api.get<SpliceAgentConsoleData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/agent-console`),
   workspaceRoomRuns: (workspaceId: string) =>
     api.get<SpliceRunMonitorData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/runs`),
+  workspaceRoomRunDetail: (workspaceId: string, runId: string) =>
+    api.get<SpliceRunDetailData>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}`,
+    ),
   updateWorkspaceRoomRunStatus: (
     workspaceId: string,
     runId: string,

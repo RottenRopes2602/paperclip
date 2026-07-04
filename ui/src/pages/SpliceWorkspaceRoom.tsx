@@ -57,6 +57,7 @@ import {
   type SpliceOfficeTimelineData,
   type SpliceOfficeTimelineEvent,
   type SpliceReview,
+  type SpliceRunDetailData,
   type SpliceRunMonitorData,
   type SpliceWorkOrder,
   type SpliceWorkOrdersData,
@@ -161,6 +162,13 @@ function formatIsoSchedule(value: string | null | undefined): string {
 
 function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US").format(value ?? 0);
+}
+
+function formatBytes(value: number | null | undefined): string {
+  const bytes = value ?? 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function compactAgentName(name: string, workspaceName?: string): string {
@@ -1387,13 +1395,17 @@ function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
 
 function RunMonitorCard({
   data,
+  onSelectRun,
   run,
   onUpdateRunStatus,
+  selected,
   updatingRunId,
 }: {
   data: SpliceWorkspaceRoomData;
+  onSelectRun: (runId: string) => void;
   run: SpliceAgentRunRequest;
   onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
+  selected: boolean;
   updatingRunId: string | null;
 }) {
   const status = String(run.status);
@@ -1404,7 +1416,7 @@ function RunMonitorCard({
   const runPath = run.launch?.outPath || run.launch?.promptPath || run.workspacePath || run.queue?.path || "";
 
   return (
-    <article className="border border-border bg-background px-4 py-4">
+    <article className={cn("border bg-background px-4 py-4", selected ? "border-ring" : "border-border")}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1421,6 +1433,16 @@ function RunMonitorCard({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onSelectRun(run.id)}
+            className={cn("gap-1.5", selected && "border-ring")}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Details
+          </Button>
           {isQueued || isLaunched ? (
             <Button
               type="button"
@@ -1473,6 +1495,124 @@ function RunMonitorCard({
   );
 }
 
+function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["artifacts"]["output"]; title: string }) {
+  return (
+    <section className="border border-border">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{artifact.path ?? "No artifact path yet"}</p>
+        </div>
+        {artifact.exists ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(artifact.size)}</span>
+        ) : null}
+      </div>
+      {artifact.error ? (
+        <p className="px-4 py-4 text-sm text-red-600 dark:text-red-300">{artifact.error}</p>
+      ) : artifact.exists && artifact.readable ? (
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words bg-muted/30 px-4 py-4 text-[11px] leading-5 text-foreground/80">
+          {artifact.truncated ? `[showing ${artifact.mode}]\n\n` : ""}
+          {artifact.text || "Artifact file is empty."}
+        </pre>
+      ) : (
+        <p className="px-4 py-4 text-sm text-muted-foreground">No artifact captured yet.</p>
+      )}
+    </section>
+  );
+}
+
+function RunInspector({
+  data,
+  detail,
+  loading,
+  run,
+}: {
+  data: SpliceWorkspaceRoomData;
+  detail: SpliceRunDetailData | null;
+  loading: boolean;
+  run: SpliceAgentRunRequest | null;
+}) {
+  if (!run) {
+    return (
+      <aside className="min-w-0 space-y-3">
+        <SectionTitle title="Run Inspector" aside="no selection" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">Select a run to inspect its prompt, output, and linked office work.</p>
+      </aside>
+    );
+  }
+
+  const messages = detail?.related.messages ?? [];
+  const workOrders = detail?.related.workOrders ?? [];
+  const routineRuns = detail?.related.routineRuns ?? [];
+
+  return (
+    <aside className="min-w-0 space-y-3">
+      <SectionTitle title="Run Inspector" aside={loading ? "loading" : run.status} />
+      <section className="border border-border px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={run.status} />
+          <span className="text-xs text-muted-foreground">{formatIsoAge(run.updatedAt || run.requestedAt)}</span>
+          {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
+        </div>
+        <h3 className="mt-3 truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</h3>
+        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{run.note ?? "Wake request"}</p>
+        <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground">
+          <p className="truncate font-mono">{run.id}</p>
+          <p className="truncate font-mono">{run.launch?.workspacePath || run.workspacePath || "No workspace path"}</p>
+        </div>
+      </section>
+
+      <section className="border border-border">
+        <div className="border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold">Linked Office Work</p>
+        </div>
+        {messages.length || workOrders.length || routineRuns.length ? (
+          <div>
+            {messages.map((message) => (
+              <EntityRow
+                key={message.id}
+                title={`Message from ${message.author}`}
+                subtitle={message.body}
+                leading={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+                trailing={<StatusBadge status={message.status} />}
+              />
+            ))}
+            {workOrders.map((workOrder) => (
+              <EntityRow
+                key={workOrder.id}
+                title={workOrder.title}
+                subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
+                leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
+                trailing={<StatusBadge status={workOrder.status} />}
+              />
+            ))}
+            {routineRuns.map((routineRun) => (
+              <EntityRow
+                key={routineRun.id}
+                title={routineRun.routineTitle}
+                subtitle={compactAgentName(routineRun.agentName, data.name)}
+                leading={<Repeat2 className="h-4 w-4 text-muted-foreground" />}
+                trailing={<StatusBadge status={routineRun.status} />}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="px-4 py-4 text-sm text-muted-foreground">No linked message, intake item, or routine for this run.</p>
+        )}
+      </section>
+
+      {detail ? (
+        <>
+          <RunArtifactPanel title="Output" artifact={detail.artifacts.output} />
+          <RunArtifactPanel title="Prompt" artifact={detail.artifacts.prompt} />
+        </>
+      ) : (
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">Run detail has not loaded yet.</p>
+      )}
+    </aside>
+  );
+}
+
 function RunsTab({
   data,
   dispatchingRunner,
@@ -1495,6 +1635,26 @@ function RunsTab({
   const queuedCount = counts.requested + counts.launchReady;
   const activeRuns = runList.filter((run) => ["requested", "launch_ready", "launched"].includes(String(run.status)));
   const historyRuns = runList.filter((run) => !["requested", "launch_ready", "launched"].includes(String(run.status)));
+  const runIds = runList.map((run) => run.id).join("|");
+  const [selectedRunId, setSelectedRunId] = useState(runList[0]?.id ?? "");
+
+  useEffect(() => {
+    if (!runList.length) {
+      if (selectedRunId) setSelectedRunId("");
+      return;
+    }
+    if (!selectedRunId || !runList.some((run) => run.id === selectedRunId)) {
+      setSelectedRunId(runList[0].id);
+    }
+  }, [runIds, runList, selectedRunId]);
+
+  const selectedRun = runList.find((run) => run.id === selectedRunId) ?? runList[0] ?? null;
+  const selectedRunDetailQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "run-detail", selectedRun?.id ?? "none"],
+    queryFn: () => spliceApi.workspaceRoomRunDetail(PUZZLE_TESTBED_ID, selectedRun?.id ?? ""),
+    enabled: Boolean(selectedRun?.id),
+    refetchInterval: 3000,
+  });
 
   return (
     <div className="space-y-4">
@@ -1545,14 +1705,16 @@ function RunsTab({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-3">
           <SectionTitle title="Active Runs" aside={`${activeRuns.length}`} />
           {activeRuns.length ? activeRuns.map((run) => (
             <RunMonitorCard
               key={run.id}
               data={data}
+              onSelectRun={setSelectedRunId}
               run={run}
+              selected={selectedRun?.id === run.id}
               updatingRunId={updatingRunId}
               onUpdateRunStatus={onUpdateRunStatus}
             />
@@ -1561,23 +1723,32 @@ function RunsTab({
           )}
         </section>
 
-        <aside className="min-w-0 space-y-3">
-          <SectionTitle title="Run History" aside={`${historyRuns.length}`} />
-          <div className="space-y-3">
-            {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
-              <RunMonitorCard
-                key={run.id}
-                data={data}
-                run={run}
-                updatingRunId={updatingRunId}
-                onUpdateRunStatus={onUpdateRunStatus}
-              />
-            )) : (
-              <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed runs yet.</p>
-            )}
-          </div>
-        </aside>
+        <RunInspector
+          data={data}
+          detail={selectedRunDetailQuery.data ?? null}
+          loading={selectedRunDetailQuery.isFetching}
+          run={selectedRun}
+        />
       </div>
+
+      <section className="min-w-0 space-y-3">
+        <SectionTitle title="Run History" aside={`${historyRuns.length}`} />
+        <div className="grid gap-3 xl:grid-cols-2">
+          {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
+            <RunMonitorCard
+              key={run.id}
+              data={data}
+              onSelectRun={setSelectedRunId}
+              run={run}
+              selected={selectedRun?.id === run.id}
+              updatingRunId={updatingRunId}
+              onUpdateRunStatus={onUpdateRunStatus}
+            />
+          )) : (
+            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed runs yet.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
