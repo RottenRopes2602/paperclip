@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Play,
   RefreshCw,
+  Repeat2,
   Rocket,
   Search,
   Send,
@@ -50,6 +51,7 @@ import {
   type SpliceExecutionLane,
   type SpliceInboxItem,
   type SpliceOfficeInboxData,
+  type SpliceOfficeRoutinesData,
   type SpliceReview,
   type SpliceWorkProduct,
   type SpliceWorkThreadComment,
@@ -64,7 +66,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "goals" | "projects" | "issues" | "desk" | "reviews" | "routines" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -75,6 +77,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "issues", label: "Issues", icon: CircleDot },
   { value: "desk", label: "Work Desk", icon: SquarePen },
   { value: "reviews", label: "Review Gate", icon: ShieldAlert },
+  { value: "routines", label: "Routines", icon: Repeat2 },
   { value: "agents", label: "Agents", icon: Bot },
   { value: "comms", label: "Comms", icon: MessageSquare },
   { value: "activity", label: "Activity", icon: History },
@@ -134,6 +137,16 @@ function formatIsoAge(value: string | null | undefined): string {
   const time = Date.parse(value ?? "");
   if (!Number.isFinite(time)) return "No signal";
   return formatAge((Date.now() - time) / 60000);
+}
+
+function formatIsoSchedule(value: string | null | undefined): string {
+  const time = Date.parse(value ?? "");
+  if (!Number.isFinite(time)) return "No schedule";
+  const minutes = Math.round((time - Date.now()) / 60000);
+  if (minutes <= 0) return "due now";
+  if (minutes < 60) return `in ${minutes}m`;
+  if (minutes < 60 * 24) return `in ${Math.round(minutes / 60)}h`;
+  return `in ${Math.round(minutes / (60 * 24))}d`;
 }
 
 function formatNumber(value: number | null | undefined): string {
@@ -711,11 +724,13 @@ function PuzzleSidebar({
   activeTab,
   data,
   inboxOpenCount,
+  routineDueCount,
   onTabChange,
 }: {
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
+  routineDueCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
@@ -731,6 +746,7 @@ function PuzzleSidebar({
   const issueItem = roomTabs.find((item) => item.value === "issues")!;
   const deskItem = roomTabs.find((item) => item.value === "desk")!;
   const reviewsItem = roomTabs.find((item) => item.value === "reviews")!;
+  const routinesItem = roomTabs.find((item) => item.value === "routines")!;
   const goalItem = roomTabs.find((item) => item.value === "goals")!;
   const projectItem = roomTabs.find((item) => item.value === "projects")!;
   const agentItem = roomTabs.find((item) => item.value === "agents")!;
@@ -826,6 +842,12 @@ function PuzzleSidebar({
           </SidebarSection>
 
           <SidebarSection label="Agents">
+            <PuzzleSidebarNavItem
+              activeTab={activeTab}
+              item={routinesItem}
+              onSelect={selectTab}
+              textBadge={routineDueCount > 0 ? `${routineDueCount}` : undefined}
+            />
             <PuzzleSidebarNavItem activeTab={activeTab} item={agentItem} onSelect={selectTab} textBadge={`${data.agents.length}`} />
             <PuzzleSidebarNavItem activeTab={activeTab} item={commsItem} onSelect={selectTab} textBadge={`${data.requests.length}`} />
             {data.agents.slice(0, 5).map((agent) => (
@@ -857,6 +879,7 @@ function PuzzleWorkspaceShell({
   children,
   data,
   inboxOpenCount,
+  routineDueCount,
   onRefresh,
   onTabChange,
   refreshing,
@@ -865,6 +888,7 @@ function PuzzleWorkspaceShell({
   children: ReactNode;
   data: SpliceWorkspaceRoomData;
   inboxOpenCount: number;
+  routineDueCount: number;
   onRefresh: () => void;
   onTabChange: (tab: RoomTab) => void;
   refreshing: boolean;
@@ -883,7 +907,13 @@ function PuzzleWorkspaceShell({
       >
         Skip to Main Content
       </a>
-      <PuzzleSidebar activeTab={activeTab} data={data} inboxOpenCount={inboxOpenCount} onTabChange={onTabChange} />
+      <PuzzleSidebar
+        activeTab={activeTab}
+        data={data}
+        inboxOpenCount={inboxOpenCount}
+        routineDueCount={routineDueCount}
+        onTabChange={onTabChange}
+      />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <BreadcrumbBar scope="splice" />
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 outline-none md:p-6">
@@ -908,6 +938,7 @@ function DashboardTab({
   inbox,
   messages,
   onDispatchRunner,
+  routines,
   reviews,
   runnerNotice,
 }: {
@@ -916,6 +947,7 @@ function DashboardTab({
   inbox: SpliceOfficeInboxData | null;
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
+  routines: SpliceOfficeRoutinesData | null;
   reviews: SpliceReview[];
   runnerNotice: string | null;
 }) {
@@ -933,6 +965,8 @@ function DashboardTab({
       <ExecutionLanesPanel data={data} limit={3} />
 
       <OfficeInboxSummary inbox={inbox} />
+
+      <OfficeRoutinesSummary data={data} routines={routines} />
 
       <RoomMap data={data} />
 
@@ -978,6 +1012,45 @@ function OfficeInboxSummary({ inbox }: { inbox: SpliceOfficeInboxData | null }) 
         )) : (
           <p className="px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function OfficeRoutinesSummary({ data, routines }: { data: SpliceWorkspaceRoomData; routines: SpliceOfficeRoutinesData | null }) {
+  const routineItems = routines?.routines ?? [];
+  const dueItems = routineItems
+    .filter((routine) => routine.due)
+    .sort((a, b) => Date.parse(a.nextRunAt || "") - Date.parse(b.nextRunAt || ""))
+    .slice(0, 5);
+  const visibleItems = dueItems.length ? dueItems : routineItems.slice(0, 5);
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle
+        title="Office Routines"
+        aside={`${routines?.counts.enabled ?? 0} enabled · ${routines?.counts.due ?? 0} due`}
+      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <MetricCard icon={Repeat2} value={routines?.counts.enabled ?? 0} label="Enabled" description={`${routines?.counts.total ?? 0} routines`} />
+          <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="Due Now" description="ready to wake" />
+          <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="Routine Runs" description="manual wakes" />
+          <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="Paused" description="not scheduled" />
+        </div>
+        <div className="min-w-0 border border-border">
+          {visibleItems.length ? visibleItems.map((routine) => (
+            <EntityRow
+              key={routine.id}
+              title={compactAgentName(routine.agentName, data.name)}
+              subtitle={`${routine.cadenceLabel} · next ${formatIsoSchedule(routine.nextRunAt)}`}
+              leading={<Repeat2 className="h-4 w-4 text-muted-foreground" />}
+              trailing={<StatusBadge status={routine.state} />}
+            />
+          )) : (
+            <p className="px-4 py-4 text-sm text-muted-foreground">No office routines yet.</p>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -1850,6 +1923,160 @@ function ReviewGateTab({
   );
 }
 
+function RoutinesTab({
+  data,
+  onRunRoutine,
+  onToggleRoutine,
+  routines,
+  runningRoutineId,
+  updatingRoutineId,
+}: {
+  data: SpliceWorkspaceRoomData;
+  onRunRoutine: (routineId: string) => void;
+  onToggleRoutine: (routineId: string, input: { enabled?: boolean; intervalMinutes?: number }) => void;
+  routines: SpliceOfficeRoutinesData | null;
+  runningRoutineId: string | null;
+  updatingRoutineId: string | null;
+}) {
+  const routineItems = routines?.routines ?? [];
+  const recentRuns = routines?.runs ?? [];
+  const sortedRoutines = [...routineItems].sort((a, b) => {
+    const stateDelta = Number(!a.due) - Number(!b.due);
+    if (stateDelta !== 0) return stateDelta;
+    return Date.parse(a.nextRunAt || "") - Date.parse(b.nextRunAt || "");
+  });
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Office Routines" aside={`${routines?.counts.enabled ?? 0} enabled · ${routines?.counts.due ?? 0} due`} />
+
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <MetricCard icon={Repeat2} value={routines?.counts.total ?? 0} label="Routines" description="agent heartbeat slots" />
+        <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="Due Now" description="ready to wake" />
+        <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="Manual Runs" description="queued from office" />
+        <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="Paused" description="operator held" />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 border border-border">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Routine Board</p>
+            <span className="text-xs text-muted-foreground">{sortedRoutines.length}</span>
+          </div>
+          <div className="divide-y divide-border">
+            {sortedRoutines.length ? sortedRoutines.map((routine) => {
+              const agent = data.agents.find((item) => item.id === routine.agentId);
+              const isRunning = runningRoutineId === routine.id;
+              const isUpdating = updatingRoutineId === routine.id;
+              return (
+                <article key={routine.id} className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Dot state={agent?.state ?? routine.state} />
+                      <h3 className="truncate text-sm font-semibold">{compactAgentName(routine.agentName, data.name)}</h3>
+                      <StatusBadge status={routine.state} />
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{routine.agentRole} · {routine.cadenceLabel}</p>
+                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-foreground/80">{routine.description}</p>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <span>Next {formatIsoSchedule(routine.nextRunAt)}</span>
+                      <span>Last {routine.lastRunAt ? formatIsoAge(routine.lastRunAt) : "never"}</span>
+                      <span>{routine.runCount} run{routine.runCount === 1 ? "" : "s"}</span>
+                    </div>
+                    {routine.lastRunRequestId ? (
+                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{routine.lastRunRequestId}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <select
+                      value={routine.intervalMinutes}
+                      onChange={(event) => onToggleRoutine(routine.id, {
+                        enabled: routine.enabled,
+                        intervalMinutes: Number(event.target.value),
+                      })}
+                      disabled={isUpdating}
+                      className="h-8 border border-border bg-background px-2 text-xs outline-none focus:border-ring"
+                    >
+                      <option value={5}>Every 5m</option>
+                      <option value={10}>Every 10m</option>
+                      <option value={15}>Every 15m</option>
+                      <option value={30}>Every 30m</option>
+                      <option value={60}>Every 1h</option>
+                    </select>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onToggleRoutine(routine.id, {
+                          enabled: !routine.enabled,
+                          intervalMinutes: routine.intervalMinutes,
+                        })}
+                        disabled={isUpdating}
+                      >
+                        {routine.enabled ? "Pause" : "Resume"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => onRunRoutine(routine.id)}
+                        disabled={Boolean(runningRoutineId)}
+                        className="gap-1.5"
+                      >
+                        <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
+                        {isRunning ? "Queued" : "Run Now"}
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              );
+            }) : (
+              <p className="px-4 py-4 text-sm text-muted-foreground">No office routines yet.</p>
+            )}
+          </div>
+        </section>
+
+        <aside className="min-w-0 space-y-4">
+          <section className="border border-border">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold">Recent Routine Runs</p>
+              <span className="text-xs text-muted-foreground">{recentRuns.length}</span>
+            </div>
+            <div className="max-h-[540px] overflow-y-auto">
+              {recentRuns.length ? recentRuns.slice(0, 16).map((run) => (
+                <article key={run.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</p>
+                    <StatusBadge status={run.status} />
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{run.routineTitle}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                    <span>{formatIsoAge(run.createdAt)}</span>
+                  </div>
+                  <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{run.runRequestId}</p>
+                </article>
+              )) : (
+                <p className="px-4 py-4 text-sm text-muted-foreground">No routine runs yet.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="border border-border">
+            <div className="border-b border-border px-4 py-3">
+              <p className="text-sm font-semibold">Queue Paths</p>
+            </div>
+            <div className="space-y-3 px-4 py-4 text-xs text-muted-foreground">
+              <p className="truncate font-mono">{routines?.queuePaths.routines ?? "No routine store"}</p>
+              <p className="truncate font-mono">{routines?.queuePaths.runRequests ?? "No run queue"}</p>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 function AgentsTab({
   agentConsole,
   data,
@@ -2544,12 +2771,18 @@ export function SpliceWorkspaceRoom() {
     queryFn: () => spliceApi.workspaceRoomReviews(PUZZLE_TESTBED_ID),
     refetchInterval: 5000,
   });
+  const routinesQuery = useQuery({
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "routines"],
+    queryFn: () => spliceApi.workspaceRoomRoutines(PUZZLE_TESTBED_ID),
+    refetchInterval: 5000,
+  });
   const runAgentMutation = useMutation({
     mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
     onSuccess: () => {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
+      void routinesQuery.refetch();
     },
   });
   const sendMessageMutation = useMutation({
@@ -2559,6 +2792,20 @@ export function SpliceWorkspaceRoom() {
       void roomQuery.refetch();
       void inboxQuery.refetch();
       void messagesQuery.refetch();
+      void agentConsoleQuery.refetch();
+    },
+  });
+  const updateRoutineMutation = useMutation({
+    mutationFn: ({ routineId, input }: { routineId: string; input: { enabled?: boolean; intervalMinutes?: number } }) =>
+      spliceApi.updateWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId, input),
+    onSuccess: () => void routinesQuery.refetch(),
+  });
+  const runRoutineMutation = useMutation({
+    mutationFn: (routineId: string) => spliceApi.runWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId),
+    onSuccess: () => {
+      void routinesQuery.refetch();
+      void roomQuery.refetch();
+      void inboxQuery.refetch();
       void agentConsoleQuery.refetch();
     },
   });
@@ -2601,6 +2848,7 @@ export function SpliceWorkspaceRoom() {
         : `Runner dispatched ${result.pending} queued request${result.pending === 1 ? "" : "s"}.`);
       void roomQuery.refetch();
       void inboxQuery.refetch();
+      void routinesQuery.refetch();
     },
     onError: (error) => {
       setRunnerNotice(error instanceof Error ? error.message : "Runner dispatch failed.");
@@ -2645,6 +2893,7 @@ export function SpliceWorkspaceRoom() {
   const agentConsole = agentConsoleQuery.data ?? null;
   const workThread = workThreadQuery.data;
   const reviews = reviewsQuery.data?.reviews ?? [];
+  const routines = routinesQuery.data ?? null;
   const postingCommentKey = addCommentMutation.isPending && addCommentMutation.variables
     ? `${addCommentMutation.variables.itemType}:${addCommentMutation.variables.itemId}`
     : null;
@@ -2656,12 +2905,15 @@ export function SpliceWorkspaceRoom() {
     : null;
   const decidingReviewId = decideReviewMutation.isPending ? decideReviewMutation.variables?.reviewId ?? null : null;
   const updatingInboxItemId = updateInboxMutation.isPending ? updateInboxMutation.variables?.itemId ?? null : null;
+  const updatingRoutineId = updateRoutineMutation.isPending ? updateRoutineMutation.variables?.routineId ?? null : null;
+  const runningRoutineId = runRoutineMutation.isPending ? runRoutineMutation.variables ?? null : null;
 
   return (
     <PuzzleWorkspaceShell
       data={data}
       activeTab={activeTab}
       inboxOpenCount={inbox?.counts.open ?? 0}
+      routineDueCount={routines?.counts.due ?? 0}
       onTabChange={setActiveTab}
       onRefresh={() => {
         void roomQuery.refetch();
@@ -2670,8 +2922,9 @@ export function SpliceWorkspaceRoom() {
         void agentConsoleQuery.refetch();
         void workThreadQuery.refetch();
         void reviewsQuery.refetch();
+        void routinesQuery.refetch();
       }}
-      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching}
+      refreshing={roomQuery.isFetching || inboxQuery.isFetching || messagesQuery.isFetching || agentConsoleQuery.isFetching || workThreadQuery.isFetching || reviewsQuery.isFetching || routinesQuery.isFetching}
     >
       {activeTab === "dashboard" && (
         <DashboardTab
@@ -2680,6 +2933,7 @@ export function SpliceWorkspaceRoom() {
           inbox={inbox}
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          routines={routines}
           reviews={reviews}
           runnerNotice={runnerNotice}
         />
@@ -2715,6 +2969,16 @@ export function SpliceWorkspaceRoom() {
           decidingReviewId={decidingReviewId}
           onRequestReview={(input) => requestReviewMutation.mutate(input)}
           onDecideReview={(reviewId, decision, body) => decideReviewMutation.mutate({ reviewId, decision, body })}
+        />
+      )}
+      {activeTab === "routines" && (
+        <RoutinesTab
+          data={data}
+          routines={routines}
+          runningRoutineId={runningRoutineId}
+          updatingRoutineId={updatingRoutineId}
+          onRunRoutine={(routineId) => runRoutineMutation.mutate(routineId)}
+          onToggleRoutine={(routineId, input) => updateRoutineMutation.mutate({ routineId, input })}
         />
       )}
       {activeTab === "agents" && (

@@ -293,6 +293,81 @@ export interface SpliceOfficeInboxStatusPost {
   };
 }
 
+export interface SpliceOfficeRoutine {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspacePath: string;
+  agentId: string;
+  agentName: string;
+  agentRole: string;
+  title: string;
+  kind: "heartbeat" | string;
+  enabled: boolean;
+  intervalMinutes: number;
+  cadenceLabel: string;
+  queuePath: string;
+  description: string;
+  state: "due" | "scheduled" | "paused" | string;
+  due: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string;
+  lastRunRequestId: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface SpliceOfficeRoutineRun {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  routineId: string;
+  routineTitle: string;
+  agentId: string;
+  agentName: string;
+  status: "requested" | "launched" | "failed" | string;
+  createdAt: string;
+  runRequestId: string;
+}
+
+export interface SpliceOfficeRoutinesData {
+  generatedAt: string;
+  workspaceId: string;
+  workspaceName: string;
+  queuePaths: {
+    routines: string;
+    runRequests: string;
+  };
+  counts: {
+    total: number;
+    enabled: number;
+    due: number;
+    paused: number;
+    runs: number;
+  };
+  routines: SpliceOfficeRoutine[];
+  runs: SpliceOfficeRoutineRun[];
+}
+
+export interface SpliceOfficeRoutineSettingPost {
+  setting: {
+    workspaceId: string;
+    workspaceName: string;
+    routineId: string;
+    enabled: boolean;
+    intervalMinutes: number;
+    updatedAt: string;
+  };
+  routine: SpliceOfficeRoutine | null;
+}
+
+export interface SpliceOfficeRoutineRunPost {
+  routine: SpliceOfficeRoutine | null;
+  routineRun: SpliceOfficeRoutineRun;
+  runRequest: SpliceAgentRunRequest;
+}
+
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
   type: "project" | "issue";
@@ -491,6 +566,22 @@ export const spliceApi = {
     api.post<SpliceOfficeInboxStatusPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/inbox/${encodeURIComponent(itemId)}/status`,
       { status },
+    ),
+  workspaceRoomRoutines: (workspaceId: string) =>
+    api.get<SpliceOfficeRoutinesData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/routines`),
+  updateWorkspaceRoomRoutine: (
+    workspaceId: string,
+    routineId: string,
+    input: { enabled?: boolean; intervalMinutes?: number },
+  ) =>
+    api.post<SpliceOfficeRoutineSettingPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/routines/${encodeURIComponent(routineId)}/toggle`,
+      input,
+    ),
+  runWorkspaceRoomRoutine: (workspaceId: string, routineId: string) =>
+    api.post<SpliceOfficeRoutineRunPost>(
+      `/splice/workspaces/${encodeURIComponent(workspaceId)}/routines/${encodeURIComponent(routineId)}/run`,
+      {},
     ),
   sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
     api.post<SpliceAgentMessagePost>(
