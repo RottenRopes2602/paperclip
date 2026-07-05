@@ -1948,11 +1948,17 @@ function RunInspector({
   data,
   detail,
   loading,
+  onFocusAgent,
+  onOpenTab,
+  onOpenWorkItem,
   run,
 }: {
   data: SpliceWorkspaceRoomData;
   detail: SpliceRunDetailData | null;
   loading: boolean;
+  onFocusAgent: (agentId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
   run: SpliceAgentRunRequest | null;
 }) {
   if (!run) {
@@ -1964,10 +1970,29 @@ function RunInspector({
     );
   }
 
+  const comments = detail?.related.comments ?? [];
   const messages = detail?.related.messages ?? [];
   const workOrders = detail?.related.workOrders ?? [];
   const workProducts = detail?.related.workProducts ?? [];
   const routineRuns = detail?.related.routineRuns ?? [];
+  const relatedWorkItem =
+    comments.map((comment) => workItemRefFromTarget(comment.itemType, comment.itemId)).find(Boolean) ??
+    workProducts.map((product) => workItemRefFromTarget(product.itemType, product.itemId)).find(Boolean) ??
+    workOrders.map((workOrder) => workItemRefFromTarget("project", workOrder.projectId)).find(Boolean) ??
+    null;
+  const openAgent = () => {
+    const agentId = run.agentId || data.agents.find((agent) => agent.name === run.agentName)?.id || "";
+    if (agentId) onFocusAgent(agentId);
+    onOpenTab("comms");
+  };
+
+  const openWorkItem = (item: WorkItemRef | null) => {
+    if (item) {
+      onOpenWorkItem(item);
+      return;
+    }
+    onOpenTab("desk");
+  };
 
   return (
     <aside className="min-w-0 space-y-3">
@@ -1990,14 +2015,43 @@ function RunInspector({
           <p className="truncate font-mono">{run.id}</p>
           <p className="truncate font-mono">{run.launch?.workspacePath || run.workspacePath || "No workspace path"}</p>
         </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={openAgent} className="gap-1.5">
+            <MessageSquare className="h-3.5 w-3.5" />
+            Talk
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openWorkItem(relatedWorkItem)}
+            className="gap-1.5"
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+            Work
+          </Button>
+        </div>
       </section>
 
       <section className="border border-border">
         <div className="border-b border-border px-4 py-3">
           <p className="text-sm font-semibold">Linked Office Work</p>
         </div>
-        {messages.length || workOrders.length || workProducts.length || routineRuns.length ? (
+        {comments.length || messages.length || workOrders.length || workProducts.length || routineRuns.length ? (
           <div>
+            {comments.map((comment) => {
+              const item = workItemRefFromTarget(comment.itemType, comment.itemId);
+              return (
+                <EntityRow
+                  key={comment.id}
+                  title={`Comment on ${comment.itemTitle}`}
+                  subtitle={comment.body}
+                  leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
+                  trailing={<StatusBadge status={comment.status} />}
+                  onClick={() => openWorkItem(item)}
+                />
+              );
+            })}
             {messages.map((message) => (
               <EntityRow
                 key={message.id}
@@ -2005,26 +2059,38 @@ function RunInspector({
                 subtitle={message.body}
                 leading={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
                 trailing={<StatusBadge status={message.status} />}
+                onClick={() => {
+                  onFocusAgent(message.agentId || run.agentId);
+                  onOpenTab("comms");
+                }}
               />
             ))}
-            {workOrders.map((workOrder) => (
-              <EntityRow
-                key={workOrder.id}
-                title={workOrder.title}
-                subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
-                leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
-                trailing={<StatusBadge status={workOrder.status} />}
-              />
-            ))}
-            {workProducts.map((product) => (
-              <EntityRow
-                key={product.id}
-                title={product.title}
-                subtitle={`${product.itemTitle} · ${product.agentName ? compactAgentName(product.agentName, data.name) : product.author}`}
-                leading={<FileText className="h-4 w-4 text-muted-foreground" />}
-                trailing={<StatusBadge status={product.status} />}
-              />
-            ))}
+            {workOrders.map((workOrder) => {
+              const item = workItemRefFromTarget("project", workOrder.projectId);
+              return (
+                <EntityRow
+                  key={workOrder.id}
+                  title={workOrder.title}
+                  subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
+                  leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
+                  trailing={<StatusBadge status={workOrder.status} />}
+                  onClick={() => item ? openWorkItem(item) : onOpenTab("intake")}
+                />
+              );
+            })}
+            {workProducts.map((product) => {
+              const item = workItemRefFromTarget(product.itemType, product.itemId);
+              return (
+                <EntityRow
+                  key={product.id}
+                  title={product.title}
+                  subtitle={`${product.itemTitle} · ${product.agentName ? compactAgentName(product.agentName, data.name) : product.author}`}
+                  leading={<FileText className="h-4 w-4 text-muted-foreground" />}
+                  trailing={<StatusBadge status={product.status} />}
+                  onClick={() => openWorkItem(item)}
+                />
+              );
+            })}
             {routineRuns.map((routineRun) => (
               <EntityRow
                 key={routineRun.id}
@@ -2032,6 +2098,7 @@ function RunInspector({
                 subtitle={compactAgentName(routineRun.agentName, data.name)}
                 leading={<Repeat2 className="h-4 w-4 text-muted-foreground" />}
                 trailing={<StatusBadge status={routineRun.status} />}
+                onClick={() => onOpenTab("routines")}
               />
             ))}
           </div>
@@ -2057,7 +2124,10 @@ function RunsTab({
   dispatchingRunner,
   focusedRunId,
   onDispatchRunner,
+  onFocusAgent,
   onFocusRun,
+  onOpenTab,
+  onOpenWorkItem,
   onUpdateRunStatus,
   runnerNotice,
   runs,
@@ -2067,7 +2137,10 @@ function RunsTab({
   dispatchingRunner: boolean;
   focusedRunId: string | null;
   onDispatchRunner: (dryRun: boolean) => void;
+  onFocusAgent: (agentId: string) => void;
   onFocusRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
   onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
   runnerNotice: string | null;
   runs: SpliceRunMonitorData | null;
@@ -2181,6 +2254,9 @@ function RunsTab({
           data={data}
           detail={selectedRunDetailQuery.data ?? null}
           loading={selectedRunDetailQuery.isFetching}
+          onFocusAgent={onFocusAgent}
+          onOpenTab={onOpenTab}
+          onOpenWorkItem={onOpenWorkItem}
           run={selectedRun}
         />
       </div>
@@ -5352,7 +5428,10 @@ export function SpliceWorkspaceRoom() {
           runnerNotice={runnerNotice}
           updatingRunId={updatingRunId}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onFocusAgent={onFocusAgent}
           onFocusRun={onFocusRun}
+          onOpenTab={setActiveTab}
+          onOpenWorkItem={onOpenWorkItem}
           onUpdateRunStatus={(runId, status, error) => updateRunStatusMutation.mutate({ runId, status, error })}
         />
       )}

@@ -197,6 +197,7 @@ export interface SpliceRunDetailData {
     output: SpliceRunArtifact;
   };
   related: {
+    comments: SpliceWorkThreadComment[];
     messages: SpliceAgentMessage[];
     workOrders: SpliceWorkOrder[];
     workProducts: SpliceWorkProduct[];
