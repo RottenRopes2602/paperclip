@@ -1508,10 +1508,12 @@ function DashboardTab({
         onOpenTab={onOpenTab}
         onOpenWorkOrder={onOpenWorkOrder}
         onRunAgent={onRunAgent}
+        onSend={onSend}
         routines={routines}
         runnerNotice={runnerNotice}
         runningAgentId={runningAgentId}
         runs={runs}
+        sendingAgentId={sendingAgentId}
         workOrders={workOrders}
         workProducts={workProducts}
       />
@@ -5334,10 +5336,12 @@ function RoomMap({
   onOpenTab,
   onOpenWorkOrder,
   onRunAgent,
+  onSend,
   routines,
   runnerNotice,
   runningAgentId,
   runs,
+  sendingAgentId,
   workOrders,
   workProducts,
 }: {
@@ -5353,10 +5357,12 @@ function RoomMap({
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkOrder: (workOrderId: string) => void;
   onRunAgent: (agentId: string) => void;
+  onSend: (agentId: string, body: string) => void;
   routines: SpliceOfficeRoutinesData | null;
   runnerNotice: string | null;
   runningAgentId: string | null;
   runs: SpliceRunMonitorData | null;
+  sendingAgentId: string | null;
   workOrders: SpliceWorkOrdersData | null;
   workProducts: SpliceWorkProduct[];
 }) {
@@ -5366,6 +5372,7 @@ function RoomMap({
     ? roomActors.find((actor) => actor.id === focusedAgentId || actor.slug === focusedAgentId) ?? null
     : null;
   const [selectedActorId, setSelectedActorId] = useState(focusedActor?.id ?? preferredActor?.id ?? "");
+  const [deskDraft, setDeskDraft] = useState("");
   const zoneCounts = new Map<string, number>();
   const roomActorEntries = roomActors.map((actor) => {
     const slotIndex = zoneCounts.get(actor.zone) ?? 0;
@@ -5405,6 +5412,7 @@ function RoomMap({
   const selectedPrimaryWork = selectedActor?.currentWork[0] ?? null;
   const selectedPrimaryRequest = selectedRequests[0] ?? null;
   const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
+  const sendingSelected = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
   const roomWorkOrders = (workOrders?.workOrders ?? []).filter((order) => isOpenOfficeStatus(order.status));
   const visibleRoomWorkOrders = roomWorkOrders.slice(0, 8);
   const roomWorkOrderOverflow = Math.max(0, roomWorkOrders.length - visibleRoomWorkOrders.length);
@@ -5440,6 +5448,14 @@ function RoomMap({
     { tab: "routines", title: "Routines", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} enabled`, icon: Repeat2 },
     { tab: "lanes", title: "Work Copies", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length} lanes`, icon: GitBranch },
   ];
+  const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = deskDraft.trim();
+    if (!selectedAgent || !body || sendingSelected) return;
+    setDeskDraft("");
+    onFocusAgent(selectedAgent.id);
+    onSend(selectedAgent.id, body);
+  };
 
   return (
     <section className="space-y-3">
@@ -5609,6 +5625,69 @@ function RoomMap({
                     ))}
                   </div>
                 ) : null}
+
+                {selectedRequests.length ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live Runs</p>
+                      <button
+                        type="button"
+                        onClick={() => openFocusedTab("runs")}
+                        className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        Open
+                      </button>
+                    </div>
+                    {selectedRequests.map((request) => (
+                      <button
+                        key={request.id}
+                        type="button"
+                        onClick={() => onOpenRun(request.id)}
+                        className="flex w-full min-w-0 items-start justify-between gap-2 border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block line-clamp-2 text-xs font-medium">{request.note ?? request.id}</span>
+                          <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
+                            {formatIsoAge(request.updatedAt ?? request.requestedAt)} · {request.id}
+                          </span>
+                        </span>
+                        <span className="shrink-0">
+                          <RunRuntimePill runtime={request.runtime} status={request.status} />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <form
+                  data-testid="desk-focus-instruction-form"
+                  className="space-y-2 border border-border bg-background px-3 py-3"
+                  onSubmit={submitDeskInstruction}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">Instruction</p>
+                    {selectedAgent ? <span className="truncate text-[11px] text-muted-foreground">{compactAgentName(selectedAgent.name, data.name)}</span> : null}
+                  </div>
+                  <textarea
+                    data-testid="desk-focus-instruction-input"
+                    value={deskDraft}
+                    onChange={(event) => setDeskDraft(event.target.value)}
+                    className="min-h-20 w-full resize-y border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-ring"
+                    placeholder={selectedAgent ? `Message ${compactAgentName(selectedAgent.name, data.name)}` : "Select an agent desk"}
+                    disabled={!selectedAgent || sendingSelected}
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!selectedAgent || !deskDraft.trim() || sendingSelected}
+                      className="h-8 gap-1.5"
+                    >
+                      <Send className={cn("h-3.5 w-3.5", sendingSelected && "animate-pulse")} />
+                      {sendingSelected ? "Sending" : "Send + Wake"}
+                    </Button>
+                  </div>
+                </form>
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button
