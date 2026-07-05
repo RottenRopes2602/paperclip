@@ -4,6 +4,7 @@ import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   Bot,
   CheckCircle2,
   CircleDot,
@@ -1081,6 +1082,247 @@ function PuzzleWorkspaceShell({
   );
 }
 
+type OfficeFlowEntry = {
+  id: string;
+  title: string;
+  subtitle: string;
+  status?: string | null;
+  onOpen: () => void;
+};
+
+type OfficeFlowStage = {
+  key: string;
+  title: string;
+  value: number;
+  subtitle: string;
+  icon: LucideIcon;
+  entries: OfficeFlowEntry[];
+  onOpen: () => void;
+};
+
+function isOpenOfficeStatus(status: string | null | undefined): boolean {
+  return !["done", "approved", "rejected", "cancelled", "noop"].includes(String(status || ""));
+}
+
+function OfficeFlowBoard({
+  approvals,
+  data,
+  messages,
+  onOpenRun,
+  onOpenTab,
+  onOpenWorkItem,
+  reviews,
+  runs,
+  workOrders,
+  workProducts,
+}: {
+  approvals: SpliceOfficeApprovalsData | null;
+  data: SpliceWorkspaceRoomData;
+  messages: SpliceAgentMessage[];
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
+  reviews: SpliceReview[];
+  runs: SpliceRunMonitorData | null;
+  workOrders: SpliceWorkOrdersData | null;
+  workProducts: SpliceWorkProduct[];
+}) {
+  const monitorRuns = runs?.runs ?? data.requests;
+  const activeRunStatuses = new Set(["requested", "launch_ready", "launched"]);
+  const terminalRunStatuses = new Set(["done", "failed", "blocked", "noop", "cancelled"]);
+  const activeRuns = monitorRuns.filter((run) => activeRunStatuses.has(String(run.status)));
+  const terminalRuns = monitorRuns.filter((run) => terminalRunStatuses.has(String(run.status)));
+  const orders = workOrders?.workOrders ?? [];
+  const openOrders = orders.filter((order) => isOpenOfficeStatus(order.status));
+  const blockedOrders = orders.filter((order) => ["blocked", "failed"].includes(String(order.status)));
+  const activeMessages = messages.filter((message) => isOpenOfficeStatus(message.status));
+  const activeWork = [...data.lanes.active, ...data.lanes.review, ...data.lanes.blocked];
+  const pendingReviews = reviews.filter((review) => review.status === "requested");
+  const pendingApprovals = approvals?.approvals.filter((approval) => approval.status === "requested") ?? [];
+  const doneCount = orders.filter((order) => order.status === "done").length + terminalRuns.filter((run) => run.status === "done").length + workProducts.length;
+
+  const openOrderEntry = (order: SpliceWorkOrder): OfficeFlowEntry => ({
+    id: order.id,
+    title: order.title,
+    subtitle: order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "Unassigned",
+    status: order.status,
+    onOpen: () => {
+      const target = workItemRefFromTarget("project", order.projectId);
+      if (target) {
+        onOpenWorkItem(target);
+        return;
+      }
+      onOpenTab("intake");
+    },
+  });
+
+  const stages: OfficeFlowStage[] = [
+    {
+      key: "intake",
+      title: "Intake",
+      value: openOrders.length,
+      subtitle: `${workOrders?.counts.queued ?? 0} queued · ${blockedOrders.length} blocked`,
+      icon: SquarePen,
+      entries: openOrders.slice(0, 2).map(openOrderEntry),
+      onOpen: () => onOpenTab("intake"),
+    },
+    {
+      key: "comms",
+      title: "Comms",
+      value: activeMessages.length,
+      subtitle: `${messages.length} total messages`,
+      icon: MessageSquare,
+      entries: activeMessages.slice(0, 2).map((message) => ({
+        id: message.id,
+        title: compactAgentName(message.agentName, data.name),
+        subtitle: message.body,
+        status: message.status,
+        onOpen: () => {
+          if (message.runRequestId) {
+            onOpenRun(message.runRequestId);
+            return;
+          }
+          onOpenTab("comms");
+        },
+      })),
+      onOpen: () => onOpenTab("comms"),
+    },
+    {
+      key: "runs",
+      title: "Runs",
+      value: activeRuns.length,
+      subtitle: `${terminalRuns.length} settled · ${monitorRuns.length} total`,
+      icon: Rocket,
+      entries: activeRuns.slice(0, 2).map((run) => ({
+        id: run.id,
+        title: compactAgentName(run.agentName, data.name),
+        subtitle: run.note ?? run.launch?.outPath ?? "Wake request",
+        status: run.status,
+        onOpen: () => onOpenRun(run.id),
+      })),
+      onOpen: () => onOpenTab("runs"),
+    },
+    {
+      key: "work",
+      title: "Work Desk",
+      value: activeWork.length,
+      subtitle: `${workProducts.length} products`,
+      icon: FolderOpen,
+      entries: activeWork.slice(0, 2).map((item) => ({
+        id: workItemKey(item),
+        title: item.title,
+        subtitle: `${item.ownerName} · ${item.projectName}`,
+        status: item.status,
+        onOpen: () => onOpenWorkItem(item),
+      })),
+      onOpen: () => onOpenTab("desk"),
+    },
+    {
+      key: "review",
+      title: "Review",
+      value: pendingReviews.length + pendingApprovals.length,
+      subtitle: `${pendingReviews.length} reviews · ${pendingApprovals.length} approvals`,
+      icon: ShieldAlert,
+      entries: [
+        ...pendingReviews.slice(0, 1).map((review) => ({
+          id: review.id,
+          title: review.title,
+          subtitle: review.itemTitle,
+          status: review.status,
+          onOpen: () => onOpenTab("reviews"),
+        })),
+        ...pendingApprovals.slice(0, 1).map((approval) => ({
+          id: approval.id,
+          title: approval.title,
+          subtitle: approval.agentName ? compactAgentName(approval.agentName, data.name) : approval.kind,
+          status: approval.status,
+          onOpen: () => onOpenTab("approvals"),
+        })),
+      ],
+      onOpen: () => onOpenTab("reviews"),
+    },
+    {
+      key: "done",
+      title: "Done",
+      value: doneCount,
+      subtitle: `${workProducts.length} work products`,
+      icon: CheckCircle2,
+      entries: [
+        ...workProducts.slice(0, 1).map((product) => {
+          const target = workItemRefFromTarget(product.itemType, product.itemId);
+          return {
+            id: product.id,
+            title: product.title,
+            subtitle: product.agentName ? compactAgentName(product.agentName, data.name) : product.itemTitle,
+            status: product.status,
+            onOpen: () => target ? onOpenWorkItem(target) : onOpenTab("desk"),
+          };
+        }),
+        ...terminalRuns.slice(0, 1).map((run) => ({
+          id: run.id,
+          title: compactAgentName(run.agentName, data.name),
+          subtitle: run.note ?? "Settled run",
+          status: run.status,
+          onOpen: () => onOpenRun(run.id),
+        })),
+      ],
+      onOpen: () => onOpenTab("activity"),
+    },
+  ];
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle title="Office Flow" aside={`${activeRuns.length} active runs · ${openOrders.length} open orders`} />
+      <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-6">
+        {stages.map((stage, index) => {
+          const Icon = stage.icon;
+          return (
+            <section key={stage.key} className="min-w-0 border border-border bg-background">
+              <button
+                type="button"
+                onClick={stage.onOpen}
+                className="flex w-full items-start justify-between gap-3 border-b border-border px-3 py-3 text-left transition-colors hover:bg-accent/50"
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-sm font-semibold">{stage.title}</span>
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-muted-foreground">{stage.subtitle}</span>
+                </span>
+                <span className="shrink-0 text-2xl font-semibold tabular-nums">{formatNumber(stage.value)}</span>
+              </button>
+              <div className="min-h-[112px]">
+                {stage.entries.length ? stage.entries.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={entry.onOpen}
+                    className="flex min-h-14 w-full items-center gap-2 border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-muted/60"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium">{entry.title}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{entry.subtitle}</span>
+                    </span>
+                    {entry.status ? <StatusBadge status={entry.status} /> : null}
+                  </button>
+                )) : (
+                  <p className="px-3 py-4 text-xs text-muted-foreground">Clear</p>
+                )}
+              </div>
+              {index < stages.length - 1 ? (
+                <div className="hidden border-t border-border px-3 py-2 text-muted-foreground 2xl:flex 2xl:justify-end">
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function DashboardTab({
   agentConsole,
   approvals,
@@ -1171,6 +1413,19 @@ function DashboardTab({
         <MetricCard icon={Clock3} value={data.totals.reviewIssues} label="In Review" description={`${data.totals.todoIssues} queued next`} />
         <MetricCard icon={ShieldAlert} value={data.totals.blockedIssues} label="Blocked" description={`${data.totals.progress}% progress`} />
       </div>
+
+      <OfficeFlowBoard
+        approvals={approvals}
+        data={data}
+        messages={messages}
+        onOpenRun={onOpenRun}
+        onOpenTab={onOpenTab}
+        onOpenWorkItem={onOpenWorkItem}
+        reviews={reviews}
+        runs={runs}
+        workOrders={workOrders}
+        workProducts={workProducts}
+      />
 
       <ExecutionLanesPanel data={data} limit={3} />
 
