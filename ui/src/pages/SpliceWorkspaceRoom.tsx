@@ -595,11 +595,15 @@ function OfficeWorkProductStack({ count, onClick }: { count: number; onClick: ()
 }
 
 function RoomActorSprite({
+  active,
   actor,
+  onSelect,
   workspaceName,
   slotIndex,
 }: {
+  active?: boolean;
   actor: SpliceWorkspaceRoomActor;
+  onSelect?: () => void;
   workspaceName: string;
   slotIndex: number;
 }) {
@@ -612,11 +616,17 @@ function RoomActorSprite({
   const roomLine = actorRoomLine(actor);
 
   return (
-    <div
+    <button
+      type="button"
       data-testid="room-actor-sprite"
-      className="absolute z-20 flex w-32 -translate-x-1/2 -translate-y-1/2 scale-[0.72] flex-col items-center sm:scale-[0.82] md:scale-100"
+      onClick={onSelect}
+      className={cn(
+        "absolute z-20 flex w-32 -translate-x-1/2 -translate-y-1/2 scale-[0.72] flex-col items-center transition-transform focus:outline-none focus:ring-2 focus:ring-cyan-300 sm:scale-[0.82] md:scale-100",
+        active ? "brightness-125" : "hover:-translate-y-[52%] hover:brightness-110",
+      )}
       style={{ left: `${left}%`, top: `${top}%` }}
       title={`${actor.name} · ${actor.state} · ${workLine}`}
+      aria-label={`${label} desk · ${actorStateLabel(actor)} · ${workLine}`}
     >
       <div className="relative h-[92px] w-32">
         <Workstation actor={actor} />
@@ -625,10 +635,20 @@ function RoomActorSprite({
           "absolute right-3 top-4 z-30 h-3 w-3 border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.55)]",
           stateDot[actor.state] ?? stateDot.idle,
         )} />
+        {(actor.request || actor.state === "requested") ? (
+          <span className="absolute -right-2 top-0 z-40 border-2 border-black bg-amber-300 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase leading-none text-black shadow-[2px_2px_0_rgba(0,0,0,0.55)]">
+            wake
+          </span>
+        ) : null}
+        {actor.currentWork.length > 1 ? (
+          <span className="absolute -left-2 top-1 z-40 border-2 border-black bg-cyan-200 px-1.5 py-0.5 font-mono text-[9px] font-black uppercase leading-none text-black shadow-[2px_2px_0_rgba(0,0,0,0.55)]">
+            {actor.currentWork.length} work
+          </span>
+        ) : null}
       </div>
       <div className={cn(
         "hidden w-full border-2 px-2 py-1 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)] sm:block",
-        tone,
+        active ? "border-cyan-300 bg-cyan-300/15 text-cyan-100" : tone,
       )}>
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[10px] font-bold uppercase leading-none">{label}</span>
@@ -636,7 +656,7 @@ function RoomActorSprite({
         </div>
         <p className="mt-1 truncate text-[9px] uppercase leading-none opacity-85">{roomLine}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -1109,8 +1129,10 @@ function DashboardTab({
         inbox={inbox}
         onDispatchRunner={onDispatchRunner}
         onOpenTab={onOpenTab}
+        onRunAgent={onRunAgent}
         routines={routines}
         runnerNotice={runnerNotice}
+        runningAgentId={runningAgentId}
         runs={runs}
         workOrders={workOrders}
         workProducts={workProducts}
@@ -4377,8 +4399,10 @@ function RoomMap({
   inbox,
   onDispatchRunner,
   onOpenTab,
+  onRunAgent,
   routines,
   runnerNotice,
+  runningAgentId,
   runs,
   workOrders,
   workProducts,
@@ -4389,19 +4413,53 @@ function RoomMap({
   inbox: SpliceOfficeInboxData | null;
   onDispatchRunner: (dryRun: boolean) => void;
   onOpenTab: (tab: RoomTab) => void;
+  onRunAgent: (agentId: string) => void;
   routines: SpliceOfficeRoutinesData | null;
   runnerNotice: string | null;
+  runningAgentId: string | null;
   runs: SpliceRunMonitorData | null;
   workOrders: SpliceWorkOrdersData | null;
   workProducts: SpliceWorkProduct[];
 }) {
   const roomActors = [...data.room.humans, ...data.room.agents];
+  const preferredActor = roomActors.find((actor) => actor.state === "requested") ?? roomActors.find((actor) => actor.state === "working") ?? roomActors[0] ?? null;
+  const [selectedActorId, setSelectedActorId] = useState(preferredActor?.id ?? "");
   const zoneCounts = new Map<string, number>();
   const roomActorEntries = roomActors.map((actor) => {
     const slotIndex = zoneCounts.get(actor.zone) ?? 0;
     zoneCounts.set(actor.zone, slotIndex + 1);
     return { actor, slotIndex };
   });
+  useEffect(() => {
+    if (!roomActors.length) {
+      setSelectedActorId("");
+      return;
+    }
+    if (!selectedActorId || !roomActors.some((actor) => actor.id === selectedActorId)) {
+      setSelectedActorId(preferredActor?.id ?? roomActors[0].id);
+    }
+  }, [preferredActor?.id, roomActors, selectedActorId]);
+
+  const selectedActor = roomActors.find((actor) => actor.id === selectedActorId) ?? preferredActor;
+  const selectedAgent = selectedActor
+    ? data.agents.find((agent) => agent.id === selectedActor.id || agent.slug === selectedActor.slug) ?? null
+    : null;
+  const selectedRequests = selectedActor
+    ? data.requests.filter((request) =>
+      request.agentId === selectedActor.id ||
+      request.agentId === selectedActor.slug ||
+      request.agentName === selectedActor.name
+    ).slice(0, 3)
+    : [];
+  const selectedProducts = selectedActor
+    ? workProducts.filter((product) =>
+      product.ownerName === selectedActor.name ||
+      product.agentName === selectedActor.name ||
+      product.agentId === selectedActor.id ||
+      product.agentId === selectedActor.slug
+    ).slice(0, 3)
+    : [];
+  const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
   const activeActors = roomActors.filter((actor) =>
@@ -4458,7 +4516,14 @@ function RoomMap({
           <OfficeLayout />
           <OfficeWorkProductStack count={workProducts.length} onClick={() => onOpenTab("desk")} />
           {roomActorEntries.map(({ actor, slotIndex }) => (
-            <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
+            <RoomActorSprite
+              key={actor.id}
+              active={selectedActor?.id === actor.id}
+              actor={actor}
+              workspaceName={data.name}
+              slotIndex={slotIndex}
+              onSelect={() => setSelectedActorId(actor.id)}
+            />
           ))}
         </div>
         <div className="min-w-0 border-2 border-border bg-background">
@@ -4488,6 +4553,84 @@ function RoomMap({
                 </button>
               );
             })}
+          </div>
+
+          <div className="border-t border-border px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Desk Focus</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {selectedActor ? `${compactAgentName(selectedActor.name, data.name)} · ${selectedActor.zone}` : "No desk selected"}
+                </p>
+              </div>
+              {selectedActor ? <StatusBadge status={selectedActor.state} /> : null}
+            </div>
+
+            {selectedActor ? (
+              <div className="mt-3 space-y-3">
+                <div className="border border-border bg-muted/30 px-3 py-3">
+                  <p className="line-clamp-2 text-sm font-medium">{actorWorkLine(selectedActor)}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{actorRoomLine(selectedActor)}</p>
+                  {selectedActor.request ? (
+                    <p className="mt-2 line-clamp-2 font-mono text-[11px] text-muted-foreground">
+                      {selectedActor.request.note ?? selectedActor.request.id}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab("issues")}
+                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                  >
+                    <span className="block text-lg font-semibold tabular-nums">{selectedActor.currentWork.length}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">work</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab("runs")}
+                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                  >
+                    <span className="block text-lg font-semibold tabular-nums">{selectedRequests.length}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">wakes</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTab("desk")}
+                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                  >
+                    <span className="block text-lg font-semibold tabular-nums">{selectedProducts.length}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">products</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => selectedAgent && onRunAgent(selectedAgent.id)}
+                    disabled={!selectedAgent || wakingSelected}
+                    className="h-8 gap-1.5"
+                  >
+                    <Rocket className={cn("h-3.5 w-3.5", wakingSelected && "animate-pulse")} />
+                    {wakingSelected ? "Waking" : "Wake"}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("comms")} className="h-8 gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Talk
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className="h-8 gap-1.5">
+                    <SquarePen className="h-3.5 w-3.5" />
+                    Desk
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
+                    <Activity className="h-3.5 w-3.5" />
+                    Runs
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="border-t border-border px-4 py-3">
