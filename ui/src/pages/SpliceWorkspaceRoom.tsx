@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
@@ -1084,9 +1084,11 @@ function DashboardTab({
   approvals,
   data,
   dispatchingRunner,
+  focusedAgentId,
   inbox,
   messages,
   onDispatchRunner,
+  onFocusAgent,
   onOpenTab,
   onRunAgent,
   onSend,
@@ -1103,9 +1105,11 @@ function DashboardTab({
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
+  focusedAgentId: string | null;
   inbox: SpliceOfficeInboxData | null;
   messages: SpliceAgentMessage[];
   onDispatchRunner: (dryRun: boolean) => void;
+  onFocusAgent: (agentId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onRunAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
@@ -1126,8 +1130,10 @@ function DashboardTab({
         approvals={approvals}
         data={data}
         dispatchingRunner={dispatchingRunner}
+        focusedAgentId={focusedAgentId}
         inbox={inbox}
         onDispatchRunner={onDispatchRunner}
+        onFocusAgent={onFocusAgent}
         onOpenTab={onOpenTab}
         onRunAgent={onRunAgent}
         routines={routines}
@@ -1141,7 +1147,9 @@ function DashboardTab({
       <OfficeAgentDock
         agentConsole={agentConsole}
         data={data}
+        focusedAgentId={focusedAgentId}
         messages={messages}
+        onFocusAgent={onFocusAgent}
         onOpenTab={onOpenTab}
         onRunAgent={onRunAgent}
         onSend={onSend}
@@ -1452,7 +1460,9 @@ function roomConsoleAgents(
 function OfficeAgentDock({
   agentConsole,
   data,
+  focusedAgentId,
   messages,
+  onFocusAgent,
   onOpenTab,
   onRunAgent,
   onSend,
@@ -1461,7 +1471,9 @@ function OfficeAgentDock({
 }: {
   agentConsole: SpliceAgentConsoleData | null;
   data: SpliceWorkspaceRoomData;
+  focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
+  onFocusAgent: (agentId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onRunAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
@@ -1477,10 +1489,19 @@ function OfficeAgentDock({
 
   useEffect(() => {
     if (!consoleAgents.length) return;
-    if (!selectedAgentId || !consoleAgents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(consoleAgents[0].id);
+    const focusedAgent = focusedAgentId
+      ? consoleAgents.find((agent) => agent.id === focusedAgentId || agent.slug === focusedAgentId)
+      : null;
+    if (focusedAgent && focusedAgent.id !== selectedAgentId) {
+      setSelectedAgentId(focusedAgent.id);
+      return;
     }
-  }, [consoleAgents, selectedAgentId]);
+    if (!selectedAgentId || !consoleAgents.some((agent) => agent.id === selectedAgentId)) {
+      const nextId = focusedAgent?.id ?? consoleAgents[0].id;
+      setSelectedAgentId(nextId);
+      onFocusAgent(nextId);
+    }
+  }, [consoleAgents, focusedAgentId, onFocusAgent, selectedAgentId]);
 
   const selectedAgent = consoleAgents.find((agent) => agent.id === selectedAgentId) ?? consoleAgents[0] ?? null;
   const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
@@ -1527,7 +1548,10 @@ function OfficeAgentDock({
               <button
                 key={agent.id}
                 type="button"
-                onClick={() => setSelectedAgentId(agent.id)}
+                onClick={() => {
+                  setSelectedAgentId(agent.id);
+                  onFocusAgent(agent.id);
+                }}
                 className={cn(
                   "min-w-0 border px-3 py-3 text-left transition-colors",
                   active ? "border-ring bg-muted" : "border-border bg-background hover:bg-muted/60",
@@ -3600,7 +3624,9 @@ function RoutinesTab({
 function AgentsTab({
   agentConsole,
   data,
+  focusedAgentId,
   messages,
+  onFocusAgent,
   onSend,
   runningAgentId,
   sendingAgentId,
@@ -3608,7 +3634,9 @@ function AgentsTab({
 }: {
   agentConsole: SpliceAgentConsoleData | null;
   data: SpliceWorkspaceRoomData;
+  focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
+  onFocusAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
   runningAgentId: string | null;
   sendingAgentId: string | null;
@@ -3623,10 +3651,19 @@ function AgentsTab({
 
   useEffect(() => {
     if (!consoleAgents.length) return;
-    if (!selectedAgentId || !consoleAgents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(consoleAgents[0].id);
+    const focusedAgent = focusedAgentId
+      ? consoleAgents.find((agent) => agent.id === focusedAgentId || agent.slug === focusedAgentId)
+      : null;
+    if (focusedAgent && focusedAgent.id !== selectedAgentId) {
+      setSelectedAgentId(focusedAgent.id);
+      return;
     }
-  }, [consoleAgents, selectedAgentId]);
+    if (!selectedAgentId || !consoleAgents.some((agent) => agent.id === selectedAgentId)) {
+      const nextId = focusedAgent?.id ?? consoleAgents[0].id;
+      setSelectedAgentId(nextId);
+      onFocusAgent(nextId);
+    }
+  }, [consoleAgents, focusedAgentId, onFocusAgent, selectedAgentId]);
 
   const selectedAgent = consoleAgents.find((agent) => agent.id === selectedAgentId) ?? consoleAgents[0] ?? null;
   const isRunning = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
@@ -3666,7 +3703,10 @@ function AgentsTab({
               <button
                 key={agent.id}
                 type="button"
-                onClick={() => setSelectedAgentId(agent.id)}
+                onClick={() => {
+                  setSelectedAgentId(agent.id);
+                  onFocusAgent(agent.id);
+                }}
                 className={cn(
                   "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
                   active ? "bg-muted" : "bg-background hover:bg-muted/60",
@@ -3845,12 +3885,16 @@ function AgentsTab({
 
 function CommsTab({
   data,
+  focusedAgentId,
   messages,
+  onFocusAgent,
   onSend,
   sendingAgentId,
 }: {
   data: SpliceWorkspaceRoomData;
+  focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
+  onFocusAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
   sendingAgentId: string | null;
 }) {
@@ -3859,10 +3903,19 @@ function CommsTab({
 
   useEffect(() => {
     if (!data.agents.length) return;
-    if (!selectedAgentId || !data.agents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(data.agents[0].id);
+    const focusedAgent = focusedAgentId
+      ? data.agents.find((agent) => agent.id === focusedAgentId || agent.slug === focusedAgentId)
+      : null;
+    if (focusedAgent && focusedAgent.id !== selectedAgentId) {
+      setSelectedAgentId(focusedAgent.id);
+      return;
     }
-  }, [data.agents, selectedAgentId]);
+    if (!selectedAgentId || !data.agents.some((agent) => agent.id === selectedAgentId)) {
+      const nextId = focusedAgent?.id ?? data.agents[0].id;
+      setSelectedAgentId(nextId);
+      onFocusAgent(nextId);
+    }
+  }, [data.agents, focusedAgentId, onFocusAgent, selectedAgentId]);
 
   const selectedAgent = data.agents.find((agent) => agent.id === selectedAgentId) ?? data.agents[0] ?? null;
   const agentMessages = selectedAgent
@@ -3899,7 +3952,10 @@ function CommsTab({
               <button
                 key={agent.id}
                 type="button"
-                onClick={() => setSelectedAgentId(agent.id)}
+                onClick={() => {
+                  setSelectedAgentId(agent.id);
+                  onFocusAgent(agent.id);
+                }}
                 className={cn(
                   "flex w-full items-center gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
                   active ? "bg-muted" : "bg-background hover:bg-muted/60",
@@ -4396,8 +4452,10 @@ function RoomMap({
   approvals,
   data,
   dispatchingRunner,
+  focusedAgentId,
   inbox,
   onDispatchRunner,
+  onFocusAgent,
   onOpenTab,
   onRunAgent,
   routines,
@@ -4410,8 +4468,10 @@ function RoomMap({
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
+  focusedAgentId: string | null;
   inbox: SpliceOfficeInboxData | null;
   onDispatchRunner: (dryRun: boolean) => void;
+  onFocusAgent: (agentId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onRunAgent: (agentId: string) => void;
   routines: SpliceOfficeRoutinesData | null;
@@ -4423,7 +4483,10 @@ function RoomMap({
 }) {
   const roomActors = [...data.room.humans, ...data.room.agents];
   const preferredActor = roomActors.find((actor) => actor.state === "requested") ?? roomActors.find((actor) => actor.state === "working") ?? roomActors[0] ?? null;
-  const [selectedActorId, setSelectedActorId] = useState(preferredActor?.id ?? "");
+  const focusedActor = focusedAgentId
+    ? roomActors.find((actor) => actor.id === focusedAgentId || actor.slug === focusedAgentId) ?? null
+    : null;
+  const [selectedActorId, setSelectedActorId] = useState(focusedActor?.id ?? preferredActor?.id ?? "");
   const zoneCounts = new Map<string, number>();
   const roomActorEntries = roomActors.map((actor) => {
     const slotIndex = zoneCounts.get(actor.zone) ?? 0;
@@ -4435,10 +4498,14 @@ function RoomMap({
       setSelectedActorId("");
       return;
     }
+    if (focusedActor && focusedActor.id !== selectedActorId) {
+      setSelectedActorId(focusedActor.id);
+      return;
+    }
     if (!selectedActorId || !roomActors.some((actor) => actor.id === selectedActorId)) {
       setSelectedActorId(preferredActor?.id ?? roomActors[0].id);
     }
-  }, [preferredActor?.id, roomActors, selectedActorId]);
+  }, [focusedActor, preferredActor?.id, roomActors, selectedActorId]);
 
   const selectedActor = roomActors.find((actor) => actor.id === selectedActorId) ?? preferredActor;
   const selectedAgent = selectedActor
@@ -4460,6 +4527,10 @@ function RoomMap({
     ).slice(0, 3)
     : [];
   const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
+  const openFocusedTab = (tab: RoomTab) => {
+    if (selectedAgent) onFocusAgent(selectedAgent.id);
+    onOpenTab(tab);
+  };
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
   const activeActors = roomActors.filter((actor) =>
@@ -4522,7 +4593,12 @@ function RoomMap({
               actor={actor}
               workspaceName={data.name}
               slotIndex={slotIndex}
-              onSelect={() => setSelectedActorId(actor.id)}
+              onSelect={() => {
+                setSelectedActorId(actor.id);
+                if (data.agents.some((agent) => agent.id === actor.id || agent.slug === actor.slug)) {
+                  onFocusAgent(actor.id);
+                }
+              }}
             />
           ))}
         </div>
@@ -4581,7 +4657,7 @@ function RoomMap({
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <button
                     type="button"
-                    onClick={() => onOpenTab("issues")}
+                    onClick={() => openFocusedTab("issues")}
                     className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
                   >
                     <span className="block text-lg font-semibold tabular-nums">{selectedActor.currentWork.length}</span>
@@ -4589,7 +4665,7 @@ function RoomMap({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onOpenTab("runs")}
+                    onClick={() => openFocusedTab("runs")}
                     className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
                   >
                     <span className="block text-lg font-semibold tabular-nums">{selectedRequests.length}</span>
@@ -4597,7 +4673,7 @@ function RoomMap({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onOpenTab("desk")}
+                    onClick={() => openFocusedTab("desk")}
                     className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
                   >
                     <span className="block text-lg font-semibold tabular-nums">{selectedProducts.length}</span>
@@ -4616,15 +4692,15 @@ function RoomMap({
                     <Rocket className={cn("h-3.5 w-3.5", wakingSelected && "animate-pulse")} />
                     {wakingSelected ? "Waking" : "Wake"}
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("comms")} className="h-8 gap-1.5">
+                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("comms")} className="h-8 gap-1.5">
                     <MessageSquare className="h-3.5 w-3.5" />
                     Talk
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className="h-8 gap-1.5">
+                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("desk")} className="h-8 gap-1.5">
                     <SquarePen className="h-3.5 w-3.5" />
                     Desk
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
+                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("runs")} className="h-8 gap-1.5">
                     <Activity className="h-3.5 w-3.5" />
                     Runs
                   </Button>
@@ -4680,7 +4756,11 @@ function RoomMap({
 export function SpliceWorkspaceRoom() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
   const [activeTab, setActiveTab] = useState<RoomTab>("dashboard");
+  const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
   const [runnerNotice, setRunnerNotice] = useState<string | null>(null);
+  const onFocusAgent = useCallback((agentId: string) => {
+    setFocusedAgentId(agentId);
+  }, []);
   const roomQuery = useQuery({
     queryKey: WORKSPACE_ROOM_QUERY_ROOT,
     queryFn: () => spliceApi.workspaceRoom(PUZZLE_TESTBED_ID),
@@ -4997,9 +5077,11 @@ export function SpliceWorkspaceRoom() {
           approvals={approvals}
           data={data}
           dispatchingRunner={dispatchRunnerMutation.isPending}
+          focusedAgentId={focusedAgentId}
           inbox={inbox}
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onFocusAgent={onFocusAgent}
           onOpenTab={setActiveTab}
           onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
@@ -5095,7 +5177,9 @@ export function SpliceWorkspaceRoom() {
         <AgentsTab
           agentConsole={agentConsole}
           data={data}
+          focusedAgentId={focusedAgentId}
           messages={messages}
+          onFocusAgent={onFocusAgent}
           sendingAgentId={sendingAgentId}
           runningAgentId={runningAgentId}
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
@@ -5105,7 +5189,9 @@ export function SpliceWorkspaceRoom() {
       {activeTab === "comms" && (
         <CommsTab
           data={data}
+          focusedAgentId={focusedAgentId}
           messages={messages}
+          onFocusAgent={onFocusAgent}
           sendingAgentId={sendingAgentId}
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
         />
