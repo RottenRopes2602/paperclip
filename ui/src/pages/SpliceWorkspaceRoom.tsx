@@ -1364,6 +1364,7 @@ function OfficeSignalPanel({ data, messages }: { data: SpliceWorkspaceRoomData; 
 type RoomConsoleAgent = SpliceWorkspaceRoomActor & {
   requests: SpliceAgentRunRequest[];
   messages: SpliceAgentMessage[];
+  workOrders: SpliceWorkOrder[];
   lastEventAt: string | null;
 };
 
@@ -1386,6 +1387,7 @@ function roomConsoleAgents(
       message.agentId === agent.slug ||
       message.agentName === agent.name
     ),
+    workOrders: [],
     lastEventAt: agent.request?.updatedAt ?? agent.request?.requestedAt ?? null,
   }));
 }
@@ -1427,6 +1429,7 @@ function OfficeAgentDock({
   const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
   const selectedRequests = selectedAgent?.requests ?? [];
   const selectedMessages = selectedAgent?.messages ?? [];
+  const selectedWorkOrders = selectedAgent?.workOrders ?? [];
   const activeRequestCount = selectedRequests.filter((request) => activeStatuses.has(String(request.status))).length;
   const isRunning = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
   const isSending = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
@@ -1483,6 +1486,7 @@ function OfficeAgentDock({
                     <p className="mt-1 truncate text-xs text-muted-foreground">{agent.role} · {agent.zone}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                       <span className="rounded-full bg-muted px-2 py-0.5">{agent.currentWork.length} work</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5">{agent.workOrders.length} orders</span>
                       <span className="rounded-full bg-muted px-2 py-0.5">{agent.messages.length} msg</span>
                       {pending ? <span className="rounded-full bg-muted px-2 py-0.5">{pending} wake</span> : null}
                     </div>
@@ -1503,7 +1507,7 @@ function OfficeAgentDock({
                   <StatusBadge status={selectedAgent.state} />
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                  {selectedAgent.workOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "No assigned work"}
                 </p>
               </div>
             </div>
@@ -1573,6 +1577,13 @@ function OfficeAgentDock({
                     <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                   </div>
                   <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
+                  {message.workOrderTitle ? (
+                    <p className="mt-2 truncate text-[11px] text-muted-foreground">{message.workOrderTitle}</p>
+                  ) : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <StatusBadge status={message.status} />
+                    {message.workOrderId ? <span className="truncate font-mono">{message.workOrderId}</span> : null}
+                  </div>
                 </article>
               )) : (
                 <p className="bg-background px-4 py-4 text-sm text-muted-foreground md:col-span-2">No messages yet.</p>
@@ -3452,6 +3463,7 @@ function AgentsTab({
   const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
   const selectedRequests = selectedAgent?.requests ?? [];
   const selectedMessages = selectedAgent?.messages ?? [];
+  const selectedWorkOrders = selectedAgent?.workOrders ?? [];
   const activeRequestCount = selectedRequests.filter((request) => activeStatuses.has(String(request.status))).length;
 
   const submitInstruction = (event: FormEvent<HTMLFormElement>) => {
@@ -3498,6 +3510,7 @@ function AgentsTab({
                   <p className="mt-1 truncate text-xs text-muted-foreground">{agent.role} · {agent.zone}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                     <span className="rounded-full bg-muted px-2 py-0.5">{agent.currentWork.length} work</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.workOrders.length} orders</span>
                     <span className="rounded-full bg-muted px-2 py-0.5">{agent.requests.length} runs</span>
                     <span className="rounded-full bg-muted px-2 py-0.5">{agent.messages.length} msgs</span>
                     {pending ? <span className="rounded-full bg-muted px-2 py-0.5">{pending} active</span> : null}
@@ -3519,7 +3532,7 @@ function AgentsTab({
                     <StatusBadge status={selectedAgent.state} />
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {selectedAgent.role} · {selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                    {selectedAgent.role} · {selectedWorkOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "No assigned work"}
                   </p>
                 </div>
               </div>
@@ -3538,9 +3551,9 @@ function AgentsTab({
 
             <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="Assigned Work" value={selectedAgent.currentWork.length} icon={CircleDot} />
+              <MetricCard label="Office Orders" value={selectedWorkOrders.length} icon={SquarePen} />
               <MetricCard label="Run History" value={selectedRequests.length} icon={Activity} />
               <MetricCard label="Messages" value={selectedMessages.length} icon={MessageSquare} />
-              <MetricCard label="Last Event" value={selectedAgent.lastEventAt ? formatIsoAge(selectedAgent.lastEventAt) : "none"} icon={Clock3} />
             </div>
           </div>
 
@@ -3559,15 +3572,25 @@ function AgentsTab({
                     leading={<CircleDot className="h-4 w-4 text-muted-foreground" />}
                     trailing={<StatusBadge status={item.status} />}
                   />
-                )) : (
+                )) : null}
+                {selectedWorkOrders.length ? selectedWorkOrders.slice(0, 8).map((order) => (
+                  <EntityRow
+                    key={`order:${order.id}`}
+                    title={order.title}
+                    subtitle={`office order · ${order.priority}`}
+                    leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
+                    trailing={<StatusBadge status={order.status} />}
+                  />
+                )) : null}
+                {!selectedAgent.currentWork.length && !selectedWorkOrders.length ? (
                   <p className="px-4 py-4 text-sm text-muted-foreground">No assigned work yet.</p>
-                )}
+                ) : null}
               </div>
 
               <form className="border border-border" onSubmit={submitInstruction}>
                 <div className="border-b border-border px-4 py-3">
                   <p className="text-sm font-semibold">Instruction</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Message is stored and paired with a wake request.</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Message is stored as office work and paired with a wake request.</p>
                 </div>
                 <div className="space-y-3 px-4 py-4">
                   <textarea
@@ -3622,6 +3645,16 @@ function AgentsTab({
                         <span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                       </div>
                       <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
+                      {message.workOrderTitle ? (
+                        <p className="mt-2 truncate text-[11px] text-muted-foreground">{message.workOrderTitle}</p>
+                      ) : null}
+                      {message.error ? (
+                        <p className="mt-2 line-clamp-2 text-xs text-red-600 dark:text-red-300">{message.error}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <StatusBadge status={message.status} />
+                        {message.workOrderId ? <span className="truncate font-mono">{message.workOrderId}</span> : null}
+                      </div>
                     </article>
                   )) : (
                     <p className="px-4 py-4 text-sm text-muted-foreground">No messages yet.</p>
@@ -3736,9 +3769,16 @@ function CommsTab({
                   <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">{message.body}</p>
+                {message.workOrderTitle ? (
+                  <p className="mt-2 truncate text-xs text-muted-foreground">{message.workOrderTitle}</p>
+                ) : null}
+                {message.error ? (
+                  <p className="mt-2 line-clamp-2 text-xs text-red-600 dark:text-red-300">{message.error}</p>
+                ) : null}
                 <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <StatusBadge status={message.status} />
                   {message.runRequestId ? <span className="truncate font-mono">{message.runRequestId}</span> : null}
+                  {message.workOrderId ? <span className="truncate font-mono">{message.workOrderId}</span> : null}
                 </div>
               </article>
             )) : (
@@ -4409,6 +4449,7 @@ export function SpliceWorkspaceRoom() {
       void agentConsoleQuery.refetch();
       void runsQuery.refetch();
       void timelineQuery.refetch();
+      void workOrdersQuery.refetch();
     },
   });
   const updateRoutineMutation = useMutation({

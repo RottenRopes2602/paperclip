@@ -213,10 +213,16 @@ export interface SpliceAgentMessage {
   author: "operator" | "agent" | string;
   kind: "instruction" | "message" | string;
   body: string;
-  status: "queued" | "sent" | "done" | "failed" | string;
+  status: "queued" | "sent" | "done" | "noop" | "blocked" | "failed" | "cancelled" | string;
   createdAt: string;
   updatedAt: string;
   runRequestId: string | null;
+  workOrderId?: string | null;
+  workOrderTitle?: string | null;
+  runStatus?: string | null;
+  settledAt?: string | null;
+  verdict?: SpliceRunRuntime["verdict"] | null;
+  error?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -234,6 +240,7 @@ export interface SpliceAgentMessagesData {
 export interface SpliceAgentMessagePost {
   message: SpliceAgentMessage;
   runRequest: SpliceAgentRunRequest;
+  workOrder?: SpliceWorkOrder | null;
 }
 
 export interface SpliceWorkThreadEntry {
@@ -574,7 +581,7 @@ export interface SpliceWorkOrder {
   workspacePath: string;
   title: string;
   body: string;
-  status: "requested" | "queued" | "in_progress" | "review" | "done" | "blocked" | "cancelled" | string;
+  status: "requested" | "queued" | "in_progress" | "review" | "done" | "blocked" | "failed" | "cancelled" | string;
   priority: "low" | "medium" | "high" | "urgent" | string;
   agentId: string | null;
   agentName: string | null;
@@ -584,6 +591,11 @@ export interface SpliceWorkOrder {
   createdAt: string;
   updatedAt: string;
   runRequestId: string | null;
+  sourceMessageId?: string | null;
+  runStatus?: string | null;
+  settledAt?: string | null;
+  verdict?: SpliceRunRuntime["verdict"] | null;
+  error?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -603,6 +615,8 @@ export interface SpliceWorkOrdersData {
     inProgress: number;
     blocked: number;
     done: number;
+    failed: number;
+    cancelled: number;
   };
   workOrders: SpliceWorkOrder[];
 }
@@ -671,6 +685,7 @@ export interface SpliceWorkspaceRoomActor {
 export interface SpliceAgentConsoleAgent extends SpliceWorkspaceRoomActor {
   requests: SpliceAgentRunRequest[];
   messages: SpliceAgentMessage[];
+  workOrders: SpliceWorkOrder[];
   lastEventAt: string | null;
 }
 
@@ -681,10 +696,12 @@ export interface SpliceAgentConsoleData {
   queuePaths: {
     runRequests: string;
     messages: string;
+    workOrders?: string;
   };
   agents: SpliceAgentConsoleAgent[];
   requests: SpliceAgentRunRequest[];
   messages: SpliceAgentMessage[];
+  workOrders?: SpliceWorkOrder[];
 }
 
 export interface SpliceWorkspaceRoomGoal {
@@ -890,7 +907,7 @@ export const spliceApi = {
   sendWorkspaceRoomMessage: (workspaceId: string, agentId: string, body: string) =>
     api.post<SpliceAgentMessagePost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/messages`,
-      { agentId, body },
+      { agentId, body, createWorkOrder: true },
     ),
   workspaceRoomWorkThread: (workspaceId: string) =>
     api.get<SpliceWorkThreadData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread`),
