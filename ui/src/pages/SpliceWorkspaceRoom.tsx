@@ -1518,6 +1518,20 @@ function DashboardTab({
         workProducts={workProducts}
       />
 
+      <OfficeActionQueue
+        approvals={approvals}
+        data={data}
+        inbox={inbox}
+        onOpenRun={onOpenRun}
+        onOpenTab={onOpenTab}
+        onOpenWorkItem={onOpenWorkItem}
+        onOpenWorkOrder={onOpenWorkOrder}
+        reviews={reviews}
+        routines={routines}
+        runs={runs}
+        workOrders={workOrders}
+      />
+
       <OfficeAgentDock
         agentConsole={agentConsole}
         data={data}
@@ -1586,6 +1600,184 @@ function DashboardTab({
         </div>
       </div>
     </div>
+  );
+}
+
+type OfficeActionEntry = {
+  id: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  severity: "high" | "medium" | "low";
+  source: string;
+  icon: LucideIcon;
+  onOpen: () => void;
+};
+
+function actionSeverityClass(severity: OfficeActionEntry["severity"]): string {
+  if (severity === "high") return "border-red-500/40 bg-red-500/10";
+  if (severity === "medium") return "border-amber-500/40 bg-amber-500/10";
+  return "border-border bg-background";
+}
+
+function OfficeActionQueue({
+  approvals,
+  data,
+  inbox,
+  onOpenRun,
+  onOpenTab,
+  onOpenWorkItem,
+  onOpenWorkOrder,
+  reviews,
+  routines,
+  runs,
+  workOrders,
+}: {
+  approvals: SpliceOfficeApprovalsData | null;
+  data: SpliceWorkspaceRoomData;
+  inbox: SpliceOfficeInboxData | null;
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
+  onOpenWorkOrder: (workOrderId: string) => void;
+  reviews: SpliceReview[];
+  routines: SpliceOfficeRoutinesData | null;
+  runs: SpliceRunMonitorData | null;
+  workOrders: SpliceWorkOrdersData | null;
+}) {
+  const openInboxItems = inbox?.items.filter((item) => item.inboxStatus === "open") ?? [];
+  const pendingApprovals = approvals?.approvals.filter((approval) => approval.status === "requested" || approval.status === "changes_requested") ?? [];
+  const pendingReviews = reviews.filter((review) => review.status === "requested");
+  const monitorRuns = runs?.runs ?? data.requests;
+  const blockedRuns = monitorRuns.filter((run) => run.status === "blocked" || run.status === "failed");
+  const blockedOrders = workOrders?.workOrders.filter((order) => order.status === "blocked" || order.status === "failed") ?? [];
+  const dueRoutines = routines?.routines.filter((routine) => routine.due) ?? [];
+
+  const openInboxTarget = (item: SpliceInboxItem) => {
+    const targetWorkItem = workItemRefFromTarget(item.targetType, item.targetId);
+    const targetRunId = runIdFromTarget(item.targetType, item.targetId);
+    const targetWorkOrderId = workOrderIdFromTarget(item.targetType, item.targetId);
+    const targetTab = roomTabs.some((tab) => tab.value === item.targetTab) ? item.targetTab as RoomTab : "inbox";
+    if (targetWorkItem) {
+      onOpenWorkItem(targetWorkItem);
+      return;
+    }
+    if (targetRunId) {
+      onOpenRun(targetRunId);
+      return;
+    }
+    if (targetWorkOrderId) {
+      onOpenWorkOrder(targetWorkOrderId);
+      return;
+    }
+    onOpenTab(targetTab);
+  };
+
+  const entries: OfficeActionEntry[] = [
+    ...blockedRuns.slice(0, 3).map((run) => ({
+      id: `run:${run.id}`,
+      title: compactAgentName(run.agentName, data.name),
+      subtitle: run.error ?? run.note ?? "Run needs operator attention",
+      status: run.status,
+      severity: "high" as const,
+      source: "run",
+      icon: Rocket,
+      onOpen: () => onOpenRun(run.id),
+    })),
+    ...blockedOrders.slice(0, 3).map((order) => ({
+      id: `work-order:${order.id}`,
+      title: order.title,
+      subtitle: `${order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"} · ${order.projectName ?? "No project"}`,
+      status: order.status,
+      severity: "high" as const,
+      source: "work order",
+      icon: SquarePen,
+      onOpen: () => onOpenWorkOrder(order.id),
+    })),
+    ...pendingApprovals.slice(0, 3).map((approval) => ({
+      id: `approval:${approval.id}`,
+      title: approval.title,
+      subtitle: `${approval.agentName ? compactAgentName(approval.agentName, data.name) : "operator"} · ${approval.kind}`,
+      status: approval.status,
+      severity: "medium" as const,
+      source: "approval",
+      icon: CheckCircle2,
+      onOpen: () => onOpenTab("approvals"),
+    })),
+    ...pendingReviews.slice(0, 3).map((review) => ({
+      id: `review:${review.id}`,
+      title: review.title,
+      subtitle: `${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned reviewer"}`,
+      status: review.status,
+      severity: "medium" as const,
+      source: "review",
+      icon: ShieldAlert,
+      onOpen: () => onOpenTab("reviews"),
+    })),
+    ...dueRoutines.slice(0, 2).map((routine) => ({
+      id: `routine:${routine.id}`,
+      title: compactAgentName(routine.agentName, data.name),
+      subtitle: `${routine.cadenceLabel} · ${routine.title}`,
+      status: routine.state,
+      severity: "medium" as const,
+      source: "routine",
+      icon: Repeat2,
+      onOpen: () => onOpenTab("routines"),
+    })),
+    ...openInboxItems.slice(0, 4).map((item) => ({
+      id: `inbox:${item.id}`,
+      title: item.title,
+      subtitle: item.subtitle,
+      status: item.sourceStatus,
+      severity: item.severity === "high" ? "high" as const : item.severity === "medium" ? "medium" as const : "low" as const,
+      source: item.kind,
+      icon: Inbox,
+      onOpen: () => openInboxTarget(item),
+    })),
+  ];
+  const visibleEntries = entries.slice(0, 8);
+  const highCount = entries.filter((entry) => entry.severity === "high").length;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <SectionTitle title="Office Action Queue" aside={`${entries.length} open · ${highCount} urgent`} />
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("inbox")} className="h-8 gap-1.5 self-start sm:self-auto">
+          <Inbox className="h-3.5 w-3.5" />
+          Inbox
+        </Button>
+      </div>
+      <div className="grid gap-2 xl:grid-cols-4">
+        {visibleEntries.length ? visibleEntries.map((entry) => {
+          const Icon = entry.icon;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={entry.onOpen}
+              className={cn(
+                "min-w-0 border px-3 py-3 text-left transition-colors hover:bg-accent/50",
+                actionSeverityClass(entry.severity),
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex min-w-0 items-start gap-2">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">{entry.title}</span>
+                    <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">{entry.subtitle}</span>
+                  </span>
+                </span>
+                <StatusBadge status={entry.status} />
+              </div>
+              <span className="mt-2 inline-flex text-[11px] uppercase tracking-wider text-muted-foreground">{entry.source}</span>
+            </button>
+          );
+        }) : (
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground xl:col-span-4">No operator actions waiting.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
