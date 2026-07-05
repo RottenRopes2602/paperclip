@@ -2512,7 +2512,7 @@ function WorkDeskTab({
 }: {
   comments: SpliceWorkThreadComment[];
   data: SpliceWorkspaceRoomData;
-  onAddComment: (input: { itemType: string; itemId: string; body: string }) => void;
+  onAddComment: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) => void;
   onAddWorkProduct: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) => void;
   postingCommentKey: string | null;
   savingProductKey: string | null;
@@ -2528,6 +2528,7 @@ function WorkDeskTab({
   const firstKey = deskItems[0] ? workItemKey(deskItems[0]) : "";
   const [selectedKey, setSelectedKey] = useState(firstKey);
   const [commentDraft, setCommentDraft] = useState("");
+  const [wakeOnComment, setWakeOnComment] = useState(true);
   const [productTitle, setProductTitle] = useState("");
   const [productBody, setProductBody] = useState("");
 
@@ -2554,7 +2555,7 @@ function WorkDeskTab({
     const body = commentDraft.trim();
     if (!selectedItem || !body || postingComment) return;
     setCommentDraft("");
-    onAddComment({ itemType: selectedItem.type, itemId: selectedItem.id, body });
+    onAddComment({ itemType: selectedItem.type, itemId: selectedItem.id, body, wakeAgent: wakeOnComment });
   };
 
   const submitWorkProduct = (event: FormEvent<HTMLFormElement>) => {
@@ -2645,10 +2646,18 @@ function WorkDeskTab({
                 {selectedComments.length ? selectedComments.map((comment) => (
                   <article key={comment.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium">{comment.author}</span>
-                      <span className="text-xs text-muted-foreground">{formatIsoAge(comment.createdAt)}</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="text-xs font-medium">{comment.author}</span>
+                        {comment.runRequestId ? <StatusBadge status="wake" /> : null}
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(comment.createdAt)}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-sm leading-6">{comment.body}</p>
+                    {comment.runRequestId ? (
+                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                        wake · {comment.runRequestId}
+                      </p>
+                    ) : null}
                   </article>
                 )) : (
                   <p className="text-sm text-muted-foreground">No comments yet.</p>
@@ -2662,7 +2671,17 @@ function WorkDeskTab({
                   placeholder="Comment"
                   disabled={postingComment}
                 />
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={wakeOnComment}
+                      onChange={(event) => setWakeOnComment(event.target.checked)}
+                      disabled={postingComment}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    Wake owner
+                  </label>
                   <Button type="submit" size="sm" disabled={!commentDraft.trim() || postingComment} className="gap-1.5">
                     <MessageSquare className={cn("h-3.5 w-3.5", postingComment && "animate-pulse")} />
                     {postingComment ? "Posting" : "Post Comment"}
@@ -4508,10 +4527,14 @@ export function SpliceWorkspaceRoom() {
     },
   });
   const addCommentMutation = useMutation({
-    mutationFn: (input: { itemType: string; itemId: string; body: string }) =>
+    mutationFn: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) =>
       spliceApi.createWorkspaceRoomComment(PUZZLE_TESTBED_ID, input),
     onSuccess: () => {
       void workThreadQuery.refetch();
+      void roomQuery.refetch();
+      void inboxQuery.refetch();
+      void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void timelineQuery.refetch();
     },
   });

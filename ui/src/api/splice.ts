@@ -258,6 +258,7 @@ export interface SpliceWorkThreadEntry {
   status: "posted" | "saved" | "done" | "failed" | string;
   createdAt: string;
   updatedAt: string;
+  runRequestId?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -285,6 +286,7 @@ export interface SpliceWorkThreadData {
 
 export interface SpliceWorkThreadCommentPost {
   comment: SpliceWorkThreadComment;
+  runRequest?: SpliceAgentRunRequest | null;
 }
 
 export interface SpliceWorkProductPost {
@@ -913,7 +915,7 @@ export const spliceApi = {
     ),
   workspaceRoomWorkThread: (workspaceId: string) =>
     api.get<SpliceWorkThreadData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread`),
-  createWorkspaceRoomComment: (workspaceId: string, input: { itemType: string; itemId: string; body: string }) =>
+  createWorkspaceRoomComment: (workspaceId: string, input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) =>
     api.post<SpliceWorkThreadCommentPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread/comments`,
       input,
