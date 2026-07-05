@@ -1091,6 +1091,7 @@ function DashboardTab({
   onDispatchRunner,
   onFocusAgent,
   onOpenWorkItem,
+  onOpenRun,
   onOpenTab,
   onRunAgent,
   onSend,
@@ -1113,6 +1114,7 @@ function DashboardTab({
   onDispatchRunner: (dryRun: boolean) => void;
   onFocusAgent: (agentId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
+  onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onRunAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
@@ -1138,6 +1140,7 @@ function DashboardTab({
         onDispatchRunner={onDispatchRunner}
         onFocusAgent={onFocusAgent}
         onOpenWorkItem={onOpenWorkItem}
+        onOpenRun={onOpenRun}
         onOpenTab={onOpenTab}
         onRunAgent={onRunAgent}
         routines={routines}
@@ -1437,6 +1440,21 @@ type RoomConsoleAgent = SpliceWorkspaceRoomActor & {
   lastEventAt: string | null;
 };
 
+function runRequestsForActor(
+  requests: SpliceAgentRunRequest[],
+  actor: SpliceWorkspaceRoomActor,
+): SpliceAgentRunRequest[] {
+  const matched = requests.filter((request) =>
+    request.agentId === actor.id ||
+    request.agentId === actor.slug ||
+    request.agentName === actor.name
+  );
+  if (actor.request && !matched.some((request) => request.id === actor.request?.id)) {
+    return [actor.request, ...matched];
+  }
+  return matched;
+}
+
 function roomConsoleAgents(
   data: SpliceWorkspaceRoomData,
   agentConsole: SpliceAgentConsoleData | null,
@@ -1446,11 +1464,7 @@ function roomConsoleAgents(
 
   return data.agents.map((agent) => ({
     ...agent,
-    requests: data.requests.filter((request) =>
-      request.agentId === agent.id ||
-      request.agentId === agent.slug ||
-      request.agentName === agent.name
-    ),
+    requests: runRequestsForActor(data.requests, agent),
     messages: messages.filter((message) =>
       message.agentId === agent.id ||
       message.agentId === agent.slug ||
@@ -2041,7 +2055,9 @@ function RunInspector({
 function RunsTab({
   data,
   dispatchingRunner,
+  focusedRunId,
   onDispatchRunner,
+  onFocusRun,
   onUpdateRunStatus,
   runnerNotice,
   runs,
@@ -2049,7 +2065,9 @@ function RunsTab({
 }: {
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
+  focusedRunId: string | null;
   onDispatchRunner: (dryRun: boolean) => void;
+  onFocusRun: (runId: string) => void;
   onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
   runnerNotice: string | null;
   runs: SpliceRunMonitorData | null;
@@ -2068,10 +2086,21 @@ function RunsTab({
       if (selectedRunId) setSelectedRunId("");
       return;
     }
+    if (focusedRunId && runList.some((run) => run.id === focusedRunId)) {
+      if (selectedRunId !== focusedRunId) {
+        setSelectedRunId(focusedRunId);
+      }
+      return;
+    }
     if (!selectedRunId || !runList.some((run) => run.id === selectedRunId)) {
       setSelectedRunId(runList[0].id);
     }
-  }, [runIds, runList, selectedRunId]);
+  }, [focusedRunId, runIds, runList, selectedRunId]);
+
+  const selectRun = (runId: string) => {
+    setSelectedRunId(runId);
+    onFocusRun(runId);
+  };
 
   const selectedRun = runList.find((run) => run.id === selectedRunId) ?? runList[0] ?? null;
   const selectedRunDetailQuery = useQuery({
@@ -2137,7 +2166,7 @@ function RunsTab({
             <RunMonitorCard
               key={run.id}
               data={data}
-              onSelectRun={setSelectedRunId}
+              onSelectRun={selectRun}
               run={run}
               selected={selectedRun?.id === run.id}
               updatingRunId={updatingRunId}
@@ -2163,7 +2192,7 @@ function RunsTab({
             <RunMonitorCard
               key={run.id}
               data={data}
-              onSelectRun={setSelectedRunId}
+              onSelectRun={selectRun}
               run={run}
               selected={selectedRun?.id === run.id}
               updatingRunId={updatingRunId}
@@ -2205,12 +2234,14 @@ function ReviewGateSummary({ data, reviews }: { data: SpliceWorkspaceRoomData; r
 function InboxItemCard({
   item,
   onOpenTab,
+  onOpenRun,
   onOpenWorkItem,
   onUpdateStatus,
   updatingItemId,
 }: {
   item: SpliceInboxItem;
   onOpenTab: (tab: RoomTab) => void;
+  onOpenRun: (runId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
   onUpdateStatus: (itemId: string, status: "open" | "done") => void;
   updatingItemId: string | null;
@@ -2218,6 +2249,19 @@ function InboxItemCard({
   const updating = updatingItemId === item.id;
   const targetTab = roomTabs.some((tab) => tab.value === item.targetTab) ? item.targetTab as RoomTab : "dashboard";
   const targetWorkItem = workItemRefFromTarget(item.targetType, item.targetId);
+  const targetRunId = runIdFromTarget(item.targetType, item.targetId);
+  const openLabel = targetWorkItem ? "Open Work Desk" : targetRunId ? "Open Run" : `Open ${roomTabLabel(targetTab)}`;
+  const openTarget = () => {
+    if (targetWorkItem) {
+      onOpenWorkItem(targetWorkItem);
+      return;
+    }
+    if (targetRunId) {
+      onOpenRun(targetRunId);
+      return;
+    }
+    onOpenTab(targetTab);
+  };
   return (
     <article className={cn(
       "border border-border px-4 py-4",
@@ -2239,9 +2283,9 @@ function InboxItemCard({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => targetWorkItem ? onOpenWorkItem(targetWorkItem) : onOpenTab(targetTab)}
+            onClick={openTarget}
           >
-            {targetWorkItem ? "Open Work Desk" : `Open ${roomTabLabel(targetTab)}`}
+            {openLabel}
           </Button>
           {item.inboxStatus === "done" ? (
             <Button
@@ -2276,12 +2320,14 @@ function InboxItemCard({
 function InboxTab({
   inbox,
   onOpenTab,
+  onOpenRun,
   onOpenWorkItem,
   onUpdateStatus,
   updatingItemId,
 }: {
   inbox: SpliceOfficeInboxData | null;
   onOpenTab: (tab: RoomTab) => void;
+  onOpenRun: (runId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
   onUpdateStatus: (itemId: string, status: "open" | "done") => void;
   updatingItemId: string | null;
@@ -2309,6 +2355,7 @@ function InboxTab({
                 key={item.id}
                 item={item}
                 onOpenTab={onOpenTab}
+                onOpenRun={onOpenRun}
                 onOpenWorkItem={onOpenWorkItem}
                 onUpdateStatus={onUpdateStatus}
                 updatingItemId={updatingItemId}
@@ -2329,6 +2376,7 @@ function InboxTab({
                 key={item.id}
                 item={item}
                 onOpenTab={onOpenTab}
+                onOpenRun={onOpenRun}
                 onOpenWorkItem={onOpenWorkItem}
                 onUpdateStatus={onUpdateStatus}
                 updatingItemId={updatingItemId}
@@ -2622,6 +2670,13 @@ function workItemRefFromTarget(type: string | null | undefined, id: string | nul
   return { type: normalizedType, id: normalizedId };
 }
 
+function runIdFromTarget(type: string | null | undefined, id: string | null | undefined): string | null {
+  const normalizedType = String(type || "").trim();
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) return null;
+  return normalizedType === "run" ? normalizedId : null;
+}
+
 function reviewBodyFromProduct(product: SpliceWorkProduct): string {
   const body = product.body.trim();
   const clippedBody = body.length > 3400 ? `${body.slice(0, 3397)}...` : body;
@@ -2640,6 +2695,7 @@ function WorkDeskTab({
   onAddComment,
   onAddWorkProduct,
   onFocusWorkItem,
+  onOpenRun,
   onRequestReview,
   postingCommentKey,
   requestingReviewProductId,
@@ -2652,6 +2708,7 @@ function WorkDeskTab({
   onAddComment: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) => void;
   onAddWorkProduct: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) => void;
   onFocusWorkItem: (item: WorkItemRef) => void;
+  onOpenRun: (runId: string) => void;
   onRequestReview: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null; sourceWorkProductId?: string | null }) => void;
   postingCommentKey: string | null;
   requestingReviewProductId: string | null;
@@ -2806,9 +2863,13 @@ function WorkDeskTab({
                     </div>
                     <p className="whitespace-pre-wrap text-sm leading-6">{comment.body}</p>
                     {comment.runRequestId ? (
-                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => comment.runRequestId && onOpenRun(comment.runRequestId)}
+                        className="mt-2 max-w-full truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
                         wake · {comment.runRequestId}
-                      </p>
+                      </button>
                     ) : null}
                   </article>
                 )) : (
@@ -2890,9 +2951,13 @@ function WorkDeskTab({
                         </div>
                       </div>
                       {product.sourceRunRequestId ? (
-                        <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground">
+                        <button
+                          type="button"
+                          onClick={() => product.sourceRunRequestId && onOpenRun(product.sourceRunRequestId)}
+                          className="mb-2 max-w-full truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
                           run · {product.sourceRunRequestId}
-                        </p>
+                        </button>
                       ) : null}
                       <MarkdownBody className="text-sm text-muted-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                         {product.body}
@@ -2937,6 +3002,7 @@ function ReviewGateTab({
   data,
   decidingReviewId,
   onDecideReview,
+  onOpenRun,
   onRequestReview,
   requestingReviewKey,
   reviews,
@@ -2944,6 +3010,7 @@ function ReviewGateTab({
   data: SpliceWorkspaceRoomData;
   decidingReviewId: string | null;
   onDecideReview: (reviewId: string, decision: "approved" | "changes_requested" | "rejected", body: string, wakeAgent: boolean) => void;
+  onOpenRun: (runId: string) => void;
   onRequestReview: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) => void;
   requestingReviewKey: string | null;
   reviews: SpliceReview[];
@@ -3178,9 +3245,13 @@ function ReviewGateTab({
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{decision.body}</p>
                         {decision.runRequestId ? (
-                          <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                          <button
+                            type="button"
+                            onClick={() => decision.runRequestId && onOpenRun(decision.runRequestId)}
+                            className="mt-2 max-w-full truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          >
                             wake · {decision.runRequestId}
-                          </p>
+                          </button>
                         ) : null}
                       </article>
                     )) : (
@@ -3515,6 +3586,7 @@ function ApprovalsTab({
 
 function RoutinesTab({
   data,
+  onOpenRun,
   onRunRoutine,
   onToggleRoutine,
   routines,
@@ -3522,6 +3594,7 @@ function RoutinesTab({
   updatingRoutineId,
 }: {
   data: SpliceWorkspaceRoomData;
+  onOpenRun: (runId: string) => void;
   onRunRoutine: (routineId: string) => void;
   onToggleRoutine: (routineId: string, input: { enabled?: boolean; intervalMinutes?: number }) => void;
   routines: SpliceOfficeRoutinesData | null;
@@ -3574,7 +3647,13 @@ function RoutinesTab({
                       <span>{routine.runCount} run{routine.runCount === 1 ? "" : "s"}</span>
                     </div>
                     {routine.lastRunRequestId ? (
-                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{routine.lastRunRequestId}</p>
+                      <button
+                        type="button"
+                        onClick={() => routine.lastRunRequestId && onOpenRun(routine.lastRunRequestId)}
+                        className="mt-2 max-w-full truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        run · {routine.lastRunRequestId}
+                      </button>
                     ) : null}
                   </div>
                   <div className="flex min-w-0 flex-col gap-2">
@@ -3644,7 +3723,13 @@ function RoutinesTab({
                     <Clock3 className="h-3.5 w-3.5 shrink-0" />
                     <span>{formatIsoAge(run.createdAt)}</span>
                   </div>
-                  <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{run.runRequestId}</p>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRun(run.runRequestId)}
+                    className="mt-2 max-w-full truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    run · {run.runRequestId}
+                  </button>
                 </article>
               )) : (
                 <p className="px-4 py-4 text-sm text-muted-foreground">No routine runs yet.</p>
@@ -3673,6 +3758,7 @@ function AgentsTab({
   focusedAgentId,
   messages,
   onFocusAgent,
+  onOpenRun,
   onSend,
   runningAgentId,
   sendingAgentId,
@@ -3683,6 +3769,7 @@ function AgentsTab({
   focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
   onFocusAgent: (agentId: string) => void;
+  onOpenRun: (runId: string) => void;
   onSend: (agentId: string, body: string) => void;
   runningAgentId: string | null;
   sendingAgentId: string | null;
@@ -3875,14 +3962,19 @@ function AgentsTab({
                 </div>
                 <div className="max-h-[310px] overflow-y-auto">
                   {selectedRequests.length ? selectedRequests.slice(0, 12).map((request) => (
-                    <article key={request.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                    <button
+                      key={request.id}
+                      type="button"
+                      onClick={() => onOpenRun(request.id)}
+                      className="block w-full border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-accent/50"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <StatusBadge status={request.status} />
                         <span className="text-xs text-muted-foreground">{formatIsoAge(request.updatedAt || request.requestedAt)}</span>
                       </div>
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "No note"}</p>
                       <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{request.id}</p>
-                    </article>
+                    </button>
                   )) : (
                     <p className="px-4 py-4 text-sm text-muted-foreground">No run history yet.</p>
                   )}
@@ -3934,6 +4026,7 @@ function CommsTab({
   focusedAgentId,
   messages,
   onFocusAgent,
+  onOpenRun,
   onSend,
   sendingAgentId,
 }: {
@@ -3941,6 +4034,7 @@ function CommsTab({
   focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
   onFocusAgent: (agentId: string) => void;
+  onOpenRun: (runId: string) => void;
   onSend: (agentId: string, body: string) => void;
   sendingAgentId: string | null;
 }) {
@@ -4062,7 +4156,15 @@ function CommsTab({
                 ) : null}
                 <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <StatusBadge status={message.status} />
-                  {message.runRequestId ? <span className="truncate font-mono">{message.runRequestId}</span> : null}
+                  {message.runRequestId ? (
+                    <button
+                      type="button"
+                      onClick={() => message.runRequestId && onOpenRun(message.runRequestId)}
+                      className="min-w-0 truncate font-mono underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      {message.runRequestId}
+                    </button>
+                  ) : null}
                   {message.workOrderId ? <span className="truncate font-mono">{message.workOrderId}</span> : null}
                 </div>
               </article>
@@ -4121,19 +4223,26 @@ function timelineSeverityClass(severity: string): string {
 function TimelineEventRow({
   event,
   onOpenTab,
+  onOpenRun,
   onOpenWorkItem,
 }: {
   event: SpliceOfficeTimelineEvent;
   onOpenTab: (tab: RoomTab) => void;
+  onOpenRun: (runId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
 }) {
   const Icon = timelineKindIcon(event.kind);
   const targetTab = roomTabs.some((tab) => tab.value === event.targetTab) ? event.targetTab as RoomTab : null;
   const targetWorkItem = workItemRefFromTarget(event.targetType, event.targetId);
-  const targetLabel = targetWorkItem ? "Open Work Desk" : targetTab ? `Open ${roomTabLabel(targetTab)}` : "";
+  const targetRunId = runIdFromTarget(event.targetType, event.targetId);
+  const targetLabel = targetWorkItem ? "Open Work Desk" : targetRunId ? "Open Run" : targetTab ? `Open ${roomTabLabel(targetTab)}` : "";
   const openTarget = () => {
     if (targetWorkItem) {
       onOpenWorkItem(targetWorkItem);
+      return;
+    }
+    if (targetRunId) {
+      onOpenRun(targetRunId);
       return;
     }
     if (targetTab) {
@@ -4158,7 +4267,7 @@ function TimelineEventRow({
         </p>
         {event.subtitle ? <p className="mt-1 break-words text-xs text-muted-foreground">{event.subtitle}</p> : null}
         {event.body ? <p className="mt-2 break-words text-sm text-muted-foreground">{event.body}</p> : null}
-        {targetWorkItem || targetTab ? (
+        {targetWorkItem || targetRunId || targetTab ? (
           <Button
             type="button"
             variant="outline"
@@ -4230,12 +4339,14 @@ function ActivityTab({
   messages,
   timeline,
   onOpenTab,
+  onOpenRun,
   onOpenWorkItem,
 }: {
   data: SpliceWorkspaceRoomData;
   messages: SpliceAgentMessage[];
   timeline: SpliceOfficeTimelineData | null;
   onOpenTab: (tab: RoomTab) => void;
+  onOpenRun: (runId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
 }) {
   const events = timeline?.events ?? [];
@@ -4258,7 +4369,7 @@ function ActivityTab({
           <SectionTitle title="Live Office Log" aside={timeline ? `updated ${formatIsoAge(timeline.generatedAt)}` : "waiting"} />
           <div className="border border-border">
             {events.length ? events.map((event) => (
-              <TimelineEventRow key={event.id} event={event} onOpenTab={onOpenTab} onOpenWorkItem={onOpenWorkItem} />
+              <TimelineEventRow key={event.id} event={event} onOpenTab={onOpenTab} onOpenRun={onOpenRun} onOpenWorkItem={onOpenWorkItem} />
             )) : (
               <div className="space-y-3 px-4 py-4">
                 <p className="text-sm text-muted-foreground">No office timeline signals yet.</p>
@@ -4535,6 +4646,7 @@ function RoomMap({
   onDispatchRunner,
   onFocusAgent,
   onOpenWorkItem,
+  onOpenRun,
   onOpenTab,
   onRunAgent,
   routines,
@@ -4552,6 +4664,7 @@ function RoomMap({
   onDispatchRunner: (dryRun: boolean) => void;
   onFocusAgent: (agentId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
+  onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onRunAgent: (agentId: string) => void;
   routines: SpliceOfficeRoutinesData | null;
@@ -4591,12 +4704,9 @@ function RoomMap({
   const selectedAgent = selectedActor
     ? data.agents.find((agent) => agent.id === selectedActor.id || agent.slug === selectedActor.slug) ?? null
     : null;
+  const roomRunRequests = runs?.runs ?? data.requests;
   const selectedRequests = selectedActor
-    ? data.requests.filter((request) =>
-      request.agentId === selectedActor.id ||
-      request.agentId === selectedActor.slug ||
-      request.agentName === selectedActor.name
-    ).slice(0, 3)
+    ? runRequestsForActor(roomRunRequests, selectedActor).slice(0, 3)
     : [];
   const selectedProducts = selectedActor
     ? workProducts.filter((product) =>
@@ -4607,11 +4717,16 @@ function RoomMap({
     ).slice(0, 3)
     : [];
   const selectedPrimaryWork = selectedActor?.currentWork[0] ?? null;
+  const selectedPrimaryRequest = selectedRequests[0] ?? null;
   const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
   const openFocusedTab = (tab: RoomTab) => {
     if (selectedAgent) onFocusAgent(selectedAgent.id);
     if (tab === "desk" && selectedPrimaryWork) {
       onOpenWorkItem(selectedPrimaryWork);
+      return;
+    }
+    if (tab === "runs" && selectedPrimaryRequest) {
+      onOpenRun(selectedPrimaryRequest.id);
       return;
     }
     onOpenTab(tab);
@@ -4861,10 +4976,18 @@ export function SpliceWorkspaceRoom() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
   const [activeTab, setActiveTab] = useState<RoomTab>("dashboard");
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
+  const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
   const [focusedWorkItemKey, setFocusedWorkItemKey] = useState<string | null>(null);
   const [runnerNotice, setRunnerNotice] = useState<string | null>(null);
   const onFocusAgent = useCallback((agentId: string) => {
     setFocusedAgentId(agentId);
+  }, []);
+  const onFocusRun = useCallback((runId: string) => {
+    setFocusedRunId(runId);
+  }, []);
+  const onOpenRun = useCallback((runId: string) => {
+    setFocusedRunId(runId);
+    setActiveTab("runs");
   }, []);
   const onFocusWorkItem = useCallback((item: WorkItemRef) => {
     setFocusedWorkItemKey(workItemKey(item));
@@ -5194,6 +5317,7 @@ export function SpliceWorkspaceRoom() {
           messages={messages}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
           onFocusAgent={onFocusAgent}
+          onOpenRun={onOpenRun}
           onOpenWorkItem={onOpenWorkItem}
           onOpenTab={setActiveTab}
           onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
@@ -5213,6 +5337,7 @@ export function SpliceWorkspaceRoom() {
           inbox={inbox}
           updatingItemId={updatingInboxItemId}
           onOpenTab={setActiveTab}
+          onOpenRun={onOpenRun}
           onOpenWorkItem={onOpenWorkItem}
           onUpdateStatus={(itemId, status) => updateInboxMutation.mutate({ itemId, status })}
         />
@@ -5222,10 +5347,12 @@ export function SpliceWorkspaceRoom() {
         <RunsTab
           data={data}
           dispatchingRunner={dispatchRunnerMutation.isPending}
+          focusedRunId={focusedRunId}
           runs={runs}
           runnerNotice={runnerNotice}
           updatingRunId={updatingRunId}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onFocusRun={onFocusRun}
           onUpdateRunStatus={(runId, status, error) => updateRunStatusMutation.mutate({ runId, status, error })}
         />
       )}
@@ -5255,6 +5382,7 @@ export function SpliceWorkspaceRoom() {
           onAddComment={(input) => addCommentMutation.mutate(input)}
           onAddWorkProduct={(input) => addWorkProductMutation.mutate(input)}
           onFocusWorkItem={onFocusWorkItem}
+          onOpenRun={onOpenRun}
           onRequestReview={(input) => requestReviewMutation.mutate(input)}
         />
       )}
@@ -5264,6 +5392,7 @@ export function SpliceWorkspaceRoom() {
           reviews={reviews}
           requestingReviewKey={requestingReviewKey}
           decidingReviewId={decidingReviewId}
+          onOpenRun={onOpenRun}
           onRequestReview={(input) => requestReviewMutation.mutate(input)}
           onDecideReview={(reviewId, decision, body, wakeAgent) => decideReviewMutation.mutate({ reviewId, decision, body, wakeAgent })}
         />
@@ -5285,6 +5414,7 @@ export function SpliceWorkspaceRoom() {
           routines={routines}
           runningRoutineId={runningRoutineId}
           updatingRoutineId={updatingRoutineId}
+          onOpenRun={onOpenRun}
           onRunRoutine={(routineId) => runRoutineMutation.mutate(routineId)}
           onToggleRoutine={(routineId, input) => updateRoutineMutation.mutate({ routineId, input })}
         />
@@ -5296,6 +5426,7 @@ export function SpliceWorkspaceRoom() {
           focusedAgentId={focusedAgentId}
           messages={messages}
           onFocusAgent={onFocusAgent}
+          onOpenRun={onOpenRun}
           sendingAgentId={sendingAgentId}
           runningAgentId={runningAgentId}
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
@@ -5308,11 +5439,12 @@ export function SpliceWorkspaceRoom() {
           focusedAgentId={focusedAgentId}
           messages={messages}
           onFocusAgent={onFocusAgent}
+          onOpenRun={onOpenRun}
           sendingAgentId={sendingAgentId}
           onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
         />
       )}
-      {activeTab === "activity" && <ActivityTab data={data} messages={messages} timeline={timeline} onOpenTab={setActiveTab} onOpenWorkItem={onOpenWorkItem} />}
+      {activeTab === "activity" && <ActivityTab data={data} messages={messages} timeline={timeline} onOpenTab={setActiveTab} onOpenRun={onOpenRun} onOpenWorkItem={onOpenWorkItem} />}
       {activeTab === "details" && <DetailsTab data={data} />}
     </PuzzleWorkspaceShell>
   );
