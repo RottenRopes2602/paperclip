@@ -597,6 +597,130 @@ function OfficeWorkProductStack({ count, onClick }: { count: number; onClick: ()
   );
 }
 
+function workOrderOfficePosition(order: SpliceWorkOrder, index: number) {
+  const slots: Record<string, Array<{ x: number; y: number }>> = {
+    requested: [
+      { x: 15, y: 40 },
+      { x: 23, y: 48 },
+    ],
+    queued: [
+      { x: 33, y: 24 },
+      { x: 42, y: 35 },
+      { x: 33, y: 54 },
+    ],
+    in_progress: [
+      { x: 55, y: 30 },
+      { x: 64, y: 47 },
+      { x: 58, y: 63 },
+    ],
+    review: [
+      { x: 80, y: 28 },
+      { x: 84, y: 48 },
+    ],
+    blocked: [
+      { x: 86, y: 68 },
+      { x: 78, y: 74 },
+    ],
+    failed: [
+      { x: 86, y: 68 },
+      { x: 78, y: 74 },
+    ],
+    done: [
+      { x: 48, y: 80 },
+      { x: 57, y: 80 },
+    ],
+  };
+  const statusSlots = slots[order.status] ?? slots.queued;
+  return statusSlots[index % statusSlots.length];
+}
+
+function workOrderMarkerTone(order: SpliceWorkOrder): string {
+  if (order.status === "blocked" || order.status === "failed") return "bg-red-300";
+  if (order.status === "review") return "bg-sky-300";
+  if (order.status === "in_progress") return "bg-emerald-300";
+  if (order.status === "done") return "bg-lime-300";
+  if (order.priority === "urgent" || order.priority === "high") return "bg-amber-300";
+  return "bg-[#e7d57a]";
+}
+
+function OfficeWorkOrderMarker({
+  data,
+  index,
+  order,
+  onOpen,
+}: {
+  data: SpliceWorkspaceRoomData;
+  index: number;
+  order: SpliceWorkOrder;
+  onOpen: () => void;
+}) {
+  const position = workOrderOfficePosition(order, index);
+  const left = roomPercent(position.x, 8, 92);
+  const top = roomPercent(position.y, 18, 84);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`${order.title} · ${order.status}`}
+      className={cn(
+        "absolute z-10 w-28 -translate-x-1/2 -translate-y-1/2 border-4 border-black px-2 py-1.5 text-left font-mono text-black shadow-[4px_4px_0_rgba(0,0,0,0.55)] transition-transform hover:-translate-y-[54%] hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-cyan-300",
+        workOrderMarkerTone(order),
+      )}
+      style={{ left: `${left}%`, top: `${top}%` }}
+      aria-label={`Open work order ${order.title}`}
+    >
+      <span className="flex items-center justify-between gap-1 text-[8px] font-black uppercase leading-none">
+        <span>order</span>
+        <span>{order.priority}</span>
+      </span>
+      <span className="mt-1 line-clamp-2 text-[10px] font-black leading-tight">{order.title}</span>
+      <span className="mt-1 block truncate text-[9px] font-bold uppercase leading-none">
+        {order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "unassigned"}
+      </span>
+    </button>
+  );
+}
+
+function OfficeMapHotspot({
+  className,
+  count,
+  icon: Icon,
+  label,
+  onClick,
+  tone,
+}: {
+  className?: string;
+  count: number;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  tone: "cyan" | "amber" | "red" | "green";
+}) {
+  const toneClass = {
+    amber: "bg-amber-300 text-black",
+    cyan: "bg-cyan-300 text-black",
+    green: "bg-emerald-300 text-black",
+    red: "bg-red-300 text-black",
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "absolute z-20 flex items-center gap-2 border-4 border-black px-2 py-1 font-mono text-[10px] font-black uppercase leading-none shadow-[4px_4px_0_rgba(0,0,0,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300",
+        toneClass,
+        className,
+      )}
+      aria-label={`Open ${label}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+      <span className="border-2 border-black bg-black px-1 text-white">{formatNumber(count)}</span>
+    </button>
+  );
+}
+
 function RoomActorSprite({
   active,
   actor,
@@ -1382,6 +1506,7 @@ function DashboardTab({
         onOpenWorkItem={onOpenWorkItem}
         onOpenRun={onOpenRun}
         onOpenTab={onOpenTab}
+        onOpenWorkOrder={onOpenWorkOrder}
         onRunAgent={onRunAgent}
         routines={routines}
         runnerNotice={runnerNotice}
@@ -2867,6 +2992,10 @@ function IntakeTab({
   data,
   focusedWorkOrderId,
   onCreateWorkOrder,
+  onFocusAgent,
+  onOpenRun,
+  onOpenTab,
+  onOpenWorkItem,
   onUpdateWorkOrderStatus,
   updatingWorkOrderId,
   workOrders,
@@ -2875,6 +3004,10 @@ function IntakeTab({
   data: SpliceWorkspaceRoomData;
   focusedWorkOrderId: string | null;
   onCreateWorkOrder: (input: { title: string; body: string; agentId?: string | null; projectId?: string | null; priority?: string; wakeAgent?: boolean }) => void;
+  onFocusAgent: (agentId: string) => void;
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
   onUpdateWorkOrderStatus: (workOrderId: string, status: string, wakeAgent?: boolean) => void;
   updatingWorkOrderId: string | null;
   workOrders: SpliceWorkOrdersData | null;
@@ -3031,6 +3164,9 @@ function IntakeTab({
             {visibleOrders.length ? visibleOrders.map((order) => {
               const updating = updatingWorkOrderId === order.id;
               const selected = order.id === selectedOrderId;
+              const runRequestId = order.runRequestId;
+              const agentIdForOrder = order.agentId;
+              const projectTarget = order.projectId ? workItemRefFromTarget("project", order.projectId) : null;
               return (
                 <article
                   key={order.id}
@@ -3046,8 +3182,69 @@ function IntakeTab({
                       {order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"} · {order.projectName || "No project"} · {order.priority} · {formatIsoAge(order.createdAt)}
                     </p>
                     <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{order.body}</p>
+                    {selected ? (
+                      <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                        <div className="min-w-0 border border-border bg-background px-2.5 py-2">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">Run</span>
+                          <span className="mt-1 block truncate font-mono">{runRequestId ?? "No run linked"}</span>
+                        </div>
+                        <div className="min-w-0 border border-border bg-background px-2.5 py-2">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">Agent</span>
+                          <span className="mt-1 block truncate">{order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"}</span>
+                        </div>
+                        <div className="min-w-0 border border-border bg-background px-2.5 py-2">
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">Project</span>
+                          <span className="mt-1 block truncate">{order.projectName ?? "No project"}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                    {selected && order.verdict?.line ? (
+                      <p className="mt-2 line-clamp-2 break-words font-mono text-[11px] text-muted-foreground">{order.verdict.line}</p>
+                    ) : null}
+                    {order.error ? (
+                      <p className="mt-2 line-clamp-2 break-words text-xs text-red-600 dark:text-red-300">{order.error}</p>
+                    ) : null}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {runRequestId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onOpenRun(runRequestId)}
+                        className="gap-1.5"
+                      >
+                        <Rocket className="h-3.5 w-3.5" />
+                        Run
+                      </Button>
+                    ) : null}
+                    {agentIdForOrder ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          onFocusAgent(agentIdForOrder);
+                          onOpenTab("comms");
+                        }}
+                        className="gap-1.5"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        Talk
+                      </Button>
+                    ) : null}
+                    {projectTarget ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onOpenWorkItem(projectTarget)}
+                        className="gap-1.5"
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        Work
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="outline"
@@ -5135,6 +5332,7 @@ function RoomMap({
   onOpenWorkItem,
   onOpenRun,
   onOpenTab,
+  onOpenWorkOrder,
   onRunAgent,
   routines,
   runnerNotice,
@@ -5153,6 +5351,7 @@ function RoomMap({
   onOpenWorkItem: (item: WorkItemRef) => void;
   onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkOrder: (workOrderId: string) => void;
   onRunAgent: (agentId: string) => void;
   routines: SpliceOfficeRoutinesData | null;
   runnerNotice: string | null;
@@ -5206,6 +5405,9 @@ function RoomMap({
   const selectedPrimaryWork = selectedActor?.currentWork[0] ?? null;
   const selectedPrimaryRequest = selectedRequests[0] ?? null;
   const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
+  const roomWorkOrders = (workOrders?.workOrders ?? []).filter((order) => isOpenOfficeStatus(order.status));
+  const visibleRoomWorkOrders = roomWorkOrders.slice(0, 8);
+  const roomWorkOrderOverflow = Math.max(0, roomWorkOrders.length - visibleRoomWorkOrders.length);
   const openFocusedTab = (tab: RoomTab) => {
     if (selectedAgent) onFocusAgent(selectedAgent.id);
     if (tab === "desk" && selectedPrimaryWork) {
@@ -5273,6 +5475,27 @@ function RoomMap({
           </div>
           <OfficeLayout />
           <OfficeWorkProductStack count={workProducts.length} onClick={() => onOpenTab("desk")} />
+          <OfficeMapHotspot className="left-[6%] bottom-[33%]" count={inbox?.counts.open ?? 0} icon={Inbox} label="inbox" onClick={() => onOpenTab("inbox")} tone="cyan" />
+          <OfficeMapHotspot className="right-[7%] top-[17%]" count={approvals?.counts.pending ?? 0} icon={ShieldAlert} label="gate" onClick={() => onOpenTab("approvals")} tone={(approvals?.counts.pending ?? 0) > 0 ? "amber" : "green"} />
+          <OfficeMapHotspot className="right-[7%] bottom-[7%]" count={runCounts.active} icon={Rocket} label="runner" onClick={() => onOpenTab("runs")} tone={runCounts.failed > 0 ? "red" : "green"} />
+          {visibleRoomWorkOrders.map((order, index) => (
+            <OfficeWorkOrderMarker
+              key={order.id}
+              data={data}
+              index={index}
+              order={order}
+              onOpen={() => onOpenWorkOrder(order.id)}
+            />
+          ))}
+          {roomWorkOrderOverflow > 0 ? (
+            <button
+              type="button"
+              onClick={() => onOpenTab("intake")}
+              className="absolute bottom-[30%] left-[29%] z-20 border-4 border-black bg-[#e7d57a] px-2 py-1 font-mono text-[10px] font-black uppercase leading-none text-black shadow-[4px_4px_0_rgba(0,0,0,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            >
+              +{roomWorkOrderOverflow} orders
+            </button>
+          ) : null}
           {roomActorEntries.map(({ actor, slotIndex }) => (
             <RoomActorSprite
               key={actor.id}
@@ -5867,6 +6090,10 @@ export function SpliceWorkspaceRoom() {
           updatingWorkOrderId={updatingWorkOrderId}
           workOrders={workOrders}
           onCreateWorkOrder={(input) => createWorkOrderMutation.mutate(input)}
+          onFocusAgent={onFocusAgent}
+          onOpenRun={onOpenRun}
+          onOpenTab={setActiveTab}
+          onOpenWorkItem={onOpenWorkItem}
           onUpdateWorkOrderStatus={(workOrderId, status, wakeAgent) =>
             updateWorkOrderStatusMutation.mutate({ workOrderId, status, wakeAgent })}
         />
