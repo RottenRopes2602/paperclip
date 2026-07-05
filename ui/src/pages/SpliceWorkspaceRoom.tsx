@@ -2851,7 +2851,7 @@ function ReviewGateTab({
 }: {
   data: SpliceWorkspaceRoomData;
   decidingReviewId: string | null;
-  onDecideReview: (reviewId: string, decision: "approved" | "changes_requested" | "rejected", body: string) => void;
+  onDecideReview: (reviewId: string, decision: "approved" | "changes_requested" | "rejected", body: string, wakeAgent: boolean) => void;
   onRequestReview: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) => void;
   requestingReviewKey: string | null;
   reviews: SpliceReview[];
@@ -2870,6 +2870,7 @@ function ReviewGateTab({
   const [reviewBody, setReviewBody] = useState("");
   const [reviewerAgentId, setReviewerAgentId] = useState(data.agents[0]?.id ?? "");
   const [decisionBody, setDecisionBody] = useState("");
+  const [wakeOnDecision, setWakeOnDecision] = useState(true);
 
   useEffect(() => {
     if (reviewItems.length && (!selectedItemKey || !reviewItems.some((item) => workItemKey(item) === selectedItemKey))) {
@@ -2922,7 +2923,7 @@ function ReviewGateTab({
     const body = decisionBody.trim();
     if (!body) return;
     setDecisionBody("");
-    onDecideReview(selectedReview.id, decision, body);
+    onDecideReview(selectedReview.id, decision, body, decision !== "approved" && wakeOnDecision);
   };
 
   if (!selectedItem) {
@@ -3084,6 +3085,11 @@ function ReviewGateTab({
                           <span className="text-xs text-muted-foreground">{formatIsoAge(decision.createdAt)}</span>
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{decision.body}</p>
+                        {decision.runRequestId ? (
+                          <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                            wake · {decision.runRequestId}
+                          </p>
+                        ) : null}
                       </article>
                     )) : (
                       <p className="text-sm text-muted-foreground">No decisions yet.</p>
@@ -3098,6 +3104,16 @@ function ReviewGateTab({
                     placeholder="Decision note"
                     disabled={decidingReview}
                   />
+                  <label className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={wakeOnDecision}
+                      onChange={(event) => setWakeOnDecision(event.target.checked)}
+                      disabled={decidingReview}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    Wake owner on changes
+                  </label>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
                     <Button
                       type="button"
@@ -4672,12 +4688,15 @@ export function SpliceWorkspaceRoom() {
     },
   });
   const decideReviewMutation = useMutation({
-    mutationFn: ({ reviewId, decision, body }: { reviewId: string; decision: "approved" | "changes_requested" | "rejected"; body: string }) =>
-      spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body }),
+    mutationFn: ({ reviewId, decision, body, wakeAgent }: { reviewId: string; decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent: boolean }) =>
+      spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body, wakeAgent }),
     onSuccess: () => {
       void reviewsQuery.refetch();
       void workThreadQuery.refetch();
       void inboxQuery.refetch();
+      void roomQuery.refetch();
+      void agentConsoleQuery.refetch();
+      void runsQuery.refetch();
       void timelineQuery.refetch();
     },
   });
@@ -4905,7 +4924,7 @@ export function SpliceWorkspaceRoom() {
           requestingReviewKey={requestingReviewKey}
           decidingReviewId={decidingReviewId}
           onRequestReview={(input) => requestReviewMutation.mutate(input)}
-          onDecideReview={(reviewId, decision, body) => decideReviewMutation.mutate({ reviewId, decision, body })}
+          onDecideReview={(reviewId, decision, body, wakeAgent) => decideReviewMutation.mutate({ reviewId, decision, body, wakeAgent })}
         />
       )}
       {activeTab === "approvals" && (

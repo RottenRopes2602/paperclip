@@ -320,6 +320,7 @@ export interface SpliceReviewDecision {
   createdAt: string;
   sourceWorkProductId?: string | null;
   sourceRunRequestId?: string | null;
+  runRequestId?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -371,6 +372,7 @@ export interface SpliceReviewPost {
 export interface SpliceReviewDecisionPost {
   review: SpliceReview | null;
   decision: SpliceReviewDecision;
+  runRequest?: SpliceAgentRunRequest | null;
 }
 
 export interface SpliceInboxItem {
@@ -958,7 +960,7 @@ export const spliceApi = {
   createWorkspaceRoomReviewDecision: (
     workspaceId: string,
     reviewId: string,
-    input: { decision: "approved" | "changes_requested" | "rejected"; body: string },
+    input: { decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent?: boolean },
   ) =>
     api.post<SpliceReviewDecisionPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews/${encodeURIComponent(reviewId)}/decision`,
