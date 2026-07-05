@@ -199,6 +199,7 @@ export interface SpliceRunDetailData {
   related: {
     messages: SpliceAgentMessage[];
     workOrders: SpliceWorkOrder[];
+    workProducts: SpliceWorkProduct[];
     routineRuns: SpliceOfficeRoutineRun[];
   };
 }
@@ -259,6 +260,15 @@ export interface SpliceWorkThreadEntry {
   createdAt: string;
   updatedAt: string;
   runRequestId?: string | null;
+  sourceRunRequestId?: string | null;
+  agentId?: string | null;
+  agentName?: string | null;
+  runStatus?: string | null;
+  settledAt?: string | null;
+  verdict?: SpliceRunRuntime["verdict"] | null;
+  workOrderId?: string | null;
+  workOrderTitle?: string | null;
+  sourceCommentId?: string | null;
   queue?: {
     store: string;
     path: string;

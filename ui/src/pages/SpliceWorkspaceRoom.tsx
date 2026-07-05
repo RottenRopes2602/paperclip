@@ -562,6 +562,38 @@ function OfficeLayout() {
   );
 }
 
+function OfficeWorkProductStack({ count, onClick }: { count: number; onClick: () => void }) {
+  if (count <= 0) return null;
+  const sheets = Array.from({ length: Math.min(5, count) });
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${count} work products`}
+      className="absolute bottom-[23%] left-[39%] z-10 h-20 w-28 border-4 border-black bg-[#151b22] shadow-[5px_5px_0_rgba(0,0,0,0.5)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+    >
+      <div className="absolute inset-x-3 bottom-4 h-5 border-2 border-black bg-[#5b4631] shadow-[3px_3px_0_rgba(0,0,0,0.45)]" />
+      {sheets.map((_, index) => (
+        <span
+          key={index}
+          className="absolute h-7 w-10 border-2 border-black bg-[#e8f1dc] shadow-[2px_2px_0_rgba(0,0,0,0.38)]"
+          style={{
+            left: `${18 + index * 8}px`,
+            bottom: `${30 + index * 3}px`,
+          }}
+        >
+          <span className="absolute left-1 top-2 h-0.5 w-6 bg-[#7ca2a8]" />
+          <span className="absolute left-1 top-4 h-0.5 w-5 bg-[#b4865c]" />
+        </span>
+      ))}
+      <span className="absolute -right-3 -top-3 border-2 border-black bg-emerald-400 px-2 py-1 font-mono text-[11px] font-black leading-none text-black shadow-[2px_2px_0_rgba(0,0,0,0.5)]">
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function RoomActorSprite({
   actor,
   workspaceName,
@@ -1045,6 +1077,7 @@ function DashboardTab({
   runnerNotice,
   sendingAgentId,
   workOrders,
+  workProducts,
 }: {
   agentConsole: SpliceAgentConsoleData | null;
   approvals: SpliceOfficeApprovalsData | null;
@@ -1063,6 +1096,7 @@ function DashboardTab({
   runnerNotice: string | null;
   sendingAgentId: string | null;
   workOrders: SpliceWorkOrdersData | null;
+  workProducts: SpliceWorkProduct[];
 }) {
   const issues = [...data.lanes.active, ...data.lanes.review, ...data.lanes.next, ...data.lanes.blocked];
 
@@ -1079,6 +1113,7 @@ function DashboardTab({
         runnerNotice={runnerNotice}
         runs={runs}
         workOrders={workOrders}
+        workProducts={workProducts}
       />
 
       <OfficeAgentDock
@@ -1867,6 +1902,7 @@ function RunInspector({
 
   const messages = detail?.related.messages ?? [];
   const workOrders = detail?.related.workOrders ?? [];
+  const workProducts = detail?.related.workProducts ?? [];
   const routineRuns = detail?.related.routineRuns ?? [];
 
   return (
@@ -1896,7 +1932,7 @@ function RunInspector({
         <div className="border-b border-border px-4 py-3">
           <p className="text-sm font-semibold">Linked Office Work</p>
         </div>
-        {messages.length || workOrders.length || routineRuns.length ? (
+        {messages.length || workOrders.length || workProducts.length || routineRuns.length ? (
           <div>
             {messages.map((message) => (
               <EntityRow
@@ -1914,6 +1950,15 @@ function RunInspector({
                 subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
                 leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
                 trailing={<StatusBadge status={workOrder.status} />}
+              />
+            ))}
+            {workProducts.map((product) => (
+              <EntityRow
+                key={product.id}
+                title={product.title}
+                subtitle={`${product.itemTitle} · ${product.agentName ? compactAgentName(product.agentName, data.name) : product.author}`}
+                leading={<FileText className="h-4 w-4 text-muted-foreground" />}
+                trailing={<StatusBadge status={product.status} />}
               />
             ))}
             {routineRuns.map((routineRun) => (
@@ -2696,17 +2741,37 @@ function WorkDeskTab({
                 <span className="text-xs text-muted-foreground">{selectedProducts.length}</span>
               </div>
               <div className="max-h-[360px] overflow-y-auto px-4 py-4">
-                {selectedProducts.length ? selectedProducts.map((product) => (
-                  <article key={product.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold">{product.title}</p>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(product.createdAt)}</span>
-                    </div>
-                    <MarkdownBody className="text-sm text-muted-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                      {product.body}
-                    </MarkdownBody>
-                  </article>
-                )) : (
+                {selectedProducts.length ? selectedProducts.map((product) => {
+                  const agentProduct = product.author === "agent" || Boolean(product.sourceRunRequestId);
+                  return (
+                    <article key={product.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <p className="truncate text-sm font-semibold">{product.title}</p>
+                            {agentProduct ? (
+                              <span className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-700 dark:text-emerald-300">
+                                agent result
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {product.agentName ? compactAgentName(product.agentName, data.name) : product.author} · {product.kind}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(product.createdAt)}</span>
+                      </div>
+                      {product.sourceRunRequestId ? (
+                        <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground">
+                          run · {product.sourceRunRequestId}
+                        </p>
+                      ) : null}
+                      <MarkdownBody className="text-sm text-muted-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                        {product.body}
+                      </MarkdownBody>
+                    </article>
+                  );
+                }) : (
                   <p className="text-sm text-muted-foreground">No work products yet.</p>
                 )}
               </div>
@@ -4254,6 +4319,7 @@ function RoomMap({
   runnerNotice,
   runs,
   workOrders,
+  workProducts,
 }: {
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
@@ -4265,6 +4331,7 @@ function RoomMap({
   runnerNotice: string | null;
   runs: SpliceRunMonitorData | null;
   workOrders: SpliceWorkOrdersData | null;
+  workProducts: SpliceWorkProduct[];
 }) {
   const roomActors = [...data.room.humans, ...data.room.agents];
   const zoneCounts = new Map<string, number>();
@@ -4288,6 +4355,7 @@ function RoomMap({
     { tab: "runs", title: "Active Runs", value: runCounts.active, subtitle: `${queuedRuns} queued`, icon: Rocket },
     { tab: "inbox", title: "Inbox", value: inbox?.counts.open ?? 0, subtitle: "open signals", icon: Inbox },
     { tab: "intake", title: "Work Orders", value: workOrders?.counts.open ?? 0, subtitle: `${workOrders?.counts.queued ?? 0} queued`, icon: SquarePen },
+    { tab: "desk", title: "Products", value: workProducts.length, subtitle: "saved on desks", icon: FileText },
     { tab: "approvals", title: "Approvals", value: approvals?.counts.pending ?? 0, subtitle: "pending", icon: CheckCircle2 },
     { tab: "routines", title: "Routines", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} enabled`, icon: Repeat2 },
     { tab: "lanes", title: "Work Copies", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length} lanes`, icon: GitBranch },
@@ -4326,6 +4394,7 @@ function RoomMap({
             </span>
           </div>
           <OfficeLayout />
+          <OfficeWorkProductStack count={workProducts.length} onClick={() => onOpenTab("desk")} />
           {roomActorEntries.map(({ actor, slotIndex }) => (
             <RoomActorSprite key={actor.id} actor={actor} workspaceName={data.name} slotIndex={slotIndex} />
           ))}
@@ -4728,6 +4797,7 @@ export function SpliceWorkspaceRoom() {
           runnerNotice={runnerNotice}
           sendingAgentId={sendingAgentId}
           workOrders={workOrders}
+          workProducts={workThread?.workProducts ?? []}
         />
       )}
       {activeTab === "inbox" && (
