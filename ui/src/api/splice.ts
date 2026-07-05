@@ -935,7 +935,7 @@ export const spliceApi = {
     ),
   workspaceRoomWorkThread: (workspaceId: string) =>
     api.get<SpliceWorkThreadData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread`),
-  createWorkspaceRoomComment: (workspaceId: string, input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) =>
+  createWorkspaceRoomComment: (workspaceId: string, input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null }) =>
     api.post<SpliceWorkThreadCommentPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/work-thread/comments`,
       input,

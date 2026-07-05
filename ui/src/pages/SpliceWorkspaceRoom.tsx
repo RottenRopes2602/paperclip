@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
   Activity,
@@ -77,6 +77,7 @@ const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID
 
 type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
+type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null };
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "Office", icon: LayoutDashboard },
@@ -1948,19 +1949,31 @@ function RunInspector({
   data,
   detail,
   loading,
+  onAddComment,
   onFocusAgent,
   onOpenTab,
   onOpenWorkItem,
+  postingCommentKey,
   run,
 }: {
   data: SpliceWorkspaceRoomData;
   detail: SpliceRunDetailData | null;
   loading: boolean;
+  onAddComment: (input: WorkThreadCommentInput) => void;
   onFocusAgent: (agentId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
+  postingCommentKey: string | null;
   run: SpliceAgentRunRequest | null;
 }) {
+  const [followupDraft, setFollowupDraft] = useState("");
+  const [wakeOnFollowup, setWakeOnFollowup] = useState(true);
+
+  useEffect(() => {
+    setFollowupDraft("");
+    setWakeOnFollowup(true);
+  }, [run?.id]);
+
   if (!run) {
     return (
       <aside className="min-w-0 space-y-3">
@@ -1980,6 +1993,7 @@ function RunInspector({
     workProducts.map((product) => workItemRefFromTarget(product.itemType, product.itemId)).find(Boolean) ??
     workOrders.map((workOrder) => workItemRefFromTarget("project", workOrder.projectId)).find(Boolean) ??
     null;
+  const followupPosting = relatedWorkItem ? postingCommentKey === workItemKey(relatedWorkItem) : false;
   const openAgent = () => {
     const agentId = run.agentId || data.agents.find((agent) => agent.name === run.agentName)?.id || "";
     if (agentId) onFocusAgent(agentId);
@@ -1992,6 +2006,19 @@ function RunInspector({
       return;
     }
     onOpenTab("desk");
+  };
+  const submitFollowup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = followupDraft.trim();
+    if (!body || !relatedWorkItem || followupPosting) return;
+    setFollowupDraft("");
+    onAddComment({
+      itemType: relatedWorkItem.type,
+      itemId: relatedWorkItem.id,
+      body,
+      wakeAgent: wakeOnFollowup,
+      sourceRunRequestId: run.id,
+    });
   };
 
   return (
@@ -2031,6 +2058,48 @@ function RunInspector({
             Work
           </Button>
         </div>
+      </section>
+
+      <section className="border border-border px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold">Follow-up</p>
+          {relatedWorkItem ? (
+            <button
+              type="button"
+              onClick={() => openWorkItem(relatedWorkItem)}
+              className="max-w-[180px] truncate font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {workItemKey(relatedWorkItem)}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">no linked work</span>
+          )}
+        </div>
+        <form className="mt-3 space-y-3" onSubmit={submitFollowup}>
+          <textarea
+            value={followupDraft}
+            onChange={(event) => setFollowupDraft(event.target.value)}
+            className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
+            placeholder={relatedWorkItem ? "Ask the next move" : "This run has no linked work item"}
+            disabled={!relatedWorkItem || followupPosting}
+          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={wakeOnFollowup}
+                onChange={(event) => setWakeOnFollowup(event.target.checked)}
+                disabled={!relatedWorkItem || followupPosting}
+                className="h-4 w-4 accent-primary"
+              />
+              Wake owner
+            </label>
+            <Button type="submit" size="sm" disabled={!relatedWorkItem || !followupDraft.trim() || followupPosting} className="gap-1.5">
+              <Send className="h-3.5 w-3.5" />
+              {followupPosting ? "Sending" : "Send"}
+            </Button>
+          </div>
+        </form>
       </section>
 
       <section className="border border-border">
@@ -2123,12 +2192,14 @@ function RunsTab({
   data,
   dispatchingRunner,
   focusedRunId,
+  onAddComment,
   onDispatchRunner,
   onFocusAgent,
   onFocusRun,
   onOpenTab,
   onOpenWorkItem,
   onUpdateRunStatus,
+  postingCommentKey,
   runnerNotice,
   runs,
   updatingRunId,
@@ -2136,12 +2207,14 @@ function RunsTab({
   data: SpliceWorkspaceRoomData;
   dispatchingRunner: boolean;
   focusedRunId: string | null;
+  onAddComment: (input: WorkThreadCommentInput) => void;
   onDispatchRunner: (dryRun: boolean) => void;
   onFocusAgent: (agentId: string) => void;
   onFocusRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
   onUpdateRunStatus: (runId: string, status: string, error?: string) => void;
+  postingCommentKey: string | null;
   runnerNotice: string | null;
   runs: SpliceRunMonitorData | null;
   updatingRunId: string | null;
@@ -2254,9 +2327,11 @@ function RunsTab({
           data={data}
           detail={selectedRunDetailQuery.data ?? null}
           loading={selectedRunDetailQuery.isFetching}
+          onAddComment={onAddComment}
           onFocusAgent={onFocusAgent}
           onOpenTab={onOpenTab}
           onOpenWorkItem={onOpenWorkItem}
+          postingCommentKey={postingCommentKey}
           run={selectedRun}
         />
       </div>
@@ -2781,7 +2856,7 @@ function WorkDeskTab({
   comments: SpliceWorkThreadComment[];
   data: SpliceWorkspaceRoomData;
   focusedWorkItemKey: string | null;
-  onAddComment: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) => void;
+  onAddComment: (input: WorkThreadCommentInput) => void;
   onAddWorkProduct: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) => void;
   onFocusWorkItem: (item: WorkItemRef) => void;
   onOpenRun: (runId: string) => void;
@@ -5050,6 +5125,7 @@ function RoomMap({
 
 export function SpliceWorkspaceRoom() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<RoomTab>("dashboard");
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
   const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
@@ -5192,7 +5268,7 @@ export function SpliceWorkspaceRoom() {
     },
   });
   const addCommentMutation = useMutation({
-    mutationFn: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) =>
+    mutationFn: (input: WorkThreadCommentInput) =>
       spliceApi.createWorkspaceRoomComment(PUZZLE_TESTBED_ID, input),
     onSuccess: () => {
       void workThreadQuery.refetch();
@@ -5201,6 +5277,7 @@ export function SpliceWorkspaceRoom() {
       void agentConsoleQuery.refetch();
       void runsQuery.refetch();
       void timelineQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "run-detail"] });
     },
   });
   const addWorkProductMutation = useMutation({
@@ -5424,9 +5501,11 @@ export function SpliceWorkspaceRoom() {
           data={data}
           dispatchingRunner={dispatchRunnerMutation.isPending}
           focusedRunId={focusedRunId}
+          postingCommentKey={postingCommentKey}
           runs={runs}
           runnerNotice={runnerNotice}
           updatingRunId={updatingRunId}
+          onAddComment={(input) => addCommentMutation.mutate(input)}
           onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
           onFocusAgent={onFocusAgent}
           onFocusRun={onFocusRun}
