@@ -78,7 +78,7 @@ const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID
 type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
-  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { value: "dashboard", label: "Office", icon: LayoutDashboard },
   { value: "inbox", label: "Inbox", icon: Inbox },
   { value: "lanes", label: "Lanes", icon: GitBranch },
   { value: "runs", label: "Runs", icon: Rocket },
@@ -595,7 +595,7 @@ function RoomActorSprite({
         )} />
       </div>
       <div className={cn(
-        "w-full border-2 px-2 py-1 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]",
+        "hidden w-full border-2 px-2 py-1 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)] sm:block",
         tone,
       )}>
         <div className="flex items-center justify-between gap-2">
@@ -709,7 +709,7 @@ function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number): Issue {
 }
 
 function roomTabLabel(tab: RoomTab): string {
-  return roomTabs.find((item) => item.value === tab)?.label ?? "Dashboard";
+  return roomTabs.find((item) => item.value === tab)?.label ?? "Office";
 }
 
 function PuzzleSidebarNavItem({
@@ -849,7 +849,7 @@ function PuzzleSidebar({
             <CompanyPatternIcon companyName={data.name} className="h-7 w-7 shrink-0 rounded-md" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{data.name}</p>
-              <p className="truncate text-[11px] text-muted-foreground">PZ · office testbed</p>
+              <p className="truncate text-[11px] text-muted-foreground">PZ · puzzle office</p>
             </div>
           </div>
           <button
@@ -1573,7 +1573,10 @@ function OfficeAgentDock({
               {selectedMessages.length ? selectedMessages.slice(0, 6).map((message) => (
                 <article key={message.id} className="min-w-0 bg-background px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-xs font-medium">{message.author}</p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-xs font-medium">{message.author}</p>
+                      {message.kind === "reply" ? <StatusBadge status="reply" /> : null}
+                    </div>
                     <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                   </div>
                   <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
@@ -3641,7 +3644,10 @@ function AgentsTab({
                   {selectedMessages.length ? selectedMessages.slice(0, 10).map((message) => (
                     <article key={message.id} className="border-b border-border px-4 py-3 last:border-b-0">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-xs font-medium">{message.author}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate text-xs font-medium">{message.author}</p>
+                          {message.kind === "reply" ? <StatusBadge status="reply" /> : null}
+                        </div>
                         <span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                       </div>
                       <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
@@ -3760,11 +3766,20 @@ function CommsTab({
 
           <div className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-muted/20 px-4 py-4">
             {agentMessages.length ? agentMessages.map((message) => (
-              <article key={message.id} className="max-w-[760px] border border-border bg-background px-3 py-3">
+              <article
+                key={message.id}
+                className={cn(
+                  "max-w-[760px] border px-3 py-3",
+                  message.author === "agent"
+                    ? "ml-auto border-emerald-500/35 bg-emerald-500/10"
+                    : "border-border bg-background"
+                )}
+              >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="truncate text-xs font-medium">{message.author}</span>
+                    {message.kind === "reply" ? <StatusBadge status="reply" /> : null}
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
                 </div>
@@ -4262,7 +4277,7 @@ function RoomMap({
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <SectionTitle title="Puzzle Game Office" aside={`${activeActors} on floor · ${data.totals.progress}% progress`} />
+        <SectionTitle title="Puzzle Game Office" aside={`${activeActors} desks active · ${data.totals.progress}% progress`} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
             <Rocket className="h-3.5 w-3.5" />
@@ -4274,9 +4289,9 @@ function RoomMap({
           </Button>
         </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div
-          className="relative h-[500px] min-h-[420px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[580px]"
+          className="relative h-[560px] min-h-[480px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[640px]"
           style={{
             backgroundImage:
               "linear-gradient(45deg, rgba(255,255,255,0.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.035) 75%), linear-gradient(45deg, rgba(0,0,0,0.22) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.22) 75%), linear-gradient(to right, rgba(255,255,255,0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(255,255,255,0.06) 2px, transparent 2px)",

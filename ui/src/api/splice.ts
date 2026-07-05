@@ -211,12 +211,14 @@ export interface SpliceAgentMessage {
   agentId: string;
   agentName: string;
   author: "operator" | "agent" | string;
-  kind: "instruction" | "message" | string;
+  kind: "instruction" | "message" | "reply" | string;
   body: string;
   status: "queued" | "sent" | "done" | "noop" | "blocked" | "failed" | "cancelled" | string;
   createdAt: string;
   updatedAt: string;
   runRequestId: string | null;
+  replyToMessageId?: string | null;
+  sourceRunRequestId?: string | null;
   workOrderId?: string | null;
   workOrderTitle?: string | null;
   runStatus?: string | null;
