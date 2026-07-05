@@ -2546,12 +2546,25 @@ function workItemKey(item: Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">): st
   return `${item.type}:${item.id}`;
 }
 
+function reviewBodyFromProduct(product: SpliceWorkProduct): string {
+  const body = product.body.trim();
+  const clippedBody = body.length > 3400 ? `${body.slice(0, 3397)}...` : body;
+  return [
+    `Work product ready for review: ${product.title}`,
+    product.sourceRunRequestId ? `Run: ${product.sourceRunRequestId}` : null,
+    "",
+    clippedBody,
+  ].filter((line) => line !== null).join("\n");
+}
+
 function WorkDeskTab({
   comments,
   data,
   onAddComment,
   onAddWorkProduct,
+  onRequestReview,
   postingCommentKey,
+  requestingReviewProductId,
   savingProductKey,
   workProducts,
 }: {
@@ -2559,7 +2572,9 @@ function WorkDeskTab({
   data: SpliceWorkspaceRoomData;
   onAddComment: (input: { itemType: string; itemId: string; body: string; wakeAgent?: boolean }) => void;
   onAddWorkProduct: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) => void;
+  onRequestReview: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null; sourceWorkProductId?: string | null }) => void;
   postingCommentKey: string | null;
+  requestingReviewProductId: string | null;
   savingProductKey: string | null;
   workProducts: SpliceWorkProduct[];
 }) {
@@ -2743,6 +2758,7 @@ function WorkDeskTab({
               <div className="max-h-[360px] overflow-y-auto px-4 py-4">
                 {selectedProducts.length ? selectedProducts.map((product) => {
                   const agentProduct = product.author === "agent" || Boolean(product.sourceRunRequestId);
+                  const requestingProductReview = requestingReviewProductId === product.id;
                   return (
                     <article key={product.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
                       <div className="mb-2 flex items-center justify-between gap-3">
@@ -2759,7 +2775,27 @@ function WorkDeskTab({
                             {product.agentName ? compactAgentName(product.agentName, data.name) : product.author} · {product.kind}
                           </p>
                         </div>
-                        <span className="shrink-0 text-xs text-muted-foreground">{formatIsoAge(product.createdAt)}</span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="hidden text-xs text-muted-foreground sm:inline">{formatIsoAge(product.createdAt)}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onRequestReview({
+                              itemType: product.itemType,
+                              itemId: product.itemId,
+                              title: `Review ${product.title}`,
+                              body: reviewBodyFromProduct(product),
+                              reviewerAgentId: null,
+                              sourceWorkProductId: product.id,
+                            })}
+                            disabled={requestingProductReview}
+                            className="h-7 gap-1.5 px-2"
+                          >
+                            <ShieldAlert className={cn("h-3.5 w-3.5", requestingProductReview && "animate-pulse")} />
+                            {requestingProductReview ? "Sending" : "Review"}
+                          </Button>
+                        </div>
                       </div>
                       {product.sourceRunRequestId ? (
                         <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground">
@@ -2999,6 +3035,11 @@ function ReviewGateTab({
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {review.itemTitle} · {review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned"}
                         </p>
+                        {review.sourceWorkProductTitle ? (
+                          <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                            product · {review.sourceWorkProductTitle}
+                          </p>
+                        ) : null}
                       </div>
                       <StatusBadge status={review.status} />
                     </button>
@@ -3026,6 +3067,11 @@ function ReviewGateTab({
                       <p className="mt-1 text-xs text-muted-foreground">
                         Requested {formatIsoAge(selectedReview.createdAt)} · {selectedReview.ownerName}
                       </p>
+                      {selectedReview.sourceWorkProductTitle ? (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          Work product · {selectedReview.sourceWorkProductTitle}
+                        </p>
+                      ) : null}
                     </div>
                     <StatusBadge status={selectedReview.status} />
                   </div>
@@ -4616,10 +4662,11 @@ export function SpliceWorkspaceRoom() {
     },
   });
   const requestReviewMutation = useMutation({
-    mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null }) =>
+    mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null; sourceWorkProductId?: string | null }) =>
       spliceApi.createWorkspaceRoomReview(PUZZLE_TESTBED_ID, input),
     onSuccess: () => {
       void reviewsQuery.refetch();
+      void workThreadQuery.refetch();
       void inboxQuery.refetch();
       void timelineQuery.refetch();
     },
@@ -4629,6 +4676,7 @@ export function SpliceWorkspaceRoom() {
       spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body }),
     onSuccess: () => {
       void reviewsQuery.refetch();
+      void workThreadQuery.refetch();
       void inboxQuery.refetch();
       void timelineQuery.refetch();
     },
@@ -4745,6 +4793,9 @@ export function SpliceWorkspaceRoom() {
   const requestingReviewKey = requestReviewMutation.isPending && requestReviewMutation.variables
     ? `${requestReviewMutation.variables.itemType}:${requestReviewMutation.variables.itemId}`
     : null;
+  const requestingReviewProductId = requestReviewMutation.isPending
+    ? requestReviewMutation.variables?.sourceWorkProductId ?? null
+    : null;
   const decidingReviewId = decideReviewMutation.isPending ? decideReviewMutation.variables?.reviewId ?? null : null;
   const updatingInboxItemId = updateInboxMutation.isPending ? updateInboxMutation.variables?.itemId ?? null : null;
   const updatingRoutineId = updateRoutineMutation.isPending ? updateRoutineMutation.variables?.routineId ?? null : null;
@@ -4840,9 +4891,11 @@ export function SpliceWorkspaceRoom() {
           comments={workThread?.comments ?? []}
           workProducts={workThread?.workProducts ?? []}
           postingCommentKey={postingCommentKey}
+          requestingReviewProductId={requestingReviewProductId}
           savingProductKey={savingProductKey}
           onAddComment={(input) => addCommentMutation.mutate(input)}
           onAddWorkProduct={(input) => addWorkProductMutation.mutate(input)}
+          onRequestReview={(input) => requestReviewMutation.mutate(input)}
         />
       )}
       {activeTab === "reviews" && (

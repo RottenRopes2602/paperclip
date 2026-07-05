@@ -269,6 +269,8 @@ export interface SpliceWorkThreadEntry {
   workOrderId?: string | null;
   workOrderTitle?: string | null;
   sourceCommentId?: string | null;
+  reviewId?: string | null;
+  reviewDecisionId?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -316,6 +318,8 @@ export interface SpliceReviewDecision {
   body: string;
   resultingStatus: string;
   createdAt: string;
+  sourceWorkProductId?: string | null;
+  sourceRunRequestId?: string | null;
   queue?: {
     store: string;
     path: string;
@@ -341,6 +345,9 @@ export interface SpliceReview {
   updatedAt: string;
   decidedAt?: string | null;
   decidedBy?: string | null;
+  sourceWorkProductId?: string | null;
+  sourceWorkProductTitle?: string | null;
+  sourceRunRequestId?: string | null;
   decisions: SpliceReviewDecision[];
   queue?: {
     store: string;
@@ -942,7 +949,7 @@ export const spliceApi = {
     api.get<SpliceReviewGateData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews`),
   createWorkspaceRoomReview: (
     workspaceId: string,
-    input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null },
+    input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null; sourceWorkProductId?: string | null },
   ) =>
     api.post<SpliceReviewPost>(
       `/splice/workspaces/${encodeURIComponent(workspaceId)}/reviews`,
