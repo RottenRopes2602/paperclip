@@ -7,7 +7,7 @@ export interface SpliceAgentRunRequest {
   workspacePath?: string;
   agentId: string;
   agentName: string;
-  status: "requested" | "launch_ready" | "launched" | "done" | "failed" | "cancelled" | string;
+  status: "requested" | "launch_ready" | "launched" | "done" | "failed" | "blocked" | "noop" | "cancelled" | string;
   requestedAt: string;
   updatedAt: string;
   launchedAt?: string | null;
@@ -120,7 +120,11 @@ export interface SpliceOverviewData {
     command: string;
     pending: number;
     launched: number;
+    done?: number;
     failed: number;
+    blocked?: number;
+    noop?: number;
+    cancelled?: number;
     active: number;
     total: number;
     canDispatch: boolean;
@@ -159,6 +163,8 @@ export interface SpliceRunMonitorData {
     launched: number;
     done: number;
     failed: number;
+    blocked: number;
+    noop: number;
     cancelled: number;
     terminal: number;
   };

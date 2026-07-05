@@ -159,6 +159,10 @@ const runtimeTone: Record<string, string> = {
   exited: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   stale: "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300",
   terminal: "border-border bg-muted/45 text-muted-foreground",
+  done: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  failed: "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300",
+  blocked: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  noop: "border-stone-500/40 bg-stone-500/10 text-stone-600 dark:text-stone-300",
   verdict_seen: "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300",
 };
 
@@ -1147,8 +1151,10 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
     launched: monitorRuns.filter((run) => run.status === "launched").length,
     done: monitorRuns.filter((run) => run.status === "done").length,
     failed: monitorRuns.filter((run) => run.status === "failed").length,
+    blocked: monitorRuns.filter((run) => run.status === "blocked").length,
+    noop: monitorRuns.filter((run) => run.status === "noop").length,
     cancelled: monitorRuns.filter((run) => run.status === "cancelled").length,
-    terminal: monitorRuns.filter((run) => ["done", "failed", "cancelled"].includes(String(run.status))).length,
+    terminal: monitorRuns.filter((run) => ["done", "failed", "blocked", "noop", "cancelled"].includes(String(run.status))).length,
   };
   const counts = runs?.counts ?? fallbackCounts;
 
@@ -1160,7 +1166,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
           <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${counts.requested} queued`} />
           <MetricCard icon={Clock3} value={counts.launchReady} label="Ready" description="runner pickup" />
           <MetricCard icon={Activity} value={counts.launched} label="Launched" description="process started" />
-          <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.done} done · ${counts.cancelled} canceled`} />
+          <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.blocked} blocked · ${counts.noop} noop`} />
         </div>
         <div className="min-w-0 border border-border">
           {visibleRuns.length ? visibleRuns.map((run) => (
@@ -1679,7 +1685,7 @@ function RunQueueBoard({
 }
 
 function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
-  const terminalStatuses = new Set(["done", "failed", "cancelled"]);
+  const terminalStatuses = new Set(["done", "failed", "blocked", "noop", "cancelled"]);
   const terminal = runs.filter((run) => terminalStatuses.has(String(run.status))).length;
   return {
     total: runs.length,
@@ -1689,6 +1695,8 @@ function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
     launched: runs.filter((run) => run.status === "launched").length,
     done: runs.filter((run) => run.status === "done").length,
     failed: runs.filter((run) => run.status === "failed").length,
+    blocked: runs.filter((run) => run.status === "blocked").length,
+    noop: runs.filter((run) => run.status === "noop").length,
     cancelled: runs.filter((run) => run.status === "cancelled").length,
     terminal,
   };
@@ -1711,7 +1719,7 @@ function RunMonitorCard({
 }) {
   const status = String(run.status);
   const isUpdating = updatingRunId === run.id;
-  const terminal = ["done", "failed", "cancelled"].includes(status);
+  const terminal = ["done", "failed", "blocked", "noop", "cancelled"].includes(status);
   const isLaunched = status === "launched";
   const isQueued = status === "requested" || status === "launch_ready";
   const runPath = run.launch?.outPath || run.launch?.promptPath || run.workspacePath || run.queue?.path || "";
@@ -2003,7 +2011,7 @@ function RunsTab({
         <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${queuedCount} queued`} />
         <MetricCard icon={Clock3} value={counts.requested} label="Requested" description={`${counts.launchReady} ready`} />
         <MetricCard icon={Activity} value={counts.launched} label="Launched" description="runner started" />
-        <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.done} done · ${counts.cancelled} canceled`} />
+        <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.blocked} blocked · ${counts.noop} noop`} />
       </div>
 
       <section className="border border-border">
