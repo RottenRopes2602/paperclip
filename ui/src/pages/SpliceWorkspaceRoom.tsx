@@ -5664,9 +5664,9 @@ function RoomMap({
           </Button>
         </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="space-y-4">
         <div
-          className="relative h-[560px] min-h-[480px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[640px]"
+          className="relative h-[360px] min-h-[340px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[420px] 2xl:h-[520px]"
           style={{
             backgroundImage:
               "linear-gradient(45deg, rgba(255,255,255,0.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.035) 75%), linear-gradient(45deg, rgba(0,0,0,0.22) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.22) 75%), linear-gradient(to right, rgba(255,255,255,0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(255,255,255,0.06) 2px, transparent 2px)",
@@ -5721,12 +5721,181 @@ function RoomMap({
           ))}
         </div>
         <div className="min-w-0 border-2 border-border bg-background">
-          <div className="border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Office Board</p>
-            <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{data.shortPath}</p>
+          <div className="flex flex-col gap-2 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Office Board</p>
+              <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{data.shortPath}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {activeActors} desks · {queuedRuns} queued · {workProducts.length} products
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-px bg-border">
+          <div className="border-t border-border px-4 py-4 lg:px-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">Desk Focus</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {selectedActor ? `${compactAgentName(selectedActor.name, data.name)} · ${selectedActor.zone}` : "No desk selected"}
+                </p>
+              </div>
+              {selectedActor ? <StatusBadge status={selectedActor.state} /> : null}
+            </div>
+
+            {selectedActor ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+                <div className="space-y-3">
+                  <div className="border border-border bg-muted/30 px-3 py-3">
+                    <p className="line-clamp-2 text-sm font-medium">{actorWorkLine(selectedActor)}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{actorRoomLine(selectedActor)}</p>
+                    {selectedActor.request ? (
+                      <p className="mt-2 line-clamp-2 font-mono text-[11px] text-muted-foreground">
+                        {selectedActor.request.note ?? selectedActor.request.id}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => selectedPrimaryWork ? onOpenWorkItem(selectedPrimaryWork) : openFocusedTab("issues")}
+                      className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                    >
+                      <span className="block text-lg font-semibold tabular-nums">{selectedActor.currentWork.length}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">work</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openFocusedTab("runs")}
+                      className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                    >
+                      <span className="block text-lg font-semibold tabular-nums">{selectedRequests.length}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">wakes</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openFocusedTab("desk")}
+                      className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
+                    >
+                      <span className="block text-lg font-semibold tabular-nums">{selectedProducts.length}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">products</span>
+                    </button>
+                  </div>
+
+                  {selectedActor.currentWork.length ? (
+                    <div className="space-y-1.5">
+                      {selectedActor.currentWork.slice(0, 3).map((work) => (
+                        <button
+                          key={`${work.type}:${work.id}`}
+                          type="button"
+                          onClick={() => onOpenWorkItem(work)}
+                          className="flex w-full min-w-0 items-center justify-between gap-2 border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-medium">{work.title}</span>
+                            <span className="block truncate text-[11px] text-muted-foreground">{work.id} · {work.status}</span>
+                          </span>
+                          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {selectedRequests.length ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live Runs</p>
+                        <button
+                          type="button"
+                          onClick={() => openFocusedTab("runs")}
+                          className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          Open
+                        </button>
+                      </div>
+                      {selectedRequests.map((request) => (
+                        <button
+                          key={request.id}
+                          type="button"
+                          onClick={() => onOpenRun(request.id)}
+                          className="flex w-full min-w-0 items-start justify-between gap-2 border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
+                        >
+                          <span className="min-w-0">
+                            <span className="block line-clamp-2 text-xs font-medium">{request.note ?? request.id}</span>
+                            <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
+                              {formatIsoAge(request.updatedAt ?? request.requestedAt)} · {request.id}
+                            </span>
+                          </span>
+                          <span className="shrink-0">
+                            <RunRuntimePill runtime={request.runtime} status={request.status} />
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <form
+                    data-testid="desk-focus-instruction-form"
+                    className="space-y-2 border border-border bg-background px-3 py-3"
+                    onSubmit={submitDeskInstruction}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">Instruction</p>
+                      {selectedAgent ? <span className="truncate text-[11px] text-muted-foreground">{compactAgentName(selectedAgent.name, data.name)}</span> : null}
+                    </div>
+                    <textarea
+                      data-testid="desk-focus-instruction-input"
+                      value={deskDraft}
+                      onChange={(event) => setDeskDraft(event.target.value)}
+                      className="min-h-20 w-full resize-y border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-ring"
+                      placeholder={selectedAgent ? `Message ${compactAgentName(selectedAgent.name, data.name)}` : "Select an agent desk"}
+                      disabled={!selectedAgent || sendingSelected}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={!selectedAgent || !deskDraft.trim() || sendingSelected}
+                        className="h-8 gap-1.5"
+                      >
+                        <Send className={cn("h-3.5 w-3.5", sendingSelected && "animate-pulse")} />
+                        {sendingSelected ? "Sending" : "Send + Wake"}
+                      </Button>
+                    </div>
+                  </form>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => selectedAgent && onRunAgent(selectedAgent.id)}
+                      disabled={!selectedAgent || wakingSelected}
+                      className="h-8 gap-1.5"
+                    >
+                      <Rocket className={cn("h-3.5 w-3.5", wakingSelected && "animate-pulse")} />
+                      {wakingSelected ? "Waking" : "Wake"}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("comms")} className="h-8 gap-1.5">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Talk
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("desk")} className="h-8 gap-1.5">
+                      <SquarePen className="h-3.5 w-3.5" />
+                      Desk
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("runs")} className="h-8 gap-1.5">
+                      <Activity className="h-3.5 w-3.5" />
+                      Runs
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-px border-t border-border bg-border md:grid-cols-4 xl:grid-cols-7">
             {officeSignals.map((signal) => {
               const Icon = signal.icon;
               return (
@@ -5747,166 +5916,6 @@ function RoomMap({
                 </button>
               );
             })}
-          </div>
-
-          <div className="border-t border-border px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">Desk Focus</p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {selectedActor ? `${compactAgentName(selectedActor.name, data.name)} · ${selectedActor.zone}` : "No desk selected"}
-                </p>
-              </div>
-              {selectedActor ? <StatusBadge status={selectedActor.state} /> : null}
-            </div>
-
-            {selectedActor ? (
-              <div className="mt-3 space-y-3">
-                <div className="border border-border bg-muted/30 px-3 py-3">
-                  <p className="line-clamp-2 text-sm font-medium">{actorWorkLine(selectedActor)}</p>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{actorRoomLine(selectedActor)}</p>
-                  {selectedActor.request ? (
-                    <p className="mt-2 line-clamp-2 font-mono text-[11px] text-muted-foreground">
-                      {selectedActor.request.note ?? selectedActor.request.id}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => selectedPrimaryWork ? onOpenWorkItem(selectedPrimaryWork) : openFocusedTab("issues")}
-                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
-                  >
-                    <span className="block text-lg font-semibold tabular-nums">{selectedActor.currentWork.length}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">work</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openFocusedTab("runs")}
-                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
-                  >
-                    <span className="block text-lg font-semibold tabular-nums">{selectedRequests.length}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">wakes</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openFocusedTab("desk")}
-                    className="border border-border bg-background px-2 py-2 text-left transition-colors hover:bg-accent/50"
-                  >
-                    <span className="block text-lg font-semibold tabular-nums">{selectedProducts.length}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">products</span>
-                  </button>
-                </div>
-
-                {selectedActor.currentWork.length ? (
-                  <div className="space-y-1.5">
-                    {selectedActor.currentWork.slice(0, 3).map((work) => (
-                      <button
-                        key={`${work.type}:${work.id}`}
-                        type="button"
-                        onClick={() => onOpenWorkItem(work)}
-                        className="flex w-full min-w-0 items-center justify-between gap-2 border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-medium">{work.title}</span>
-                          <span className="block truncate text-[11px] text-muted-foreground">{work.id} · {work.status}</span>
-                        </span>
-                        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                {selectedRequests.length ? (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live Runs</p>
-                      <button
-                        type="button"
-                        onClick={() => openFocusedTab("runs")}
-                        className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      >
-                        Open
-                      </button>
-                    </div>
-                    {selectedRequests.map((request) => (
-                      <button
-                        key={request.id}
-                        type="button"
-                        onClick={() => onOpenRun(request.id)}
-                        className="flex w-full min-w-0 items-start justify-between gap-2 border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent/50"
-                      >
-                        <span className="min-w-0">
-                          <span className="block line-clamp-2 text-xs font-medium">{request.note ?? request.id}</span>
-                          <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
-                            {formatIsoAge(request.updatedAt ?? request.requestedAt)} · {request.id}
-                          </span>
-                        </span>
-                        <span className="shrink-0">
-                          <RunRuntimePill runtime={request.runtime} status={request.status} />
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <form
-                  data-testid="desk-focus-instruction-form"
-                  className="space-y-2 border border-border bg-background px-3 py-3"
-                  onSubmit={submitDeskInstruction}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">Instruction</p>
-                    {selectedAgent ? <span className="truncate text-[11px] text-muted-foreground">{compactAgentName(selectedAgent.name, data.name)}</span> : null}
-                  </div>
-                  <textarea
-                    data-testid="desk-focus-instruction-input"
-                    value={deskDraft}
-                    onChange={(event) => setDeskDraft(event.target.value)}
-                    className="min-h-20 w-full resize-y border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-ring"
-                    placeholder={selectedAgent ? `Message ${compactAgentName(selectedAgent.name, data.name)}` : "Select an agent desk"}
-                    disabled={!selectedAgent || sendingSelected}
-                  />
-                  <div className="flex justify-end">
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={!selectedAgent || !deskDraft.trim() || sendingSelected}
-                      className="h-8 gap-1.5"
-                    >
-                      <Send className={cn("h-3.5 w-3.5", sendingSelected && "animate-pulse")} />
-                      {sendingSelected ? "Sending" : "Send + Wake"}
-                    </Button>
-                  </div>
-                </form>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => selectedAgent && onRunAgent(selectedAgent.id)}
-                    disabled={!selectedAgent || wakingSelected}
-                    className="h-8 gap-1.5"
-                  >
-                    <Rocket className={cn("h-3.5 w-3.5", wakingSelected && "animate-pulse")} />
-                    {wakingSelected ? "Waking" : "Wake"}
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("comms")} className="h-8 gap-1.5">
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    Talk
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("desk")} className="h-8 gap-1.5">
-                    <SquarePen className="h-3.5 w-3.5" />
-                    Desk
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("runs")} className="h-8 gap-1.5">
-                    <Activity className="h-3.5 w-3.5" />
-                    Runs
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="border-t border-border px-4 py-3">
@@ -5936,7 +5945,7 @@ function RoomMap({
             {runnerNotice ? <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{runnerNotice}</p> : null}
           </div>
 
-          <div className="border-t border-border">
+          <div className="grid border-t border-border md:grid-cols-2 xl:grid-cols-5">
             {data.agents.slice(0, 7).map((agent) => (
               <EntityRow
                 key={agent.id}
