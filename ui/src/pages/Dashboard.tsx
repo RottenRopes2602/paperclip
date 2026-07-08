@@ -20,11 +20,11 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatCents } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
+import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, TrendingUp } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
-import type { Agent, Issue } from "@paperclipai/shared";
+import type { Agent, DashboardSalesSummary, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
 const DASHBOARD_ACTIVITY_LIMIT = 10;
@@ -32,6 +32,35 @@ const DASHBOARD_ACTIVITY_LIMIT = 10;
 function getRecentIssues(issues: Issue[]): Issue[] {
   return [...issues]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function formatSalesAmount(sales: DashboardSalesSummary | null | undefined): string {
+  if (!sales?.hasData) return "No data";
+  if (sales.currency && sales.currency !== "MIXED") {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: sales.currency,
+      maximumFractionDigits: 0,
+    }).format(sales.grossSales);
+  }
+
+  const firstCurrency = Object.values(sales.byCurrency ?? {})[0];
+  if (firstCurrency) {
+    return `${new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: firstCurrency.currency,
+      maximumFractionDigits: 0,
+    }).format(firstCurrency.grossSales)}+`;
+  }
+
+  return "Mixed";
+}
+
+function salesDescription(sales: DashboardSalesSummary | null | undefined): string {
+  if (!sales?.hasData) return "Connect sales platforms";
+  const orders = `${sales.orderCount.toLocaleString()} order${sales.orderCount === 1 ? "" : "s"}`;
+  const platforms = `${sales.connectedPlatforms}/${sales.platformCount} platform${sales.platformCount === 1 ? "" : "s"}`;
+  return sales.errorCount > 0 ? `${orders} · ${platforms} · ${sales.errorCount} error${sales.errorCount === 1 ? "" : "s"}` : `${orders} · ${platforms}`;
 }
 
 export function Dashboard() {
@@ -237,7 +266,7 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-1 sm:gap-2">
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
@@ -276,6 +305,15 @@ export function Dashboard() {
                 </span>
               }
             />
+            {data.sales ? (
+              <MetricCard
+                icon={TrendingUp}
+                value={formatSalesAmount(data.sales)}
+                label="Sales"
+                to="/dashboard"
+                description={<span>{salesDescription(data.sales)}</span>}
+              />
+            ) : null}
             <MetricCard
               icon={ShieldCheck}
               value={data.pendingApprovals + data.budgets.pendingApprovals}
