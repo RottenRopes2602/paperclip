@@ -101,6 +101,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
 
 const stateDot: Record<string, string> = {
   working: "bg-emerald-500",
+  assigned: "bg-indigo-500",
   reviewing: "bg-sky-500",
   requested: "bg-amber-500",
   queued: "bg-stone-500",
@@ -112,6 +113,7 @@ const stateDot: Record<string, string> = {
 
 const actorStateTone: Record<string, string> = {
   working: "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+  assigned: "border-indigo-500/45 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200",
   reviewing: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-200",
   requested: "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-200",
   queued: "border-stone-500/35 bg-stone-500/10 text-stone-700 dark:text-stone-200",
@@ -124,7 +126,8 @@ const actorStateTone: Record<string, string> = {
 function koStatusLabel(value: string | null | undefined): string {
   const key = String(value ?? "").toLowerCase();
   const labels: Record<string, string> = {
-    working: "작업 중",
+    working: "실제 실행",
+    assigned: "업무 배정",
     reviewing: "검수 중",
     requested: "요청됨",
     queued: "대기",
@@ -273,12 +276,21 @@ function SectionTitle({ title, aside }: { title: string; aside?: string }) {
 }
 
 function LaneStatePill({ state }: { state: string }) {
+  const labels: Record<string, string> = {
+    active: "최근 활동",
+    ahead: "푸시 대기",
+    dirty: "수정 중",
+    idle: "대기",
+    queued: "실행 대기",
+    running: "실행 중",
+    stale: "오래됨",
+  };
   return (
     <span className={cn(
       "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
       laneStateClass[state] ?? laneStateClass.idle,
     )}>
-      {state.replace(/_/g, " ")}
+      {labels[state] ?? state.replace(/_/g, " ")}
     </span>
   );
 }
@@ -332,12 +344,13 @@ function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
 }
 
 function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
-  if (actor.state === "working") return "typing";
-  if (actor.state === "reviewing") return "reviewing";
-  if (actor.state === "requested") return "queued run";
-  if (actor.state === "blocked") return "blocked";
-  if (actor.state === "present") return "present";
-  if (actor.state === "away") return "away";
+  if (actor.state === "working") return "실행 중";
+  if (actor.state === "assigned") return "업무 배정";
+  if (actor.state === "reviewing") return "검수 중";
+  if (actor.state === "requested") return "실행 대기";
+  if (actor.state === "blocked") return "막힘";
+  if (actor.state === "present") return "자리 있음";
+  if (actor.state === "away") return "자리 비움";
   return actor.state.replace(/[-_]+/g, " ");
 }
 
@@ -428,7 +441,7 @@ function actorPixelColors(actor: SpliceWorkspaceRoomActor) {
     l: palette.accent,
     k: "#050507",
     w: "rgba(255,255,255,0.72)",
-    g: actor.state === "blocked" ? "#ef4444" : actor.state === "reviewing" ? "#38bdf8" : actor.state === "requested" ? "#f59e0b" : "#10b981",
+    g: actor.state === "blocked" ? "#ef4444" : actor.state === "reviewing" ? "#38bdf8" : actor.state === "requested" ? "#f59e0b" : actor.state === "assigned" ? "#818cf8" : "#10b981",
   };
 }
 
@@ -1277,7 +1290,7 @@ function OfficeFlowBoard({
   const monitorRuns = runs?.runs ?? data.requests;
   const activeRunStatuses = new Set(["requested", "launch_ready", "launched"]);
   const terminalRunStatuses = new Set(["done", "failed", "blocked", "noop", "cancelled"]);
-  const activeRuns = monitorRuns.filter((run) => activeRunStatuses.has(String(run.status)));
+  const activeRuns = monitorRuns.filter((run) => !run.expired && activeRunStatuses.has(String(run.status)));
   const terminalRuns = monitorRuns.filter((run) => terminalRunStatuses.has(String(run.status)));
   const orders = workOrders?.workOrders ?? [];
   const openOrders = orders.filter((order) => isOpenOfficeStatus(order.status));
@@ -1572,7 +1585,7 @@ function DashboardTab({
       />
 
       <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
-        <MetricCard icon={Bot} value={data.totals.activeAgents} label="가동 에이전트" description={`전체 ${data.totals.agents}`} />
+        <MetricCard icon={Bot} value={data.totals.runningAgents ?? data.totals.activeAgents} label="실제 가동 역할" description={`업무 배정 ${data.totals.assignedAgents ?? 0}`} />
         <MetricCard icon={CircleDot} value={data.totals.activeIssues} label="진행 업무" description={`전체 이슈 ${data.totals.issues}`} />
         <MetricCard icon={Clock3} value={data.totals.reviewIssues} label="검수 중" description={`다음 대기 ${data.totals.todoIssues}`} />
         <MetricCard icon={ShieldAlert} value={data.totals.blockedIssues} label="막힘" description={`진척 ${data.totals.progress}%`} />
@@ -1813,13 +1826,13 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
   const monitorRuns = runs?.runs ?? data.requests;
   const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
   const activeRuns = monitorRuns
-    .filter((run) => activeStatuses.has(String(run.status)))
+    .filter((run) => !run.expired && activeStatuses.has(String(run.status)))
     .slice(0, 5);
   const visibleRuns = activeRuns.length ? activeRuns : monitorRuns.slice(0, 5);
   const fallbackCounts = {
     total: monitorRuns.length,
-    active: activeRuns.length,
-    requested: monitorRuns.filter((run) => run.status === "requested").length,
+    active: activeRuns.filter((run) => run.status === "launched").length,
+    requested: activeRuns.filter((run) => run.status === "requested").length,
     launchReady: monitorRuns.filter((run) => run.status === "launch_ready").length,
     launched: monitorRuns.filter((run) => run.status === "launched").length,
     done: monitorRuns.filter((run) => run.status === "done").length,
@@ -1827,6 +1840,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
     blocked: monitorRuns.filter((run) => run.status === "blocked").length,
     noop: monitorRuns.filter((run) => run.status === "noop").length,
     cancelled: monitorRuns.filter((run) => run.status === "cancelled").length,
+    expired: monitorRuns.filter((run) => run.expired).length,
     terminal: monitorRuns.filter((run) => ["done", "failed", "blocked", "noop", "cancelled"].includes(String(run.status))).length,
   };
   const counts = runs?.counts ?? fallbackCounts;
@@ -1836,10 +1850,10 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
       <SectionTitle title="실행 현황" aside={`가동 ${counts.active} · 전체 ${counts.total}`} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${counts.requested} queued`} />
-          <MetricCard icon={Clock3} value={counts.launchReady} label="Ready" description="runner pickup" />
-          <MetricCard icon={Activity} value={counts.launched} label="Launched" description="process started" />
-          <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.blocked} blocked · ${counts.noop} noop`} />
+          <MetricCard icon={Rocket} value={counts.active} label="실제 실행" description={`${counts.requested} 대기`} />
+          <MetricCard icon={Clock3} value={counts.launchReady} label="실행 준비" description="러너 수거 대기" />
+          <MetricCard icon={History} value={counts.expired} label="만료 기록" description="live 집계 제외" />
+          <MetricCard icon={ShieldAlert} value={counts.failed} label="실패" description={`${counts.blocked} 막힘 · ${counts.noop} 무작업`} />
         </div>
         <div className="min-w-0 border border-border">
           {visibleRuns.length ? visibleRuns.map((run) => (
@@ -1851,7 +1865,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
               trailing={(
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <RunRuntimePill runtime={run.runtime} status={run.status} />
-                  <StatusBadge status={run.status} />
+                  <StatusBadge status={run.expired ? "expired" : run.status} />
                 </div>
               )}
             />
@@ -2412,7 +2426,7 @@ function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
   const terminal = runs.filter((run) => terminalStatuses.has(String(run.status))).length;
   return {
     total: runs.length,
-    active: runs.length - terminal,
+    active: runs.filter((run) => run.status === "launched").length,
     requested: runs.filter((run) => run.status === "requested").length,
     launchReady: runs.filter((run) => run.status === "launch_ready").length,
     launched: runs.filter((run) => run.status === "launched").length,
@@ -2421,6 +2435,7 @@ function runMonitorFallbackCounts(runs: SpliceAgentRunRequest[]) {
     blocked: runs.filter((run) => run.status === "blocked").length,
     noop: runs.filter((run) => run.status === "noop").length,
     cancelled: runs.filter((run) => run.status === "cancelled").length,
+    expired: runs.filter((run) => run.expired).length,
     terminal,
   };
 }
@@ -2444,7 +2459,7 @@ function RunMonitorCard({
   const isUpdating = updatingRunId === run.id;
   const terminal = ["done", "failed", "blocked", "noop", "cancelled"].includes(status);
   const isLaunched = status === "launched";
-  const isQueued = status === "requested" || status === "launch_ready";
+  const isQueued = !run.expired && (status === "requested" || status === "launch_ready");
   const runPath = run.launch?.outPath || run.launch?.promptPath || run.workspacePath || run.queue?.path || "";
 
   return (
@@ -2452,7 +2467,7 @@ function RunMonitorCard({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={status} />
+            <StatusBadge status={run.expired ? "expired" : status} />
             <RunRuntimePill runtime={run.runtime} status={status} />
             <span className="text-xs text-muted-foreground">{formatIsoAge(run.updatedAt || run.requestedAt)}</span>
             {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
@@ -2834,8 +2849,8 @@ function RunsTab({
   const runList = runs?.runs ?? data.requests;
   const counts = runs?.counts ?? runMonitorFallbackCounts(runList);
   const queuedCount = counts.requested + counts.launchReady;
-  const activeRuns = runList.filter((run) => ["requested", "launch_ready", "launched"].includes(String(run.status)));
-  const historyRuns = runList.filter((run) => !["requested", "launch_ready", "launched"].includes(String(run.status)));
+  const activeRuns = runList.filter((run) => !run.expired && ["requested", "launch_ready", "launched"].includes(String(run.status)));
+  const historyRuns = runList.filter((run) => run.expired || !["requested", "launch_ready", "launched"].includes(String(run.status)));
   const runIds = runList.map((run) => run.id).join("|");
   const [selectedRunId, setSelectedRunId] = useState(runList[0]?.id ?? "");
 
@@ -2871,7 +2886,7 @@ function RunsTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <SectionTitle title="Run Monitor" aside={`${counts.active} active · ${counts.total} total`} />
+        <SectionTitle title="실행 현황" aside={`실제 실행 ${counts.active} · 전체 기록 ${counts.total}`} />
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -2904,10 +2919,10 @@ function RunsTab({
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        <MetricCard icon={Rocket} value={counts.active} label="Active" description={`${queuedCount} queued`} />
-        <MetricCard icon={Clock3} value={counts.requested} label="Requested" description={`${counts.launchReady} ready`} />
-        <MetricCard icon={Activity} value={counts.launched} label="Launched" description="runner started" />
-        <MetricCard icon={ShieldAlert} value={counts.failed} label="Failed" description={`${counts.blocked} blocked · ${counts.noop} noop`} />
+        <MetricCard icon={Rocket} value={counts.active} label="실제 실행" description="프로세스 시작됨" />
+        <MetricCard icon={Clock3} value={queuedCount} label="실행 대기" description={`${counts.launchReady} 준비 완료`} />
+        <MetricCard icon={History} value={counts.expired} label="만료 기록" description="live 집계 제외" />
+        <MetricCard icon={ShieldAlert} value={counts.failed} label="실패" description={`${counts.blocked} 막힘 · ${counts.noop} 무작업`} />
       </div>
 
       <section className="border border-border">
@@ -2919,7 +2934,7 @@ function RunsTab({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-w-0 space-y-3">
-          <SectionTitle title="Active Runs" aside={`${activeRuns.length}`} />
+          <SectionTitle title="현재 실행·대기" aside={`${activeRuns.length}`} />
           {activeRuns.length ? activeRuns.map((run) => (
             <RunMonitorCard
               key={run.id}
@@ -2931,7 +2946,7 @@ function RunsTab({
               onUpdateRunStatus={onUpdateRunStatus}
             />
           )) : (
-            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No active runs.</p>
+            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">현재 실행되거나 대기 중인 요청이 없습니다.</p>
           )}
         </section>
 
@@ -5423,7 +5438,8 @@ function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{lane.name}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{lane.kindLabel} · {lane.branch}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{lane.copyKindLabel} · {lane.managerLabel}</p>
+            <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{lane.branch}</p>
           </div>
         </div>
         <LaneStatePill state={lane.state} />
@@ -5432,25 +5448,39 @@ function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
         <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
           <p className="font-semibold tabular-nums">{lane.dirty}</p>
-          <p className="truncate text-[11px] text-muted-foreground">dirty</p>
+          <p className="truncate text-[11px] text-muted-foreground">수정 파일</p>
         </div>
         <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
           <p className="font-semibold tabular-nums">{lane.ahead}/{lane.behind}</p>
-          <p className="truncate text-[11px] text-muted-foreground">ahead/behind</p>
+          <p className="truncate text-[11px] text-muted-foreground">앞섬/뒤처짐</p>
         </div>
         <div className="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
-          <p className="font-semibold tabular-nums">{lane.activeRequestCount}</p>
-          <p className="truncate text-[11px] text-muted-foreground">requests</p>
+          <p className="font-semibold tabular-nums">{lane.liveRunCount}/{lane.queuedRunCount}</p>
+          <p className="truncate text-[11px] text-muted-foreground">실행/대기</p>
         </div>
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <p className="truncate font-mono text-[11px] text-muted-foreground">{lane.shortPath || lane.path}</p>
+        <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
+          <span>사본</span>
+          <span className="truncate">{lane.path}</span>
+          <span>프로젝트</span>
+          <span className="truncate">{lane.projectPath}</span>
+        </div>
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <GitCommit className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate">{lastCommit?.msg ?? "No commit signal"}</span>
+          <span className="min-w-0 truncate">{lastCommit?.msg ?? "커밋 신호 없음"}</span>
           <span className="shrink-0">{formatAge(lastCommit?.ageMin)}</span>
         </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1 border-t border-border pt-3 text-[11px]">
+        <span className="text-muted-foreground">도구 관리</span>
+        <span>{lane.managerLabel}</span>
+        <span className="text-muted-foreground">세션 신호</span>
+        <span>{lane.actors.length ? `${lane.actors.length}개 활동 신호 감지` : "아직 연결된 활동 없음"}</span>
+        <span className="text-muted-foreground">내부 경로</span>
+        <span className={lane.projectPresent ? "text-foreground" : "text-destructive"}>{lane.projectPresent ? "확인됨" : "이 사본에 없음"}</span>
       </div>
 
       {lane.actors.length ? (
@@ -5479,34 +5509,43 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="Execution Lanes" aside={`${allLanes.length} work copies`} />
-      <div className="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <div className="border border-border bg-muted/20 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-muted-foreground" />
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Project Space</p>
+      <SectionTitle title="프로젝트 작업 사본" aside={`${allLanes.length}개 감지`} />
+      <div className="border border-border bg-muted/20 px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-medium text-muted-foreground">내부 테스트 프로젝트</p>
+            </div>
+            <p className="mt-2 truncate text-lg font-semibold">{data.name}</p>
+            <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{data.path}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {data.workspaceBinding.mode === "embedded" ? "현재 Splice Hub 내부 경로를 각 도구의 worktree에 투영 중" : "독립 프로젝트 원본에 연결됨"}
+            </p>
           </div>
-          <p className="mt-3 truncate text-lg font-semibold">{data.name}</p>
-          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{data.shortPath}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md bg-background px-2 py-1.5">
+          <div className="grid grid-cols-3 gap-px border border-border bg-border text-xs">
+            <div className="min-w-[88px] bg-background px-3 py-2">
+              <p className="font-semibold tabular-nums">{allLanes.length}</p>
+              <p className="text-[11px] text-muted-foreground">작업 사본</p>
+            </div>
+            <div className="min-w-[88px] bg-background px-3 py-2">
               <p className="font-semibold tabular-nums">{data.totals.activeExecutionLanes ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">active lanes</p>
+              <p className="text-[11px] text-muted-foreground">변경 감지</p>
             </div>
-            <div className="rounded-md bg-background px-2 py-1.5">
-              <p className="font-semibold tabular-nums">{data.totals.requests}</p>
-              <p className="text-[11px] text-muted-foreground">queued runs</p>
+            <div className="min-w-[88px] bg-background px-3 py-2">
+              <p className="font-semibold tabular-nums">{allLanes.reduce((sum, lane) => sum + lane.liveRunCount, 0)}</p>
+              <p className="text-[11px] text-muted-foreground">실제 실행</p>
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3">
-          {lanes.length ? lanes.map((lane) => (
-            <LaneCard key={lane.id} lane={lane} />
-          )) : (
-            <div className="border border-border px-4 py-4 text-sm text-muted-foreground">No execution lanes found.</div>
-          )}
-        </div>
+      <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {lanes.length ? lanes.map((lane) => (
+          <LaneCard key={lane.id} lane={lane} />
+        )) : (
+          <div className="border border-border px-4 py-4 text-sm text-muted-foreground">감지된 작업 사본이 없습니다.</div>
+        )}
       </div>
     </section>
   );
@@ -5519,18 +5558,18 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
     <div className="space-y-6">
       <ExecutionLanesPanel data={data} />
       <section className="space-y-3">
-        <SectionTitle title="Lane Signals" aside={`${lanes.length} lanes`} />
+        <SectionTitle title="세션·실행 연결 상태" aside={`${lanes.length}개 사본`} />
         <div className="border border-border">
           {lanes.map((lane) => (
             <EntityRow
               key={lane.id}
               title={lane.name}
-              subtitle={`${lane.kindLabel} · ${lane.shortPath || lane.path}`}
+              subtitle={`${lane.managerLabel} 관리 · ${lane.copyKindLabel} · ${lane.path}`}
               leading={<GitBranch className="h-4 w-4 text-muted-foreground" />}
               trailing={(
                 <div className="flex items-center gap-2">
                   <span className="hidden text-xs text-muted-foreground sm:inline">
-                    {lane.branch} · {lane.dirty} dirty
+                    실행 {lane.liveRunCount} · 대기 {lane.queuedRunCount} · 변경 {lane.dirty}
                   </span>
                   <LaneStatePill state={lane.state} />
                 </div>
@@ -5587,7 +5626,7 @@ function RoomMap({
   workProducts: SpliceWorkProduct[];
 }) {
   const roomActors = [...data.room.humans, ...data.room.agents];
-  const preferredActor = roomActors.find((actor) => actor.state === "requested") ?? roomActors.find((actor) => actor.state === "working") ?? roomActors[0] ?? null;
+  const preferredActor = roomActors.find((actor) => actor.state === "requested") ?? roomActors.find((actor) => actor.state === "working") ?? roomActors.find((actor) => actor.state === "assigned") ?? roomActors[0] ?? null;
   const focusedActor = focusedAgentId
     ? roomActors.find((actor) => actor.id === focusedAgentId || actor.slug === focusedAgentId) ?? null
     : null;
@@ -5651,7 +5690,7 @@ function RoomMap({
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
   const activeActors = roomActors.filter((actor) =>
-    ["working", "reviewing", "requested", "present"].includes(actor.state),
+    ["working", "assigned", "reviewing", "requested", "present"].includes(actor.state),
   ).length;
   const officeSignals: Array<{
     tab: RoomTab;
@@ -5727,7 +5766,7 @@ function RoomMap({
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <SectionTitle title="퍼즐게임 사무실" aside={`${activeActors}개 책상 활성 · 진척 ${data.totals.progress}%`} />
+        <SectionTitle title="퍼즐게임 사무실" aside={`${activeActors}개 책상 연결 · 실제 실행 ${runCounts.active}`} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
             <Rocket className="h-3.5 w-3.5" />
@@ -5856,7 +5895,11 @@ function RoomMap({
                   {selectedActor ? `${compactAgentName(selectedActor.name, data.name)} · ${selectedActor.zone}` : "책상을 선택하세요"}
                 </p>
               </div>
-              {selectedActor ? <StatusBadge status={selectedActor.state} /> : null}
+              {selectedActor ? (
+                <span className={cn("inline-flex border px-2 py-0.5 text-[11px] font-medium", actorStateTone[selectedActor.state] ?? actorStateTone.idle)}>
+                  {koStatusLabel(selectedActor.state)}
+                </span>
+              ) : null}
             </div>
 
             {selectedActor ? (

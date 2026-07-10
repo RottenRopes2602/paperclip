@@ -18,7 +18,8 @@ export interface SpliceAgentRunRequest {
   note?: string;
   operatorNote?: string | null;
   ageSeconds?: number;
-  state?: "fresh" | "waiting" | "launched" | "terminal" | string;
+  state?: "fresh" | "waiting" | "launched" | "expired" | "terminal" | string;
+  expired?: boolean;
   runtime?: SpliceRunRuntime | null;
   queue?: {
     store: string;
@@ -166,6 +167,7 @@ export interface SpliceRunMonitorData {
     blocked: number;
     noop: number;
     cancelled: number;
+    expired: number;
     terminal: number;
   };
   runs: SpliceAgentRunRequest[];
@@ -689,7 +691,7 @@ export interface SpliceWorkspaceRoomActor {
   name: string;
   initials: string;
   role: string;
-  state: "working" | "reviewing" | "requested" | "queued" | "idle" | "blocked" | "present" | "away" | string;
+  state: "working" | "assigned" | "reviewing" | "requested" | "queued" | "idle" | "blocked" | "present" | "away" | string;
   zone: string;
   x: number;
   y: number;
@@ -702,6 +704,8 @@ export interface SpliceWorkspaceRoomActor {
     branch: string;
     dirty: number;
     path: string;
+    projectPath?: string;
+    manager?: string;
     lastCommit: { sha?: string; msg?: string; ageMin?: number } | null;
   } | null;
 }
@@ -744,11 +748,19 @@ export interface SpliceExecutionLane {
   name: string;
   kind: "main" | "worktree" | "codex" | "claude" | "conductor" | "agent" | string;
   kindLabel: string;
+  copyKind: "root" | "worktree" | "clone" | string;
+  copyKindLabel: string;
+  manager: "local" | "codex" | "claude" | "conductor" | "git" | string;
+  managerLabel: string;
   state: "idle" | "active" | "dirty" | "ahead" | "queued" | "running" | "stale" | string;
   projectSpaceId: string;
   projectSpaceName: string;
   path: string;
   shortPath: string;
+  projectPath: string;
+  projectShortPath: string;
+  projectPresent: boolean;
+  repositoryRoot: string;
   branch: string;
   isMain: boolean;
   dirty: number;
@@ -757,6 +769,8 @@ export interface SpliceExecutionLane {
   lastCommit: { sha?: string; msg?: string; ageMin?: number } | null;
   requestCount: number;
   activeRequestCount: number;
+  queuedRunCount: number;
+  liveRunCount: number;
   actors: Array<{
     id: string;
     name: string;
@@ -773,6 +787,12 @@ export interface SpliceWorkspaceRoomData {
   path: string;
   shortPath: string;
   dataSource: string;
+  workspaceBinding: {
+    mode: "embedded" | "standalone" | string;
+    repositoryRoot: string;
+    projectRelativePath: string;
+    projectPath: string;
+  };
   objective: SpliceWorkspaceRoomGoal | null;
   goals: SpliceWorkspaceRoomGoal[];
   totals: {
@@ -786,6 +806,8 @@ export interface SpliceWorkspaceRoomData {
     doneIssues: number;
     agents: number;
     activeAgents: number;
+    runningAgents: number;
+    assignedAgents: number;
     progress: number;
     agentOwned: number;
     humanOwned: number;
