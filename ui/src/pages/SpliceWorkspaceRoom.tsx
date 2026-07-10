@@ -5689,9 +5689,16 @@ function RoomMap({
   };
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
-  const activeActors = roomActors.filter((actor) =>
-    ["working", "assigned", "reviewing", "requested", "present"].includes(actor.state),
-  ).length;
+  const copyCounts = data.executionLanes.reduce<Record<string, number>>((counts, lane) => {
+    counts[lane.manager] = (counts[lane.manager] ?? 0) + 1;
+    return counts;
+  }, {});
+  const copyDetail = [
+    copyCounts.codex ? `Codex ${copyCounts.codex}` : null,
+    copyCounts.claude ? `Claude ${copyCounts.claude}` : null,
+    copyCounts.splice ? `Agent ${copyCounts.splice}` : null,
+    copyCounts.local ? `원본 ${copyCounts.local}` : null,
+  ].filter(Boolean).join(" · ");
   const officeSignals: Array<{
     tab: RoomTab;
     title: string;
@@ -5708,6 +5715,7 @@ function RoomMap({
     { tab: "lanes", title: "작업 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 사본`, icon: GitBranch },
   ];
   const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
+  const executionNotStarted = runCounts.active === 0 && queuedRuns === 0 && data.totals.assignedAgents > 0;
   const priorityItems: Array<{
     tab: RoomTab;
     title: string;
@@ -5718,40 +5726,35 @@ function RoomMap({
     className: string;
   }> = [
     {
-      tab: "reviews",
-      title: "검수 먼저 보기",
-      value: reviewAttention,
-      unit: "건",
-      detail: `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
-      icon: ShieldAlert,
-      className: reviewAttention > 0 ? "border-amber-500/50 bg-amber-500/10" : "border-border bg-background",
+      tab: "lanes",
+      title: "내 작업 사본",
+      value: data.executionLanes.length,
+      unit: "개",
+      detail: copyDetail || "연결된 사본 없음",
+      icon: GitBranch,
+      className: data.executionLanes.length > 1 ? "border-sky-500/50 bg-sky-500/10" : "border-border bg-background",
     },
     {
       tab: "runs",
-      title: "에이전트 가동 확인",
-      value: runCounts.active + queuedRuns,
-      unit: "개",
-      detail: `실행 ${runCounts.active} · 대기 ${queuedRuns}`,
-      icon: Rocket,
-      className: runCounts.active + queuedRuns > 0 ? "border-emerald-500/50 bg-emerald-500/10" : "border-border bg-background",
+      title: "실제 에이전트",
+      value: runCounts.active,
+      unit: "명",
+      detail: `업무 배정 ${data.totals.assignedAgents} · 실행 대기 ${queuedRuns}`,
+      icon: Bot,
+      className: runCounts.active > 0 ? "border-emerald-500/50 bg-emerald-500/10" : "border-border bg-background",
     },
     {
-      tab: "inbox",
-      title: "새 신호 훑기",
-      value: inbox?.counts.open ?? 0,
-      unit: "개",
-      detail: "외부 앱과 세션에서 들어온 신호",
-      icon: Inbox,
-      className: (inbox?.counts.open ?? 0) > 0 ? "border-sky-500/50 bg-sky-500/10" : "border-border bg-background",
-    },
-    {
-      tab: "desk",
-      title: "책상 위 산출물 보기",
-      value: workProducts.length,
-      unit: "개",
-      detail: "에이전트가 남긴 파일과 업무 흔적",
-      icon: FolderOpen,
-      className: workProducts.length > 0 ? "border-violet-500/50 bg-violet-500/10" : "border-border bg-background",
+      tab: executionNotStarted ? "runs" : "reviews",
+      title: "현재 병목",
+      value: executionNotStarted ? 1 : reviewAttention,
+      unit: "건",
+      detail: executionNotStarted
+        ? "업무는 배정됐지만 실제 실행이 아직 시작되지 않음"
+        : `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
+      icon: ShieldAlert,
+      className: executionNotStarted || reviewAttention > 0
+        ? "border-amber-500/50 bg-amber-500/10"
+        : "border-border bg-background",
     },
   ];
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
@@ -5766,29 +5769,29 @@ function RoomMap({
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <SectionTitle title="퍼즐게임 사무실" aside={`${activeActors}개 책상 연결 · 실제 실행 ${runCounts.active}`} />
+        <SectionTitle title="퍼즐게임 사무실" aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
             <Rocket className="h-3.5 w-3.5" />
             실행 현황
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("intake")} className="h-8 gap-1.5">
-            <SquarePen className="h-3.5 w-3.5" />
-            업무 접수
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className="h-8 gap-1.5">
+            <GitBranch className="h-3.5 w-3.5" />
+            작업 사본
           </Button>
         </div>
       </div>
       <div className="border-2 border-border bg-background px-4 py-4 lg:px-5">
         <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm font-semibold">오늘 먼저 볼 것</p>
+            <p className="text-sm font-semibold">지금 운영 상태</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              지시는 Codex/Claude Code에서 내리고, Splice는 지금 돌아가는 흐름을 보는 관제판으로 둡니다.
+              내 작업 사본과 실제 에이전트 실행을 먼저 분리해 봅니다.
             </p>
           </div>
           <p className="text-[11px] text-muted-foreground">입력보다 관찰 우선</p>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
           {priorityItems.map((item, index) => {
             const Icon = item.icon;
             return (
@@ -5883,7 +5886,7 @@ function RoomMap({
               <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{data.shortPath}</p>
             </div>
             <p className="text-xs text-muted-foreground">
-              책상 {activeActors} · 대기 {queuedRuns} · 산출물 {workProducts.length}
+              연결 책상 {roomActors.length} · 실행 대기 {queuedRuns} · 산출물 {workProducts.length}
             </p>
           </div>
 

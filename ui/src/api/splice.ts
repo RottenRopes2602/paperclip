@@ -750,7 +750,7 @@ export interface SpliceExecutionLane {
   kindLabel: string;
   copyKind: "root" | "worktree" | "clone" | string;
   copyKindLabel: string;
-  manager: "local" | "codex" | "claude" | "conductor" | "git" | string;
+  manager: "local" | "codex" | "claude" | "conductor" | "splice" | "git" | string;
   managerLabel: string;
   state: "idle" | "active" | "dirty" | "ahead" | "queued" | "running" | "stale" | string;
   projectSpaceId: string;
