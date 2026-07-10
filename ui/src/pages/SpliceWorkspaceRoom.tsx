@@ -41,7 +41,6 @@ import { MetricCard } from "@/components/MetricCard";
 import { MissionVisionCards } from "@/components/MissionVisionCards";
 import { OkrTree } from "@/components/OkrTree";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { SidebarSection } from "@/components/SidebarSection";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useSidebar } from "@/context/SidebarContext";
@@ -81,7 +80,7 @@ type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
 type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null };
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
-  { value: "dashboard", label: "사무실", icon: LayoutDashboard },
+  { value: "dashboard", label: "관제", icon: LayoutDashboard },
   { value: "inbox", label: "신호함", icon: Inbox },
   { value: "lanes", label: "작업 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
@@ -98,6 +97,26 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "activity", label: "활동", icon: History },
   { value: "details", label: "상세", icon: FileText },
 ];
+
+type RoomNavigationGroup = "observe" | "execute" | "work" | "history";
+
+const roomNavigationGroups: Array<{
+  value: RoomNavigationGroup;
+  label: string;
+  icon: LucideIcon;
+  defaultTab: RoomTab;
+  tabs: RoomTab[];
+  advancedTabs: RoomTab[];
+}> = [
+  { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox"], advancedTabs: [] },
+  { value: "execute", label: "실행", icon: Rocket, defaultTab: "lanes", tabs: ["lanes", "runs", "agents"], advancedTabs: ["comms", "routines"] },
+  { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "goals"], advancedTabs: ["desk", "intake", "approvals"] },
+  { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
+];
+
+function roomNavigationGroupForTab(tab: RoomTab): RoomNavigationGroup {
+  return roomNavigationGroups.find((group) => group.tabs.includes(tab) || group.advancedTabs.includes(tab))?.value ?? "observe";
+}
 
 const stateDot: Record<string, string> = {
   working: "bg-emerald-500",
@@ -136,11 +155,37 @@ function koStatusLabel(value: string | null | undefined): string {
     blocked: "막힘",
     idle: "대기",
     open: "열림",
+    active: "진행 중",
+    in_progress: "진행 중",
+    review: "검토",
     done: "완료",
     failed: "실패",
+    ready: "준비 완료",
+    launch_ready: "실행 준비",
+    launched: "실행됨",
+    running: "실행 중",
+    exited: "종료됨",
+    stale: "응답 없음",
+    terminal: "종료",
+    noop: "변경 없음",
+    verdict_seen: "결과 확인",
+    changes_requested: "수정 요청",
     approved: "승인됨",
     rejected: "반려",
     cancelled: "취소",
+    low: "낮음",
+    medium: "보통",
+    high: "높음",
+    urgent: "긴급",
+    approval: "승인",
+    work_order: "접수 업무",
+    message: "메시지",
+    run: "실행",
+    agent_action: "에이전트 조치",
+    branch_change: "브랜치 변경",
+    release: "배포",
+    scope_change: "범위 변경",
+    external_effect: "외부 영향",
   };
   return labels[key] ?? key.replace(/_/g, " ");
 }
@@ -165,16 +210,16 @@ const laneStateClass: Record<string, string> = {
 };
 
 function formatAge(minutes: number | null | undefined): string {
-  if (minutes == null) return "No file age";
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
-  return `${Math.round(minutes / (60 * 24))}d`;
+  if (minutes == null) return "기록 없음";
+  if (minutes < 1) return "방금";
+  if (minutes < 60) return `${Math.round(minutes)}분`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}시간`;
+  return `${Math.round(minutes / (60 * 24))}일`;
 }
 
 function formatIsoAge(value: string | null | undefined): string {
   const time = Date.parse(value ?? "");
-  if (!Number.isFinite(time)) return "No signal";
+  if (!Number.isFinite(time)) return "신호 없음";
   return formatAge((Date.now() - time) / 60000);
 }
 
@@ -195,9 +240,9 @@ const runtimeTone: Record<string, string> = {
 
 function runtimeLabel(runtime: SpliceRunRuntime | null | undefined, status: string): string {
   if (runtime?.verdict?.label) return runtime.verdict.label;
-  if (runtime?.stale) return "process exited";
-  if (runtime?.state) return runtime.state.replace(/_/g, " ");
-  return status.replace(/_/g, " ");
+  if (runtime?.stale) return "프로세스 종료";
+  if (runtime?.state) return koStatusLabel(runtime.state);
+  return koStatusLabel(status);
 }
 
 function RunRuntimePill({
@@ -221,12 +266,12 @@ function RunRuntimePill({
 
 function formatIsoSchedule(value: string | null | undefined): string {
   const time = Date.parse(value ?? "");
-  if (!Number.isFinite(time)) return "No schedule";
+  if (!Number.isFinite(time)) return "일정 없음";
   const minutes = Math.round((time - Date.now()) / 60000);
-  if (minutes <= 0) return "due now";
-  if (minutes < 60) return `in ${minutes}m`;
-  if (minutes < 60 * 24) return `in ${Math.round(minutes / 60)}h`;
-  return `in ${Math.round(minutes / (60 * 24))}d`;
+  if (minutes <= 0) return "지금 실행";
+  if (minutes < 60) return `${minutes}분 후`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}시간 후`;
+  return `${Math.round(minutes / (60 * 24))}일 후`;
 }
 
 function formatNumber(value: number | null | undefined): string {
@@ -327,20 +372,20 @@ function actorWorkLine(actor: SpliceWorkspaceRoomActor): string {
   const current = actor.currentWork[0]?.title;
   if (current) return current;
   if (actor.session) return `${actor.session.branch} · ${actor.session.dirty} dirty`;
-  if (actor.request) return "Run requested";
-  return actor.state === "away" ? "Away from room" : "Waiting for work";
+  if (actor.request) return "실행 요청됨";
+  return actor.state === "away" ? "자리 비움" : "업무 대기";
 }
 
 function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
   const counts = [
-    actor.activeCount ? `${actor.activeCount} active` : null,
-    actor.reviewCount ? `${actor.reviewCount} review` : null,
-    actor.queuedCount ? `${actor.queuedCount} queued` : null,
+    actor.activeCount ? `진행 ${actor.activeCount}` : null,
+    actor.reviewCount ? `검수 ${actor.reviewCount}` : null,
+    actor.queuedCount ? `대기 ${actor.queuedCount}` : null,
   ].filter(Boolean);
   if (counts.length) return counts.join(" · ");
-  if (actor.session) return `${actor.session.branch} · ${actor.session.dirty} dirty`;
-  if (actor.request) return "run requested";
-  return actor.state === "away" ? "no active lane" : "standing by";
+  if (actor.session) return `${actor.session.branch} · 변경 ${actor.session.dirty}`;
+  if (actor.request) return "실행 요청됨";
+  return actor.state === "away" ? "활성 작업 사본 없음" : "대기 중";
 }
 
 function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
@@ -577,13 +622,13 @@ function OfficeLayout() {
       <div className="absolute bottom-[22%] left-[25%] top-[12%] z-0 w-1 bg-[#293640]" />
       <div className="absolute bottom-[22%] left-[48%] top-[12%] z-0 w-1 bg-[#293640]" />
       <div className="absolute bottom-[22%] right-[24%] top-[12%] z-0 w-1 bg-[#293640]" />
-      <OfficeRoom label="meeting" className="left-[5%] top-[5%] h-[27%] w-[24%]" />
-      <OfficeRoom label="design pod" className="left-[27%] top-[16%] h-[41%] w-[22%]" />
-      <OfficeRoom label="build bay" className="left-[50%] top-[16%] h-[48%] w-[24%]" />
-      <OfficeRoom label="review" className="right-[5%] top-[16%] h-[48%] w-[20%]" />
-      <OfficeRoom label="operator" className="bottom-[5%] left-[5%] h-[22%] w-[25%]" />
-      <OfficeRoom label="ship" className="bottom-[5%] left-[37%] h-[22%] w-[22%]" />
-      <OfficeRoom label="infra" className="bottom-[5%] right-[5%] h-[22%] w-[26%]" />
+      <OfficeRoom label="회의" className="left-[5%] top-[5%] h-[27%] w-[24%]" />
+      <OfficeRoom label="설계" className="left-[27%] top-[16%] h-[41%] w-[22%]" />
+      <OfficeRoom label="구현" className="left-[50%] top-[16%] h-[48%] w-[24%]" />
+      <OfficeRoom label="검토" className="right-[5%] top-[16%] h-[48%] w-[20%]" />
+      <OfficeRoom label="운영자" className="bottom-[5%] left-[5%] h-[22%] w-[25%]" />
+      <OfficeRoom label="출시" className="bottom-[5%] left-[37%] h-[22%] w-[22%]" />
+      <OfficeRoom label="인프라" className="bottom-[5%] right-[5%] h-[22%] w-[26%]" />
       <PixelFurniture kind="meeting" className="left-[11%] top-[18%]" />
       <PixelFurniture kind="desk-island" className="left-[31%] top-[35%]" />
       <PixelFurniture kind="desk" className="left-[55%] top-[39%]" />
@@ -607,7 +652,7 @@ function OfficeWorkProductStack({ count, onClick }: { count: number; onClick: ()
     <button
       type="button"
       onClick={onClick}
-      title={`${count} work products`}
+      title={`산출물 ${count}개`}
       className="absolute bottom-[23%] left-[39%] z-10 h-20 w-28 border-4 border-black bg-[#151b22] shadow-[5px_5px_0_rgba(0,0,0,0.5)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300"
     >
       <div className="absolute inset-x-3 bottom-4 h-5 border-2 border-black bg-[#5b4631] shadow-[3px_3px_0_rgba(0,0,0,0.45)]" />
@@ -701,15 +746,15 @@ function OfficeWorkOrderMarker({
         workOrderMarkerTone(order),
       )}
       style={{ left: `${left}%`, top: `${top}%` }}
-      aria-label={`Open work order ${order.title}`}
+      aria-label={`업무 열기 ${order.title}`}
     >
       <span className="flex items-center justify-between gap-1 text-[8px] font-black uppercase leading-none">
-        <span>order</span>
+        <span>업무</span>
         <span>{order.priority}</span>
       </span>
       <span className="mt-1 line-clamp-2 text-[10px] font-black leading-tight">{order.title}</span>
       <span className="mt-1 block truncate text-[9px] font-bold uppercase leading-none">
-        {order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "unassigned"}
+        {order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "미배정"}
       </span>
     </button>
   );
@@ -746,7 +791,7 @@ function OfficeMapHotspot({
         toneClass,
         className,
       )}
-      aria-label={`Open ${label}`}
+      aria-label={`${label} 열기`}
     >
       <Icon className="h-3.5 w-3.5" />
       <span>{label}</span>
@@ -787,7 +832,7 @@ function RoomActorSprite({
       )}
       style={{ left: `${left}%`, top: `${top}%` }}
       title={`${actor.name} · ${actor.state} · ${workLine}`}
-      aria-label={`${label} desk · ${actorStateLabel(actor)} · ${workLine}`}
+      aria-label={`${label} 책상 · ${actorStateLabel(actor)} · ${workLine}`}
     >
       <div className="relative h-[92px] w-32">
         <Workstation actor={actor} />
@@ -822,7 +867,10 @@ function RoomActorSprite({
 }
 
 function goalKindLabel(goal: SpliceWorkspaceRoomGoal): string {
-  if (goal.kind === "key_result") return "Key Result";
+  if (goal.kind === "key_result") return "핵심 결과";
+  if (goal.kind === "mission") return "미션";
+  if (goal.kind === "vision") return "비전";
+  if (goal.kind === "objective") return "목표";
   return goal.kind.replace(/[-_]+/g, " ");
 }
 
@@ -922,94 +970,18 @@ function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number): Issue {
 }
 
 function roomTabLabel(tab: RoomTab): string {
-  return roomTabs.find((item) => item.value === tab)?.label ?? "사무실";
-}
-
-function PuzzleSidebarNavItem({
-  activeTab,
-  item,
-  liveCount,
-  onSelect,
-  textBadge,
-}: {
-  activeTab: RoomTab;
-  item: { value: RoomTab; label: string; icon: LucideIcon };
-  liveCount?: number;
-  onSelect: (tab: RoomTab) => void;
-  textBadge?: string;
-}) {
-  const Icon = item.icon;
-  const active = activeTab === item.value;
-  return (
-    <button
-      type="button"
-      aria-current={active ? "page" : undefined}
-      onClick={() => onSelect(item.value)}
-      className={cn(
-        "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium transition-colors",
-        active ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
-      )}
-    >
-      <span className="relative shrink-0">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="flex-1 truncate">{item.label}</span>
-      {textBadge ? (
-        <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-          {textBadge}
-        </span>
-      ) : null}
-      {liveCount != null && liveCount > 0 ? (
-        <span className="ml-auto flex items-center gap-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-          </span>
-          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">{liveCount} 가동</span>
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function PuzzleSidebarMiniItem({
-  title,
-  subtitle,
-  onSelect,
-}: {
-  title: string;
-  subtitle?: string;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="w-full px-3 py-1.5 text-left transition-colors hover:bg-accent/50"
-    >
-      <p className="truncate text-[13px] font-medium text-foreground/80">{title}</p>
-      {subtitle ? <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p> : null}
-    </button>
-  );
+  return roomTabs.find((item) => item.value === tab)?.label ?? "관제";
 }
 
 function PuzzleSidebar({
-  approvalPendingCount,
   activeTab,
   data,
-  inboxOpenCount,
   runActiveCount,
-  routineDueCount,
-  workOrderOpenCount,
   onTabChange,
 }: {
-  approvalPendingCount: number;
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
-  inboxOpenCount: number;
   runActiveCount: number;
-  routineDueCount: number;
-  workOrderOpenCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
@@ -1018,22 +990,7 @@ function PuzzleSidebar({
     if (isMobile) setSidebarOpen(false);
   };
 
-  const dashboardItem = roomTabs.find((item) => item.value === "dashboard")!;
-  const inboxItem = roomTabs.find((item) => item.value === "inbox")!;
-  const laneItem = roomTabs.find((item) => item.value === "lanes")!;
-  const runsItem = roomTabs.find((item) => item.value === "runs")!;
-  const intakeItem = roomTabs.find((item) => item.value === "intake")!;
-  const issueItem = roomTabs.find((item) => item.value === "issues")!;
-  const deskItem = roomTabs.find((item) => item.value === "desk")!;
-  const reviewsItem = roomTabs.find((item) => item.value === "reviews")!;
-  const approvalsItem = roomTabs.find((item) => item.value === "approvals")!;
-  const routinesItem = roomTabs.find((item) => item.value === "routines")!;
-  const goalItem = roomTabs.find((item) => item.value === "goals")!;
-  const projectItem = roomTabs.find((item) => item.value === "projects")!;
-  const agentItem = roomTabs.find((item) => item.value === "agents")!;
-  const commsItem = roomTabs.find((item) => item.value === "comms")!;
-  const activityItem = roomTabs.find((item) => item.value === "activity")!;
-  const detailItem = roomTabs.find((item) => item.value === "details")!;
+  const activeGroup = roomNavigationGroupForTab(activeTab);
 
   return (
     <>
@@ -1042,7 +999,7 @@ function PuzzleSidebar({
           type="button"
           className="fixed inset-0 z-40 bg-black/50"
           onClick={() => setSidebarOpen(false)}
-          aria-label="Close sidebar"
+          aria-label="사이드바 닫기"
         />
       ) : null}
       <aside
@@ -1075,94 +1032,27 @@ function PuzzleSidebar({
           </button>
         </div>
 
-        <nav className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-2">
-          <div className="flex flex-col gap-0.5">
-            <button
-              type="button"
-              onClick={() => selectTab("intake")}
-              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
-            >
-              <SquarePen className="h-4 w-4 shrink-0" />
-              <span className="flex-1 truncate">새 업무</span>
-              <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                접수
-              </span>
-            </button>
-            <PuzzleSidebarNavItem activeTab={activeTab} item={dashboardItem} liveCount={runActiveCount} onSelect={selectTab} />
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={inboxItem}
-              onSelect={selectTab}
-              textBadge={inboxOpenCount > 0 ? `${inboxOpenCount}` : undefined}
-            />
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={laneItem}
-              onSelect={selectTab}
-              textBadge={`${data.executionLanes?.length ?? 0}`}
-            />
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={runsItem}
-              onSelect={selectTab}
-              textBadge={runActiveCount > 0 ? `${runActiveCount}` : undefined}
-            />
-          </div>
-
-          <SidebarSection label="작업">
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={intakeItem}
-              onSelect={selectTab}
-              textBadge={workOrderOpenCount > 0 ? `${workOrderOpenCount}` : undefined}
-            />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={issueItem} onSelect={selectTab} />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={deskItem} onSelect={selectTab} />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={reviewsItem} onSelect={selectTab} />
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={approvalsItem}
-              onSelect={selectTab}
-              textBadge={approvalPendingCount > 0 ? `${approvalPendingCount}` : undefined}
-            />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={goalItem} onSelect={selectTab} />
-          </SidebarSection>
-
-          <SidebarSection label="프로젝트">
-            <PuzzleSidebarNavItem activeTab={activeTab} item={projectItem} onSelect={selectTab} textBadge={`${data.projects.length}`} />
-            {data.projects.slice(0, 5).map((project) => (
-              <PuzzleSidebarMiniItem
-                key={project.id}
-                title={project.title}
-                subtitle={project.id}
-                onSelect={() => selectTab("projects")}
-              />
-            ))}
-          </SidebarSection>
-
-          <SidebarSection label="에이전트">
-            <PuzzleSidebarNavItem
-              activeTab={activeTab}
-              item={routinesItem}
-              onSelect={selectTab}
-              textBadge={routineDueCount > 0 ? `${routineDueCount}` : undefined}
-            />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={agentItem} onSelect={selectTab} textBadge={`${data.agents.length}`} />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={commsItem} onSelect={selectTab} textBadge={`${data.requests.length}`} />
-            {data.agents.slice(0, 5).map((agent) => (
-              <PuzzleSidebarMiniItem
-                key={agent.id}
-                title={compactAgentName(agent.name, data.name)}
-                subtitle={koStatusLabel(agent.state)}
-                onSelect={() => selectTab("agents")}
-              />
-            ))}
-          </SidebarSection>
-
-          <SidebarSection label="기록">
-            <PuzzleSidebarNavItem activeTab={activeTab} item={activityItem} onSelect={selectTab} />
-            <PuzzleSidebarNavItem activeTab={activeTab} item={detailItem} onSelect={selectTab} />
-          </SidebarSection>
+        <nav aria-label="Splice 주요 탐색" className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2">
+          {roomNavigationGroups.map((group) => {
+            const Icon = group.icon;
+            const active = activeGroup === group.value;
+            return (
+              <button
+                key={group.value}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                onClick={() => selectTab(group.defaultTab)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium transition-colors",
+                  active ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">{group.label}</span>
+                {group.value === "execute" && runActiveCount > 0 ? <span className="text-[11px] text-blue-600 dark:text-blue-400">{runActiveCount} 가동</span> : null}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="border-t border-border px-3 py-3 text-[11px] text-muted-foreground">
@@ -1170,6 +1060,55 @@ function PuzzleSidebar({
         </div>
       </aside>
     </>
+  );
+}
+
+function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; onTabChange: (tab: RoomTab) => void }) {
+  const group = roomNavigationGroups.find((item) => item.value === roomNavigationGroupForTab(activeTab))!;
+  const renderTab = (tab: RoomTab) => {
+    const item = roomTabs.find((candidate) => candidate.value === tab)!;
+    const Icon = item.icon;
+    return (
+      <button
+        key={tab}
+        type="button"
+        onClick={() => onTabChange(tab)}
+        aria-current={activeTab === tab ? "page" : undefined}
+        className={cn(
+          "inline-flex h-8 shrink-0 items-center gap-1.5 border-b-2 px-1 text-xs font-medium transition-colors",
+          activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Icon className="h-3.5 w-3.5" />
+        {item.label}
+      </button>
+    );
+  };
+
+  return (
+    <section aria-label={`${group.label} 보조 탐색`} className="border-b border-border">
+      <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
+        <span className="shrink-0 text-sm font-semibold">{group.label}</span>
+        <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div>
+        {group.advancedTabs.length ? (
+          <details className="relative ml-auto shrink-0">
+            <summary className="cursor-pointer list-none py-2 text-xs font-medium text-muted-foreground hover:text-foreground">고급 운영 도구</summary>
+            <div className="absolute right-0 z-10 mt-1 flex min-w-36 flex-col border border-border bg-background p-1 shadow-md">
+              {group.advancedTabs.map((tab) => {
+                const item = roomTabs.find((candidate) => candidate.value === tab)!;
+                const Icon = item.icon;
+                return (
+                  <button key={tab} type="button" onClick={() => onTabChange(tab)} className="flex items-center gap-2 px-2 py-2 text-left text-xs hover:bg-accent">
+                    <Icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -1210,22 +1149,19 @@ function PuzzleWorkspaceShell({
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Skip to Main Content
+        본문으로 건너뛰기
       </a>
       <PuzzleSidebar
-        approvalPendingCount={approvalPendingCount}
         activeTab={activeTab}
         data={data}
-        inboxOpenCount={inboxOpenCount}
         runActiveCount={runActiveCount}
-        routineDueCount={routineDueCount}
-        workOrderOpenCount={workOrderOpenCount}
         onTabChange={onTabChange}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <BreadcrumbBar scope="splice" />
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 outline-none md:p-6">
           <div className="space-y-6">
+            <RoomContextualTabs activeTab={activeTab} onTabChange={onTabChange} />
             <div className="flex items-center justify-end">
               <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
                 <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
@@ -1304,7 +1240,7 @@ function OfficeFlowBoard({
   const openOrderEntry = (order: SpliceWorkOrder): OfficeFlowEntry => ({
     id: order.id,
     title: order.title,
-    subtitle: order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "Unassigned",
+      subtitle: order.agentName ? compactAgentName(order.agentName, data.name) : order.projectName ?? "미배정",
     status: order.status,
     onOpen: () => onOpenWorkOrder(order.id),
   });
@@ -1396,7 +1332,7 @@ function OfficeFlowBoard({
     },
     {
       key: "done",
-      title: "Done",
+      title: "완료",
       value: doneCount,
       subtitle: `${workProducts.length} work products`,
       icon: CheckCircle2,
@@ -1414,7 +1350,7 @@ function OfficeFlowBoard({
         ...terminalRuns.slice(0, 1).map((run) => ({
           id: run.id,
           title: compactAgentName(run.agentName, data.name),
-          subtitle: run.note ?? "Settled run",
+          subtitle: run.note ?? "종료된 실행",
           status: run.status,
           onOpen: () => onOpenRun(run.id),
         })),
@@ -1718,7 +1654,7 @@ function OfficeActionQueue({
     ...blockedRuns.slice(0, 3).map((run) => ({
       id: `run:${run.id}`,
       title: compactAgentName(run.agentName, data.name),
-      subtitle: run.error ?? run.note ?? "Run needs operator attention",
+      subtitle: run.error ?? run.note ?? "운영자 확인이 필요한 실행",
       status: run.status,
       severity: "high" as const,
       source: "run",
@@ -1728,7 +1664,7 @@ function OfficeActionQueue({
     ...blockedOrders.slice(0, 3).map((order) => ({
       id: `work-order:${order.id}`,
       title: order.title,
-      subtitle: `${order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"} · ${order.projectName ?? "No project"}`,
+      subtitle: `${order.agentName ? compactAgentName(order.agentName, data.name) : "미배정"} · ${order.projectName ?? "프로젝트 없음"}`,
       status: order.status,
       severity: "high" as const,
       source: "work order",
@@ -1748,7 +1684,7 @@ function OfficeActionQueue({
     ...pendingReviews.slice(0, 3).map((review) => ({
       id: `review:${review.id}`,
       title: review.title,
-      subtitle: `${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned reviewer"}`,
+      subtitle: `${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "검수자 미배정"}`,
       status: review.status,
       severity: "medium" as const,
       source: "review",
@@ -1815,7 +1751,7 @@ function OfficeActionQueue({
             </button>
           );
         }) : (
-          <p className="border border-border px-4 py-4 text-sm text-muted-foreground xl:col-span-4">No operator actions waiting.</p>
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground xl:col-span-4">대기 중인 운영자 조치가 없습니다.</p>
         )}
       </div>
     </section>
@@ -1852,7 +1788,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <MetricCard icon={Rocket} value={counts.active} label="실제 실행" description={`${counts.requested} 대기`} />
           <MetricCard icon={Clock3} value={counts.launchReady} label="실행 준비" description="러너 수거 대기" />
-          <MetricCard icon={History} value={counts.expired} label="만료 기록" description="live 집계 제외" />
+          <MetricCard icon={History} value={counts.expired} label="만료 기록" description="실시간 집계 제외" />
           <MetricCard icon={ShieldAlert} value={counts.failed} label="실패" description={`${counts.blocked} 막힘 · ${counts.noop} 무작업`} />
         </div>
         <div className="min-w-0 border border-border">
@@ -1860,7 +1796,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
             <EntityRow
               key={run.id}
               title={compactAgentName(run.agentName, data.name)}
-              subtitle={run.note ?? run.launch?.outPath ?? "Wake request"}
+              subtitle={run.note ?? run.launch?.outPath ?? "깨우기 요청"}
               leading={<Rocket className="h-4 w-4 text-muted-foreground" />}
               trailing={(
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -1870,7 +1806,7 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
               )}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No run requests yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">아직 실행 요청이 없습니다.</p>
           )}
         </div>
       </div>
@@ -1893,23 +1829,23 @@ function OfficeWorkOrdersSummary({
       <SectionTitle title="업무 접수" aside={`열림 ${workOrders?.counts.open ?? 0} · 대기 ${workOrders?.counts.queued ?? 0}`} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MetricCard icon={SquarePen} value={workOrders?.counts.open ?? 0} label="Open" description={`${workOrders?.counts.total ?? 0} total`} />
-          <MetricCard icon={Rocket} value={workOrders?.counts.queued ?? 0} label="Queued" description="agent wake linked" />
-          <MetricCard icon={Activity} value={workOrders?.counts.inProgress ?? 0} label="Active" description="in progress" />
-          <MetricCard icon={ShieldAlert} value={workOrders?.counts.blocked ?? 0} label="Blocked" description={`${workOrders?.counts.done ?? 0} done`} />
+          <MetricCard icon={SquarePen} value={workOrders?.counts.open ?? 0} label="열림" description={`전체 ${workOrders?.counts.total ?? 0}건`} />
+          <MetricCard icon={Rocket} value={workOrders?.counts.queued ?? 0} label="대기" description="에이전트 깨우기 연결" />
+          <MetricCard icon={Activity} value={workOrders?.counts.inProgress ?? 0} label="진행" description="진행 중" />
+          <MetricCard icon={ShieldAlert} value={workOrders?.counts.blocked ?? 0} label="막힘" description={`완료 ${workOrders?.counts.done ?? 0}건`} />
         </div>
         <div className="min-w-0 border border-border">
           {visibleOrders.length ? visibleOrders.map((workOrder) => (
             <EntityRow
               key={workOrder.id}
               title={workOrder.title}
-              subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
+              subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "미배정"} · ${koStatusLabel(workOrder.priority)}`}
               leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
               trailing={<StatusBadge status={workOrder.status} />}
               onClick={() => onOpenWorkOrder(workOrder.id)}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No work orders yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">아직 접수된 업무가 없습니다.</p>
           )}
         </div>
       </div>
@@ -1927,12 +1863,12 @@ function OfficeInboxSummary({ inbox }: { inbox: SpliceOfficeInboxData | null }) 
           <EntityRow
             key={item.id}
             title={item.title}
-            subtitle={`${item.kind} · ${item.subtitle}`}
+            subtitle={`${koStatusLabel(item.kind)} · ${item.subtitle}`}
             leading={<Inbox className="h-4 w-4 text-muted-foreground" />}
             trailing={<StatusBadge status={item.sourceStatus} />}
           />
         )) : (
-          <p className="px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
+          <p className="px-4 py-4 text-sm text-muted-foreground">열린 신호가 없습니다.</p>
         )}
       </div>
     </section>
@@ -1949,27 +1885,27 @@ function OfficeApprovalsSummary({ approvals, data }: { approvals: SpliceOfficeAp
   return (
     <section className="space-y-3">
       <SectionTitle
-        title="Office Approvals"
-        aside={`${approvals?.counts.pending ?? 0} pending · ${approvals?.counts.approved ?? 0} approved`}
+        title="사무실 승인"
+        aside={`대기 ${approvals?.counts.pending ?? 0} · 승인 ${approvals?.counts.approved ?? 0}`}
       />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="Pending" description="needs operator" />
-          <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="Requests" description="approval history" />
-          <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="Changes" description="sent back" />
-          <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="Approved" description="cleared to run" />
+          <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="대기" description="운영자 확인 필요" />
+          <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="요청" description="승인 기록" />
+          <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="수정 요청" description="되돌려 보냄" />
+          <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="승인" description="실행 가능" />
         </div>
         <div className="min-w-0 border border-border">
           {visibleItems.length ? visibleItems.map((approval) => (
             <EntityRow
               key={approval.id}
               title={approval.title}
-              subtitle={`${approval.agentName ? compactAgentName(approval.agentName, data.name) : "operator"} · ${approval.kind}`}
+              subtitle={`${approval.agentName ? compactAgentName(approval.agentName, data.name) : "운영자"} · ${koStatusLabel(approval.kind)}`}
               leading={<CheckCircle2 className="h-4 w-4 text-muted-foreground" />}
               trailing={<StatusBadge status={approval.status} />}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No approval requests yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">아직 승인 요청이 없습니다.</p>
           )}
         </div>
       </div>
@@ -1988,27 +1924,27 @@ function OfficeRoutinesSummary({ data, routines }: { data: SpliceWorkspaceRoomDa
   return (
     <section className="space-y-3">
       <SectionTitle
-        title="Office Routines"
-        aside={`${routines?.counts.enabled ?? 0} enabled · ${routines?.counts.due ?? 0} due`}
+        title="사무실 루틴"
+        aside={`활성 ${routines?.counts.enabled ?? 0} · 실행 시점 ${routines?.counts.due ?? 0}`}
       />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <MetricCard icon={Repeat2} value={routines?.counts.enabled ?? 0} label="Enabled" description={`${routines?.counts.total ?? 0} routines`} />
-          <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="Due Now" description="ready to wake" />
-          <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="Routine Runs" description="manual wakes" />
-          <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="Paused" description="not scheduled" />
+          <MetricCard icon={Repeat2} value={routines?.counts.enabled ?? 0} label="활성" description={`루틴 ${routines?.counts.total ?? 0}개`} />
+          <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="지금 실행" description="깨울 준비됨" />
+          <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="루틴 실행" description="수동 깨우기" />
+          <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="일시 정지" description="일정 없음" />
         </div>
         <div className="min-w-0 border border-border">
           {visibleItems.length ? visibleItems.map((routine) => (
             <EntityRow
               key={routine.id}
               title={compactAgentName(routine.agentName, data.name)}
-              subtitle={`${routine.cadenceLabel} · next ${formatIsoSchedule(routine.nextRunAt)}`}
+              subtitle={`${routine.cadenceLabel} · 다음 ${formatIsoSchedule(routine.nextRunAt)}`}
               leading={<Repeat2 className="h-4 w-4 text-muted-foreground" />}
               trailing={<StatusBadge status={routine.state} />}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No office routines yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">아직 오피스 루틴이 없습니다.</p>
           )}
         </div>
       </div>
@@ -2036,7 +1972,7 @@ function OfficeSignalPanel({ data, messages }: { data: SpliceWorkspaceRoomData; 
               trailing={<span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No office messages yet.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">아직 오피스 메시지가 없습니다.</p>
           )}
         </div>
         <div className="min-w-0 border border-border">
@@ -2044,12 +1980,12 @@ function OfficeSignalPanel({ data, messages }: { data: SpliceWorkspaceRoomData; 
             <EntityRow
               key={request.id}
               title={compactAgentName(request.agentName, data.name)}
-              subtitle={request.note ?? "Wake request"}
+              subtitle={request.note ?? "깨우기 요청"}
               leading={<Activity className="h-4 w-4 text-muted-foreground" />}
               trailing={<StatusBadge status={request.status} />}
             />
           )) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No active wake requests.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">활성 깨우기 요청이 없습니다.</p>
           )}
         </div>
       </div>
@@ -2166,7 +2102,7 @@ function OfficeAgentDock({
     return (
       <section className="space-y-3">
         <SectionTitle title="에이전트 대화" aside="책상 0" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No agents found.</p>
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">에이전트를 찾을 수 없습니다.</p>
       </section>
     );
   }
@@ -2230,7 +2166,7 @@ function OfficeAgentDock({
                   <StatusBadge status={selectedAgent.state} />
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {selectedAgent.workOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                  {selectedAgent.workOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "배정 업무 없음"}
                 </p>
               </div>
             </div>
@@ -2243,34 +2179,34 @@ function OfficeAgentDock({
               className="h-8 gap-1.5 self-start lg:self-auto"
             >
               <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
-              {isRunning ? "Queued" : "Wake"}
+              {isRunning ? "대기" : "깨우기"}
             </Button>
           </div>
 
           <div className="grid gap-0 border-b border-border md:grid-cols-[minmax(0,1fr)_300px]">
             <form className="min-w-0 border-b border-border px-4 py-4 md:border-b-0 md:border-r" onSubmit={submitMessage}>
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold">Instruction</p>
+                <p className="text-sm font-semibold">지시</p>
                 <span className="text-xs text-muted-foreground">{activeRequestCount} active wakes</span>
               </div>
               <textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                placeholder={`Message ${compactAgentName(selectedAgent.name, data.name)}`}
+                placeholder={`${compactAgentName(selectedAgent.name, data.name)}에게 메시지`}
                 disabled={isSending}
               />
               <div className="mt-3 flex justify-end">
                 <Button type="submit" disabled={!draft.trim() || isSending} className="gap-1.5">
                   <Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />
-                  {isSending ? "Sending" : "Send + Wake"}
+                  {isSending ? "보내는 중" : "보내고 깨우기"}
                 </Button>
               </div>
             </form>
 
             <div className="min-w-0">
               <div className="border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold">Recent Runs</p>
+                <p className="text-sm font-semibold">최근 실행</p>
               </div>
               <div className="max-h-56 overflow-y-auto">
                 {selectedRequests.length ? selectedRequests.slice(0, 5).map((request) => (
@@ -2279,10 +2215,10 @@ function OfficeAgentDock({
                       <StatusBadge status={request.status} />
                       <RunRuntimePill runtime={request.runtime} status={request.status} />
                     </div>
-                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "Wake request"}</p>
+                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "깨우기 요청"}</p>
                   </article>
                 )) : (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">No run history yet.</p>
+                  <p className="px-4 py-4 text-sm text-muted-foreground">아직 실행 기록이 없습니다.</p>
                 )}
               </div>
             </div>
@@ -2290,7 +2226,7 @@ function OfficeAgentDock({
 
           <div>
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Recent Messages</p>
+              <p className="text-sm font-semibold">최근 메시지</p>
             </div>
             <div className="grid max-h-72 gap-px overflow-y-auto bg-border md:grid-cols-2">
               {selectedMessages.length ? selectedMessages.slice(0, 6).map((message) => (
@@ -2312,7 +2248,7 @@ function OfficeAgentDock({
                   </div>
                 </article>
               )) : (
-                <p className="bg-background px-4 py-4 text-sm text-muted-foreground md:col-span-2">No messages yet.</p>
+                <p className="bg-background px-4 py-4 text-sm text-muted-foreground md:col-span-2">아직 메시지가 없습니다.</p>
               )}
             </div>
           </div>
@@ -2336,17 +2272,17 @@ function RunQueueBoard({
   const columns = [
     {
       id: "queued",
-      title: "Queued",
+      title: "대기",
       items: data.requests.filter((request) => request.status === "requested" || request.status === "launch_ready"),
     },
     {
       id: "launched",
-      title: "Launched",
+      title: "실행 중",
       items: data.requests.filter((request) => request.status === "launched"),
     },
     {
       id: "failed",
-      title: "Failed",
+      title: "실패",
       items: data.requests.filter((request) => request.status === "failed"),
     },
   ];
@@ -2366,7 +2302,7 @@ function RunQueueBoard({
             className="h-8 gap-1.5"
           >
             <Activity className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
-            Dry Run
+            시험 실행
           </Button>
           <Button
             type="button"
@@ -2376,7 +2312,7 @@ function RunQueueBoard({
             className="h-8 gap-1.5"
           >
             <Rocket className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
-            Dispatch
+            실행 보내기
           </Button>
         </div>
       </div>
@@ -2400,7 +2336,7 @@ function RunQueueBoard({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{compactAgentName(request.agentName, data.name)}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{request.note ?? "Wake request"}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{request.note ?? "깨우기 요청"}</p>
                     </div>
                     <StatusBadge status={request.status} />
                   </div>
@@ -2411,7 +2347,7 @@ function RunQueueBoard({
                   </div>
                 </div>
               )) : (
-                <p className="px-3 py-4 text-sm text-muted-foreground">No {column.title.toLowerCase()} runs.</p>
+                <p className="px-3 py-4 text-sm text-muted-foreground">표시할 {column.title} 실행이 없습니다.</p>
               )}
             </div>
           </div>
@@ -2473,11 +2409,11 @@ function RunMonitorCard({
             {run.process?.pid ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">pid {run.process.pid}</span> : null}
           </div>
           <h3 className="mt-2 truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</h3>
-          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{run.note ?? "Wake request"}</p>
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{run.note ?? "깨우기 요청"}</p>
           {run.error ? <p className="mt-2 line-clamp-2 text-xs text-red-600 dark:text-red-300">{run.error}</p> : null}
           <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
             <p className="min-w-0 truncate font-mono">{run.id}</p>
-            <p className="min-w-0 truncate font-mono">{runPath || "No launch path yet"}</p>
+            <p className="min-w-0 truncate font-mono">{runPath || "실행 경로 없음"}</p>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -2521,7 +2457,7 @@ function RunMonitorCard({
                 className="gap-1.5"
               >
                 <CheckCircle2 className={cn("h-3.5 w-3.5", isUpdating && "animate-pulse")} />
-                Done
+                완료
               </Button>
             </>
           ) : null}
@@ -2549,7 +2485,7 @@ function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold">{title}</p>
-          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{artifact.path ?? "No artifact path yet"}</p>
+          <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{artifact.path ?? "산출물 경로 없음"}</p>
         </div>
         {artifact.exists ? (
           <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(artifact.size)}</span>
@@ -2559,11 +2495,11 @@ function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["
         <p className="px-4 py-4 text-sm text-red-600 dark:text-red-300">{artifact.error}</p>
       ) : artifact.exists && artifact.readable ? (
         <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words bg-muted/30 px-4 py-4 text-[11px] leading-5 text-foreground/80">
-          {artifact.truncated ? `[showing ${artifact.mode}]\n\n` : ""}
-          {artifact.text || "Artifact file is empty."}
+          {artifact.truncated ? `[${artifact.mode} 일부 표시]\n\n` : ""}
+          {artifact.text || "산출물 파일이 비어 있습니다."}
         </pre>
       ) : (
-        <p className="px-4 py-4 text-sm text-muted-foreground">No artifact captured yet.</p>
+        <p className="px-4 py-4 text-sm text-muted-foreground">아직 저장된 산출물이 없습니다.</p>
       )}
     </section>
   );
@@ -2603,8 +2539,8 @@ function RunInspector({
   if (!run) {
     return (
       <aside className="min-w-0 space-y-3">
-        <SectionTitle title="Run Inspector" aside="no selection" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">Select a run to inspect its prompt, output, and linked office work.</p>
+        <SectionTitle title="실행 상세" aside="선택 없음" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">프롬프트, 출력, 연결 업무를 확인할 실행을 선택하세요.</p>
       </aside>
     );
   }
@@ -2649,7 +2585,7 @@ function RunInspector({
 
   return (
     <aside className="min-w-0 space-y-3">
-      <SectionTitle title="Run Inspector" aside={loading ? "loading" : run.status} />
+      <SectionTitle title="실행 상세" aside={loading ? "불러오는 중" : koStatusLabel(run.status)} />
       <section className="border border-border px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={run.status} />
@@ -2663,10 +2599,10 @@ function RunInspector({
           </p>
         ) : null}
         <h3 className="mt-3 truncate text-sm font-semibold">{compactAgentName(run.agentName, data.name)}</h3>
-        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{run.note ?? "Wake request"}</p>
+        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">{run.note ?? "깨우기 요청"}</p>
         <div className="mt-3 grid gap-1 text-[11px] text-muted-foreground">
           <p className="truncate font-mono">{run.id}</p>
-          <p className="truncate font-mono">{run.launch?.workspacePath || run.workspacePath || "No workspace path"}</p>
+          <p className="truncate font-mono">{run.launch?.workspacePath || run.workspacePath || "작업 공간 경로 없음"}</p>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={openAgent} className="gap-1.5">
@@ -2688,7 +2624,7 @@ function RunInspector({
 
       <section className="border border-border px-4 py-4">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold">Follow-up</p>
+          <p className="text-sm font-semibold">후속 지시</p>
           {relatedWorkItem ? (
             <button
               type="button"
@@ -2698,7 +2634,7 @@ function RunInspector({
               {workItemKey(relatedWorkItem)}
             </button>
           ) : (
-            <span className="text-xs text-muted-foreground">no linked work</span>
+        <span className="text-xs text-muted-foreground">연결된 업무 없음</span>
           )}
         </div>
         <form className="mt-3 space-y-3" onSubmit={submitFollowup}>
@@ -2706,7 +2642,7 @@ function RunInspector({
             value={followupDraft}
             onChange={(event) => setFollowupDraft(event.target.value)}
             className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-            placeholder={relatedWorkItem ? "Ask the next move" : "This run has no linked work item"}
+            placeholder={relatedWorkItem ? "다음 작업을 요청하세요" : "연결된 업무가 없는 실행입니다"}
             disabled={!relatedWorkItem || followupPosting}
           />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2718,11 +2654,11 @@ function RunInspector({
                 disabled={!relatedWorkItem || followupPosting}
                 className="h-4 w-4 accent-primary"
               />
-              Wake owner
+              담당자 깨우기
             </label>
             <Button type="submit" size="sm" disabled={!relatedWorkItem || !followupDraft.trim() || followupPosting} className="gap-1.5">
               <Send className="h-3.5 w-3.5" />
-              {followupPosting ? "Sending" : "Send"}
+              {followupPosting ? "보내는 중" : "보내기"}
             </Button>
           </div>
         </form>
@@ -2730,7 +2666,7 @@ function RunInspector({
 
       <section className="border border-border">
         <div className="border-b border-border px-4 py-3">
-          <p className="text-sm font-semibold">Linked Office Work</p>
+          <p className="text-sm font-semibold">연결된 오피스 업무</p>
         </div>
         {comments.length || messages.length || workOrders.length || workProducts.length || routineRuns.length ? (
           <div>
@@ -2739,7 +2675,7 @@ function RunInspector({
               return (
                 <EntityRow
                   key={comment.id}
-                  title={`Comment on ${comment.itemTitle}`}
+                  title={`${comment.itemTitle} 댓글`}
                   subtitle={comment.body}
                   leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
                   trailing={<StatusBadge status={comment.status} />}
@@ -2750,7 +2686,7 @@ function RunInspector({
             {messages.map((message) => (
               <EntityRow
                 key={message.id}
-                title={`Message from ${message.author}`}
+                title={`${message.author}의 메시지`}
                 subtitle={message.body}
                 leading={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
                 trailing={<StatusBadge status={message.status} />}
@@ -2765,7 +2701,7 @@ function RunInspector({
                 <EntityRow
                   key={workOrder.id}
                   title={workOrder.title}
-                  subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "Unassigned"} · ${workOrder.priority}`}
+                  subtitle={`${workOrder.agentName ? compactAgentName(workOrder.agentName, data.name) : "미배정"} · ${workOrder.priority}`}
                   leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
                   trailing={<StatusBadge status={workOrder.status} />}
                   onClick={() => onOpenWorkOrder(workOrder.id)}
@@ -2797,17 +2733,17 @@ function RunInspector({
             ))}
           </div>
         ) : (
-          <p className="px-4 py-4 text-sm text-muted-foreground">No linked message, intake item, or routine for this run.</p>
+          <p className="px-4 py-4 text-sm text-muted-foreground">이 실행에 연결된 메시지, 접수 업무 또는 루틴이 없습니다.</p>
         )}
       </section>
 
       {detail ? (
         <>
-          <RunArtifactPanel title="Output" artifact={detail.artifacts.output} />
-          <RunArtifactPanel title="Prompt" artifact={detail.artifacts.prompt} />
+          <RunArtifactPanel title="출력" artifact={detail.artifacts.output} />
+          <RunArtifactPanel title="지시문" artifact={detail.artifacts.prompt} />
         </>
       ) : (
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">Run detail has not loaded yet.</p>
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">실행 상세를 아직 불러오지 못했습니다.</p>
       )}
     </aside>
   );
@@ -2921,14 +2857,14 @@ function RunsTab({
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         <MetricCard icon={Rocket} value={counts.active} label="실제 실행" description="프로세스 시작됨" />
         <MetricCard icon={Clock3} value={queuedCount} label="실행 대기" description={`${counts.launchReady} 준비 완료`} />
-        <MetricCard icon={History} value={counts.expired} label="만료 기록" description="live 집계 제외" />
+        <MetricCard icon={History} value={counts.expired} label="만료 기록" description="실시간 집계 제외" />
         <MetricCard icon={ShieldAlert} value={counts.failed} label="실패" description={`${counts.blocked} 막힘 · ${counts.noop} 무작업`} />
       </div>
 
       <section className="border border-border">
         <div className="border-b border-border px-4 py-3">
-          <p className="text-sm font-semibold">Queue</p>
-          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{runs?.queuePath ?? data.requests[0]?.queue?.path ?? "No run queue path yet"}</p>
+          <p className="text-sm font-semibold">실행 대기열</p>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{runs?.queuePath ?? data.requests[0]?.queue?.path ?? "실행 대기열 경로 없음"}</p>
         </div>
       </section>
 
@@ -2965,7 +2901,7 @@ function RunsTab({
       </div>
 
       <section className="min-w-0 space-y-3">
-        <SectionTitle title="Run History" aside={`${historyRuns.length}`} />
+        <SectionTitle title="실행 기록" aside={`${historyRuns.length}건`} />
         <div className="grid gap-3 xl:grid-cols-2">
           {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
             <RunMonitorCard
@@ -2978,7 +2914,7 @@ function RunsTab({
               onUpdateRunStatus={onUpdateRunStatus}
             />
           )) : (
-            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed runs yet.</p>
+            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">아직 완료된 실행이 없습니다.</p>
           )}
         </div>
       </section>
@@ -2992,18 +2928,18 @@ function ReviewGateSummary({ data, reviews }: { data: SpliceWorkspaceRoomData; r
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="Review Gate" aside={`${requested.length} pending · ${decided.length} decided`} />
+      <SectionTitle title="검수" aside={`대기 ${requested.length} · 처리 ${decided.length}`} />
       <div className="border border-border">
         {reviews.length ? reviews.slice(0, 6).map((review) => (
           <EntityRow
             key={review.id}
             title={review.title}
-            subtitle={`${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned reviewer"}`}
+            subtitle={`${review.itemTitle} · ${review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "검수자 미배정"}`}
             leading={<ShieldAlert className="h-4 w-4 text-muted-foreground" />}
             trailing={<StatusBadge status={review.status} />}
           />
         )) : (
-          <p className="px-4 py-4 text-sm text-muted-foreground">No reviews requested yet.</p>
+          <p className="px-4 py-4 text-sm text-muted-foreground">아직 검토 요청이 없습니다.</p>
         )}
       </div>
     </section>
@@ -3032,7 +2968,7 @@ function InboxItemCard({
   const targetWorkItem = workItemRefFromTarget(item.targetType, item.targetId);
   const targetRunId = runIdFromTarget(item.targetType, item.targetId);
   const targetWorkOrderId = workOrderIdFromTarget(item.targetType, item.targetId);
-  const openLabel = targetWorkItem ? "Open Work Desk" : targetRunId ? "Open Run" : targetWorkOrderId ? "Open Work Order" : `Open ${roomTabLabel(targetTab)}`;
+  const openLabel = targetWorkItem ? "업무 책상 열기" : targetRunId ? "실행 열기" : targetWorkOrderId ? "업무 요청 열기" : `${roomTabLabel(targetTab)} 열기`;
   const openTarget = () => {
     if (targetWorkItem) {
       onOpenWorkItem(targetWorkItem);
@@ -3094,7 +3030,7 @@ function InboxItemCard({
               className="gap-1.5"
             >
               <CheckCircle2 className={cn("h-3.5 w-3.5", updating && "animate-pulse")} />
-              Done
+              완료
             </Button>
           )}
         </div>
@@ -3126,16 +3062,16 @@ function InboxTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Office Inbox" aside={`${openItems.length} open · ${doneItems.length} done`} />
+      <SectionTitle title="사무실 신호함" aside={`열림 ${openItems.length} · 완료 ${doneItems.length}`} />
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        <MetricCard icon={Inbox} value={inbox?.counts.open ?? 0} label="Open" description={`${inbox?.counts.total ?? 0} total`} />
-        <MetricCard icon={ShieldAlert} value={inbox?.counts.reviews ?? 0} label="Reviews" description="needs decision" />
-        <MetricCard icon={Activity} value={inbox?.counts.runs ?? 0} label="Wakes" description="queued or running" />
-        <MetricCard icon={SquarePen} value={inbox?.counts.workOrders ?? 0} label="Intake" description={`${inbox?.counts.messages ?? 0} messages · ${inbox?.counts.blocked ?? 0} blocked`} />
+        <MetricCard icon={Inbox} value={inbox?.counts.open ?? 0} label="열림" description={`전체 ${inbox?.counts.total ?? 0}건`} />
+        <MetricCard icon={ShieldAlert} value={inbox?.counts.reviews ?? 0} label="검수" description="결정 필요" />
+        <MetricCard icon={Activity} value={inbox?.counts.runs ?? 0} label="깨우기" description="대기 또는 실행 중" />
+        <MetricCard icon={SquarePen} value={inbox?.counts.workOrders ?? 0} label="접수" description={`대화 ${inbox?.counts.messages ?? 0} · 막힘 ${inbox?.counts.blocked ?? 0}`} />
       </div>
 
       <section className="space-y-3">
-        <SectionTitle title="Open Items" aside={`${openItems.length}`} />
+        <SectionTitle title="열린 항목" aside={`${openItems.length}건`} />
         {openItems.length ? (
           <div className="grid gap-3">
             {openItems.map((item) => (
@@ -3152,12 +3088,12 @@ function InboxTab({
             ))}
           </div>
         ) : (
-          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No open inbox items.</p>
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">열린 신호가 없습니다.</p>
         )}
       </section>
 
       <section className="space-y-3">
-        <SectionTitle title="Done" aside={`${doneItems.length}`} />
+        <SectionTitle title="완료" aside={`${doneItems.length}건`} />
         {doneItems.length ? (
           <div className="grid gap-3">
             {doneItems.slice(0, 12).map((item) => (
@@ -3174,7 +3110,7 @@ function InboxTab({
             ))}
           </div>
         ) : (
-          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No completed inbox items yet.</p>
+          <p className="border border-border px-4 py-4 text-sm text-muted-foreground">아직 완료된 신호가 없습니다.</p>
         )}
       </section>
     </div>
@@ -3187,12 +3123,12 @@ function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Projec
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <SectionTitle title="Mission · Vision" aside="absolute standards" />
+        <SectionTitle title="미션 · 비전" aside="최상위 기준" />
         <MissionVisionCards goals={goals} goalLink={() => null} />
       </section>
 
       <section className="space-y-3">
-        <SectionTitle title="OKR" aside={`${okrCount} items`} />
+        <SectionTitle title="목표와 핵심 결과" aside={`${okrCount}개 항목`} />
         <OkrTree goals={goals} projects={projects} issues={issues} />
       </section>
     </div>
@@ -3202,14 +3138,14 @@ function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Projec
 function ProjectsTab({ projects }: { projects: SpliceWorkspaceRoomProject[] }) {
   return (
     <div className="space-y-4">
-      <SectionTitle title="Projects" aside={`${projects.length} active`} />
+      <SectionTitle title="프로젝트" aside={`진행 ${projects.length}개`} />
       <div className="border border-border">
         {projects.map((project) => (
           <EntityRow
             key={project.id}
             identifier={project.id}
             title={project.title}
-            subtitle={plainSummary(project.description, `${project.ownerName} · ${project.issueTotal} issues`)}
+            subtitle={plainSummary(project.description, `${project.ownerName} · 이슈 ${project.issueTotal}개`)}
             leading={<Flag className="h-4 w-4 text-muted-foreground" />}
             trailing={(
               <div className="flex items-center gap-3">
@@ -3303,26 +3239,26 @@ function IntakeTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Work Intake" aside={`${workOrders?.counts.open ?? 0} open`} />
+      <SectionTitle title="업무 접수" aside={`열림 ${workOrders?.counts.open ?? 0}건`} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <section className="border border-border">
           <div className="border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">New Work Order</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Create a PaperClip-style task signal for this office.</p>
+            <p className="text-sm font-semibold">새 업무 접수</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">이 오피스에 PaperClip 방식 업무 신호를 만듭니다.</p>
           </div>
           <form className="space-y-3 px-4 py-4" onSubmit={submitWorkOrder}>
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-              placeholder="Task title"
+              placeholder="업무 제목"
               disabled={creatingWorkOrder}
             />
             <textarea
               value={body}
               onChange={(event) => setBody(event.target.value)}
               className="min-h-36 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-              placeholder="What should the agent do?"
+              placeholder="에이전트가 해야 할 일을 적으세요"
               disabled={creatingWorkOrder}
             />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -3349,7 +3285,7 @@ function IntakeTab({
                   className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
                   disabled={creatingWorkOrder}
                 >
-                  <option value="">No project link</option>
+                  <option value="">프로젝트 연결 없음</option>
                   {data.projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.title}
@@ -3367,10 +3303,10 @@ function IntakeTab({
                   className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
                   disabled={creatingWorkOrder}
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                  <option value="low">낮음</option>
+                  <option value="medium">보통</option>
+                  <option value="high">높음</option>
+                  <option value="urgent">긴급</option>
                 </select>
               </label>
               <label className="flex items-center gap-2 self-end border border-border px-3 py-2 text-sm">
@@ -3380,13 +3316,13 @@ function IntakeTab({
                   onChange={(event) => setWakeAgent(event.target.checked)}
                   disabled={creatingWorkOrder}
                 />
-                Wake agent
+                에이전트 깨우기
               </label>
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={!title.trim() || !body.trim() || creatingWorkOrder} className="gap-1.5">
                 <Rocket className={cn("h-3.5 w-3.5", creatingWorkOrder && "animate-pulse")} />
-                {creatingWorkOrder ? "Creating" : "Create + Queue"}
+                {creatingWorkOrder ? "만드는 중" : "만들고 대기열에 추가"}
               </Button>
             </div>
           </form>
@@ -3394,7 +3330,7 @@ function IntakeTab({
 
         <section className="border border-border">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Intake Queue</p>
+            <p className="text-sm font-semibold">접수 대기열</p>
             <span className="text-xs text-muted-foreground">{orders.length}</span>
           </div>
           <div className="divide-y divide-border">
@@ -3413,25 +3349,25 @@ function IntakeTab({
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="break-words text-sm font-semibold">{order.title}</p>
                       <StatusBadge status={order.status} />
-                      {selected ? <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground">Focused</span> : null}
+                      {selected ? <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground">선택됨</span> : null}
                     </div>
                     <p className="mt-1 break-words text-xs text-muted-foreground">
-                      {order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"} · {order.projectName || "No project"} · {order.priority} · {formatIsoAge(order.createdAt)}
+                      {order.agentName ? compactAgentName(order.agentName, data.name) : "미배정"} · {order.projectName || "프로젝트 없음"} · {order.priority} · {formatIsoAge(order.createdAt)}
                     </p>
                     <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{order.body}</p>
                     {selected ? (
                       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                         <div className="min-w-0 border border-border bg-background px-2.5 py-2">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider">Run</span>
-                          <span className="mt-1 block truncate font-mono">{runRequestId ?? "No run linked"}</span>
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">실행</span>
+                          <span className="mt-1 block truncate font-mono">{runRequestId ?? "연결된 실행 없음"}</span>
                         </div>
                         <div className="min-w-0 border border-border bg-background px-2.5 py-2">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider">Agent</span>
-                          <span className="mt-1 block truncate">{order.agentName ? compactAgentName(order.agentName, data.name) : "Unassigned"}</span>
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">에이전트</span>
+                          <span className="mt-1 block truncate">{order.agentName ? compactAgentName(order.agentName, data.name) : "미배정"}</span>
                         </div>
                         <div className="min-w-0 border border-border bg-background px-2.5 py-2">
-                          <span className="block text-[10px] font-medium uppercase tracking-wider">Project</span>
-                          <span className="mt-1 block truncate">{order.projectName ?? "No project"}</span>
+                          <span className="block text-[10px] font-medium uppercase tracking-wider">프로젝트</span>
+                          <span className="mt-1 block truncate">{order.projectName ?? "프로젝트 없음"}</span>
                         </div>
                       </div>
                     ) : null}
@@ -3498,7 +3434,7 @@ function IntakeTab({
                       disabled={updating || order.status === "in_progress"}
                       onClick={() => onUpdateWorkOrderStatus(order.id, "in_progress", true)}
                     >
-                      Start + Wake
+                      시작하고 깨우기
                     </Button>
                     <Button
                       type="button"
@@ -3515,13 +3451,13 @@ function IntakeTab({
                       disabled={updating || order.status === "done"}
                       onClick={() => onUpdateWorkOrderStatus(order.id, "done")}
                     >
-                      Done
+                      완료
                     </Button>
                   </div>
                 </article>
               );
             }) : (
-              <p className="px-4 py-4 text-sm text-muted-foreground">No work orders yet.</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground">아직 접수된 업무가 없습니다.</p>
             )}
           </div>
         </section>
@@ -3538,18 +3474,18 @@ function IssuesTab({
   onOpenWorkItem: (item: WorkItemRef) => void;
 }) {
   const lanes: Array<{ title: string; items: SpliceWorkspaceRoomWorkItem[] }> = [
-    { title: "Now", items: data.lanes.active },
-    { title: "Review", items: data.lanes.review },
-    { title: "Next", items: data.lanes.next },
-    { title: "Blocked", items: data.lanes.blocked },
+    { title: "지금", items: data.lanes.active },
+    { title: "검수", items: data.lanes.review },
+    { title: "다음", items: data.lanes.next },
+    { title: "막힘", items: data.lanes.blocked },
   ];
 
   return (
     <div className="space-y-6">
       {lanes.map((lane) => (
         <section key={lane.title} className="space-y-3">
-          <SectionTitle title={lane.title} aside={`${lane.items.length} issues`} />
-          <WorkItemList items={lane.items} empty={`No ${lane.title.toLowerCase()} issues.`} onOpenWorkItem={onOpenWorkItem} />
+          <SectionTitle title={lane.title} aside={`이슈 ${lane.items.length}개`} />
+          <WorkItemList items={lane.items} empty={`${lane.title} 업무가 없습니다.`} onOpenWorkItem={onOpenWorkItem} />
         </section>
       ))}
     </div>
@@ -3682,8 +3618,8 @@ function WorkDeskTab({
   if (!selectedItem) {
     return (
       <div className="space-y-4">
-        <SectionTitle title="Work Desk" aside="0 items" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No work items found.</p>
+        <SectionTitle title="업무 책상" aside="항목 없음" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">업무 항목을 찾을 수 없습니다.</p>
       </div>
     );
   }
@@ -3692,7 +3628,7 @@ function WorkDeskTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Work Desk" aside={`${deskItems.length} items`} />
+      <SectionTitle title="업무 책상" aside={`${deskItems.length}개 항목`} />
       <div className="grid min-h-[620px] gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <div className="min-w-0 border border-border">
           {deskItems.map((item) => {
@@ -3746,14 +3682,14 @@ function WorkDeskTab({
                 {body}
               </MarkdownBody>
             ) : (
-              <p className="mt-4 text-sm text-muted-foreground">No body found.</p>
+              <p className="mt-4 text-sm text-muted-foreground">본문이 없습니다.</p>
             )}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="min-w-0 border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold">Thread</p>
+                <p className="text-sm font-semibold">업무 대화</p>
                 <span className="text-xs text-muted-foreground">{selectedComments.length}</span>
               </div>
               <div className="max-h-[360px] overflow-y-auto px-4 py-4">
@@ -3778,7 +3714,7 @@ function WorkDeskTab({
                     ) : null}
                   </article>
                 )) : (
-                  <p className="text-sm text-muted-foreground">No comments yet.</p>
+                  <p className="text-sm text-muted-foreground">아직 댓글이 없습니다.</p>
                 )}
               </div>
               <form className="border-t border-border px-4 py-4" onSubmit={submitComment}>
@@ -3786,7 +3722,7 @@ function WorkDeskTab({
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}
                   className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                  placeholder="Comment"
+                  placeholder="의견"
                   disabled={postingComment}
                 />
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3798,11 +3734,11 @@ function WorkDeskTab({
                       disabled={postingComment}
                       className="h-4 w-4 accent-primary"
                     />
-                    Wake owner
+                    담당자 깨우기
                   </label>
                   <Button type="submit" size="sm" disabled={!commentDraft.trim() || postingComment} className="gap-1.5">
                     <MessageSquare className={cn("h-3.5 w-3.5", postingComment && "animate-pulse")} />
-                    {postingComment ? "Posting" : "Post Comment"}
+                    {postingComment ? "등록 중" : "의견 등록"}
                   </Button>
                 </div>
               </form>
@@ -3810,7 +3746,7 @@ function WorkDeskTab({
 
             <section className="min-w-0 border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold">Work Products</p>
+                <p className="text-sm font-semibold">산출물</p>
                 <span className="text-xs text-muted-foreground">{selectedProducts.length}</span>
               </div>
               <div className="max-h-[360px] overflow-y-auto px-4 py-4">
@@ -3851,7 +3787,7 @@ function WorkDeskTab({
                             className="h-7 gap-1.5 px-2"
                           >
                             <ShieldAlert className={cn("h-3.5 w-3.5", requestingProductReview && "animate-pulse")} />
-                            {requestingProductReview ? "Sending" : "Review"}
+                            {requestingProductReview ? "보내는 중" : "검수 요청"}
                           </Button>
                         </div>
                       </div>
@@ -3870,7 +3806,7 @@ function WorkDeskTab({
                     </article>
                   );
                 }) : (
-                  <p className="text-sm text-muted-foreground">No work products yet.</p>
+                  <p className="text-sm text-muted-foreground">아직 산출물이 없습니다.</p>
                 )}
               </div>
               <form className="space-y-3 border-t border-border px-4 py-4" onSubmit={submitWorkProduct}>
@@ -3878,20 +3814,20 @@ function WorkDeskTab({
                   value={productTitle}
                   onChange={(event) => setProductTitle(event.target.value)}
                   className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                  placeholder="Result title"
+                  placeholder="결과 제목"
                   disabled={savingProduct}
                 />
                 <textarea
                   value={productBody}
                   onChange={(event) => setProductBody(event.target.value)}
                   className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                  placeholder="Result body"
+                  placeholder="결과 내용"
                   disabled={savingProduct}
                 />
                 <div className="flex justify-end">
                   <Button type="submit" size="sm" disabled={!productTitle.trim() || !productBody.trim() || savingProduct} className="gap-1.5">
                     <FileText className={cn("h-3.5 w-3.5", savingProduct && "animate-pulse")} />
-                    {savingProduct ? "Saving" : "Save Product"}
+                    {savingProduct ? "저장 중" : "산출물 저장"}
                   </Button>
                 </div>
               </form>
@@ -3993,15 +3929,15 @@ function ReviewGateTab({
   if (!selectedItem) {
     return (
       <div className="space-y-4">
-        <SectionTitle title="Review Gate" aside="0 items" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No work items found.</p>
+        <SectionTitle title="검수" aside="항목 없음" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">업무 항목을 찾을 수 없습니다.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Review Gate" aside={`${reviews.length} reviews`} />
+      <SectionTitle title="검수" aside={`검수 ${reviews.length}건`} />
       <div className="grid min-h-[620px] gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <div className="min-w-0 border border-border">
           {reviewItems.map((item) => {
@@ -4038,7 +3974,7 @@ function ReviewGateTab({
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="border border-border">
               <div className="border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold">Request Review</p>
+                <p className="text-sm font-semibold">검토 요청</p>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{selectedItem.title}</p>
               </div>
               <form className="space-y-3 px-4 py-4" onSubmit={submitReview}>
@@ -4046,7 +3982,7 @@ function ReviewGateTab({
                   value={reviewTitle}
                   onChange={(event) => setReviewTitle(event.target.value)}
                   className="h-9 w-full border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                  placeholder={`Review ${selectedItem.title}`}
+                  placeholder={`${selectedItem.title} 검토`}
                   disabled={requestingReview}
                 />
                 <select
@@ -4065,13 +4001,13 @@ function ReviewGateTab({
                   value={reviewBody}
                   onChange={(event) => setReviewBody(event.target.value)}
                   className="min-h-28 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                  placeholder="Review request"
+                  placeholder="검수 요청"
                   disabled={requestingReview}
                 />
                 <div className="flex justify-end">
                   <Button type="submit" size="sm" disabled={!reviewBody.trim() || requestingReview} className="gap-1.5">
                     <ShieldAlert className={cn("h-3.5 w-3.5", requestingReview && "animate-pulse")} />
-                    {requestingReview ? "Requesting" : "Request Review"}
+                    {requestingReview ? "요청 중" : "검수 요청"}
                   </Button>
                 </div>
               </form>
@@ -4079,7 +4015,7 @@ function ReviewGateTab({
 
             <section className="border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <p className="text-sm font-semibold">Review Queue</p>
+                <p className="text-sm font-semibold">검토 대기열</p>
                 <span className="text-xs text-muted-foreground">{reviews.length}</span>
               </div>
               <div className="max-h-[330px] overflow-y-auto">
@@ -4098,7 +4034,7 @@ function ReviewGateTab({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{review.title}</p>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {review.itemTitle} · {review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "Unassigned"}
+                          {review.itemTitle} · {review.reviewerAgentName ? compactAgentName(review.reviewerAgentName, data.name) : "미배정"}
                         </p>
                         {review.sourceWorkProductTitle ? (
                           <p className="mt-1 truncate text-[11px] text-muted-foreground">
@@ -4110,7 +4046,7 @@ function ReviewGateTab({
                     </button>
                   );
                 }) : (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">No reviews requested yet.</p>
+                  <p className="px-4 py-4 text-sm text-muted-foreground">아직 검토 요청이 없습니다.</p>
                 )}
               </div>
             </section>
@@ -4118,9 +4054,9 @@ function ReviewGateTab({
 
           <section className="border border-border">
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Decision Desk</p>
+              <p className="text-sm font-semibold">검토 결정</p>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {selectedReview ? selectedReview.title : "No review selected"}
+                {selectedReview ? selectedReview.title : "선택한 검수 없음"}
               </p>
             </div>
             {selectedReview ? (
@@ -4160,7 +4096,7 @@ function ReviewGateTab({
                         ) : null}
                       </article>
                     )) : (
-                      <p className="text-sm text-muted-foreground">No decisions yet.</p>
+                      <p className="text-sm text-muted-foreground">아직 결정이 없습니다.</p>
                     )}
                   </div>
                 </div>
@@ -4169,7 +4105,7 @@ function ReviewGateTab({
                     value={decisionBody}
                     onChange={(event) => setDecisionBody(event.target.value)}
                     className="min-h-32 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                    placeholder="Decision note"
+                    placeholder="결정 메모"
                     disabled={decidingReview}
                   />
                   <label className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -4180,7 +4116,7 @@ function ReviewGateTab({
                       disabled={decidingReview}
                       className="h-4 w-4 accent-primary"
                     />
-                    Wake owner on changes
+                    변경 요청 시 담당자 깨우기
                   </label>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
                     <Button
@@ -4213,7 +4149,7 @@ function ReviewGateTab({
                 </div>
               </div>
             ) : (
-              <p className="px-4 py-4 text-sm text-muted-foreground">No review selected.</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground">선택된 검토가 없습니다.</p>
             )}
           </section>
         </section>
@@ -4290,19 +4226,19 @@ function ApprovalsTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Approvals" aside={`${pending.length} pending · ${decided.length} decided`} />
+      <SectionTitle title="승인" aside={`대기 ${pending.length} · 처리 ${decided.length}`} />
 
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="Pending" description="needs decision" />
-        <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="Requests" description="approval queue" />
-        <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="Changes" description="sent back" />
-        <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="Approved" description="cleared" />
+        <MetricCard icon={CheckCircle2} value={approvals?.counts.pending ?? 0} label="대기" description="결정 필요" />
+        <MetricCard icon={Activity} value={approvals?.counts.total ?? 0} label="요청" description="승인 대기열" />
+        <MetricCard icon={ShieldAlert} value={approvals?.counts.changesRequested ?? 0} label="수정 요청" description="되돌려 보냄" />
+        <MetricCard icon={CheckCircle2} value={approvals?.counts.approved ?? 0} label="승인" description="처리 완료" />
       </div>
 
       <div className="grid min-h-[640px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
         <section className="min-w-0 border border-border">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Approval Queue</p>
+            <p className="text-sm font-semibold">승인 대기열</p>
             <span className="text-xs text-muted-foreground">{approvalItems.length}</span>
           </div>
           <div className="max-h-[590px] overflow-y-auto">
@@ -4329,7 +4265,7 @@ function ApprovalsTab({
                 </button>
               );
             }) : (
-              <p className="px-4 py-4 text-sm text-muted-foreground">No approval requests yet.</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground">아직 승인 요청이 없습니다.</p>
             )}
           </div>
         </section>
@@ -4337,8 +4273,8 @@ function ApprovalsTab({
         <section className="min-w-0 space-y-4">
           <form className="border border-border" onSubmit={submitApproval}>
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Request Approval</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Create the same kind of board decision an agent would wait on.</p>
+              <p className="text-sm font-semibold">승인 요청</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">에이전트가 기다리는 보드 결정과 같은 요청을 만듭니다.</p>
             </div>
             <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
               <label className="min-w-0 text-xs font-medium text-muted-foreground">
@@ -4362,11 +4298,11 @@ function ApprovalsTab({
                   className="mt-1 h-9 w-full border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
                   disabled={creatingApproval}
                 >
-                  <option value="agent_action">Agent action</option>
-                  <option value="branch_change">Branch change</option>
-                  <option value="release">Release</option>
-                  <option value="scope_change">Scope change</option>
-                  <option value="external_effect">External effect</option>
+                  <option value="agent_action">에이전트 조치</option>
+                  <option value="branch_change">브랜치 변경</option>
+                  <option value="release">배포</option>
+                  <option value="scope_change">범위 변경</option>
+                  <option value="external_effect">외부 영향</option>
                 </select>
               </label>
               <label className="min-w-0 text-xs font-medium text-muted-foreground sm:col-span-2">
@@ -4375,7 +4311,7 @@ function ApprovalsTab({
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   className="mt-1 h-9 w-full border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-                  placeholder="Approval title"
+                  placeholder="승인 제목"
                   disabled={creatingApproval}
                 />
               </label>
@@ -4385,7 +4321,7 @@ function ApprovalsTab({
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
                   className="mt-1 min-h-32 w-full resize-y border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-                  placeholder="What should be approved, and why?"
+                  placeholder="승인할 내용과 이유를 적으세요"
                   disabled={creatingApproval}
                 />
               </label>
@@ -4400,7 +4336,7 @@ function ApprovalsTab({
 
           <section className="border border-border">
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Selected Request</p>
+              <p className="text-sm font-semibold">선택된 요청</p>
             </div>
             {selectedApproval ? (
               <article className="px-4 py-4">
@@ -4421,20 +4357,20 @@ function ApprovalsTab({
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-foreground/85">{decision.body}</p>
                     </div>
                   )) : (
-                    <p className="px-3 py-3 text-sm text-muted-foreground">No decisions yet.</p>
+                    <p className="px-3 py-3 text-sm text-muted-foreground">아직 결정이 없습니다.</p>
                   )}
                 </div>
               </article>
             ) : (
-              <p className="px-4 py-4 text-sm text-muted-foreground">No approval selected.</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground">선택된 승인 요청이 없습니다.</p>
             )}
           </section>
         </section>
 
         <aside className="min-w-0 border border-border">
           <div className="border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Decision</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Approved requests can wake the assigned agent.</p>
+            <p className="text-sm font-semibold">결정</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">승인된 요청은 배정된 에이전트를 깨울 수 있습니다.</p>
           </div>
           {selectedApproval ? (
             <div className="space-y-3 px-4 py-4">
@@ -4442,7 +4378,7 @@ function ApprovalsTab({
                 value={decisionBody}
                 onChange={(event) => setDecisionBody(event.target.value)}
                 className="min-h-36 w-full resize-y border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-                placeholder="Decision note"
+                placeholder="결정 메모"
                 disabled={decidingApproval}
               />
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -4452,7 +4388,7 @@ function ApprovalsTab({
                   onChange={(event) => setWakeAgent(event.target.checked)}
                   disabled={decidingApproval || !selectedApproval.agentId}
                 />
-                Wake agent after approval
+                승인 후 에이전트 깨우기
               </label>
               <div className="grid gap-2">
                 <Button
@@ -4481,7 +4417,7 @@ function ApprovalsTab({
               </div>
             </div>
           ) : (
-            <p className="px-4 py-4 text-sm text-muted-foreground">Select an approval first.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">먼저 승인 요청을 선택하세요.</p>
           )}
         </aside>
       </div>
@@ -4516,19 +4452,19 @@ function RoutinesTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Office Routines" aside={`${routines?.counts.enabled ?? 0} enabled · ${routines?.counts.due ?? 0} due`} />
+      <SectionTitle title="사무실 루틴" aside={`활성 ${routines?.counts.enabled ?? 0} · 실행 시점 ${routines?.counts.due ?? 0}`} />
 
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        <MetricCard icon={Repeat2} value={routines?.counts.total ?? 0} label="Routines" description="agent heartbeat slots" />
-        <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="Due Now" description="ready to wake" />
-        <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="Manual Runs" description="queued from office" />
-        <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="Paused" description="operator held" />
+        <MetricCard icon={Repeat2} value={routines?.counts.total ?? 0} label="루틴" description="에이전트 하트비트 슬롯" />
+        <MetricCard icon={Clock3} value={routines?.counts.due ?? 0} label="지금 실행" description="깨울 준비됨" />
+        <MetricCard icon={Activity} value={routines?.counts.runs ?? 0} label="수동 실행" description="사무실에서 대기열 추가" />
+        <MetricCard icon={ShieldAlert} value={routines?.counts.paused ?? 0} label="일시 정지" description="운영자가 보류" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 border border-border">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <p className="text-sm font-semibold">Routine Board</p>
+            <p className="text-sm font-semibold">루틴 보드</p>
             <span className="text-xs text-muted-foreground">{sortedRoutines.length}</span>
           </div>
           <div className="divide-y divide-border">
@@ -4571,11 +4507,11 @@ function RoutinesTab({
                       disabled={isUpdating}
                       className="h-8 border border-border bg-background px-2 text-xs outline-none focus:border-ring"
                     >
-                      <option value={5}>Every 5m</option>
-                      <option value={10}>Every 10m</option>
-                      <option value={15}>Every 15m</option>
-                      <option value={30}>Every 30m</option>
-                      <option value={60}>Every 1h</option>
+                      <option value={5}>5분마다</option>
+                      <option value={10}>10분마다</option>
+                      <option value={15}>15분마다</option>
+                      <option value={30}>30분마다</option>
+                      <option value={60}>1시간마다</option>
                     </select>
                     <div className="grid grid-cols-2 gap-2">
                       <Button
@@ -4588,7 +4524,7 @@ function RoutinesTab({
                         })}
                         disabled={isUpdating}
                       >
-                        {routine.enabled ? "Pause" : "Resume"}
+                        {routine.enabled ? "일시 정지" : "다시 시작"}
                       </Button>
                       <Button
                         type="button"
@@ -4598,14 +4534,14 @@ function RoutinesTab({
                         className="gap-1.5"
                       >
                         <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
-                        {isRunning ? "Queued" : "Run Now"}
+                        {isRunning ? "대기" : "지금 실행"}
                       </Button>
                     </div>
                   </div>
                 </article>
               );
             }) : (
-              <p className="px-4 py-4 text-sm text-muted-foreground">No office routines yet.</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground">아직 오피스 루틴이 없습니다.</p>
             )}
           </div>
         </section>
@@ -4613,7 +4549,7 @@ function RoutinesTab({
         <aside className="min-w-0 space-y-4">
           <section className="border border-border">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Recent Routine Runs</p>
+              <p className="text-sm font-semibold">최근 루틴 실행</p>
               <span className="text-xs text-muted-foreground">{recentRuns.length}</span>
             </div>
             <div className="max-h-[540px] overflow-y-auto">
@@ -4637,18 +4573,18 @@ function RoutinesTab({
                   </button>
                 </article>
               )) : (
-                <p className="px-4 py-4 text-sm text-muted-foreground">No routine runs yet.</p>
+                <p className="px-4 py-4 text-sm text-muted-foreground">아직 루틴 실행 기록이 없습니다.</p>
               )}
             </div>
           </section>
 
           <section className="border border-border">
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold">Queue Paths</p>
+              <p className="text-sm font-semibold">대기열 경로</p>
             </div>
             <div className="space-y-3 px-4 py-4 text-xs text-muted-foreground">
-              <p className="truncate font-mono">{routines?.queuePaths.routines ?? "No routine store"}</p>
-              <p className="truncate font-mono">{routines?.queuePaths.runRequests ?? "No run queue"}</p>
+              <p className="truncate font-mono">{routines?.queuePaths.routines ?? "루틴 저장소 없음"}</p>
+              <p className="truncate font-mono">{routines?.queuePaths.runRequests ?? "실행 대기열 없음"}</p>
             </div>
           </section>
         </aside>
@@ -4723,15 +4659,15 @@ function AgentsTab({
   if (!selectedAgent) {
     return (
       <div className="space-y-4">
-        <SectionTitle title="Agent Console" aside="0 agents" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No agents found.</p>
+        <SectionTitle title="에이전트 현황" aside="에이전트 없음" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">에이전트를 찾지 못했습니다.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Agent Console" aside={`${consoleAgents.length} desks · ${activeRequestCount} active wakes`} />
+      <SectionTitle title="에이전트 현황" aside={`책상 ${consoleAgents.length} · 가동 요청 ${activeRequestCount}`} />
       <div className="grid min-h-[640px] gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
         <div className="min-w-0 border border-border">
           {consoleAgents.map((agent) => {
@@ -4781,7 +4717,7 @@ function AgentsTab({
                     <StatusBadge status={selectedAgent.state} />
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {selectedAgent.role} · {selectedWorkOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                    {selectedAgent.role} · {selectedWorkOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "배정된 업무 없음"}
                   </p>
                 </div>
               </div>
@@ -4794,15 +4730,15 @@ function AgentsTab({
                 className="h-8 gap-1.5 self-start lg:self-auto"
               >
                 <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
-                {isRunning ? "Queued" : "Wake"}
+                {isRunning ? "대기" : "깨우기"}
               </Button>
             </div>
 
             <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Assigned Work" value={selectedAgent.currentWork.length} icon={CircleDot} />
-              <MetricCard label="Office Orders" value={selectedWorkOrders.length} icon={SquarePen} />
-              <MetricCard label="Run History" value={selectedRequests.length} icon={Activity} />
-              <MetricCard label="Messages" value={selectedMessages.length} icon={MessageSquare} />
+              <MetricCard label="배정 업무" value={selectedAgent.currentWork.length} icon={CircleDot} />
+              <MetricCard label="사무실 요청" value={selectedWorkOrders.length} icon={SquarePen} />
+              <MetricCard label="실행 기록" value={selectedRequests.length} icon={Activity} />
+              <MetricCard label="대화" value={selectedMessages.length} icon={MessageSquare} />
             </div>
           </div>
 
@@ -4810,8 +4746,8 @@ function AgentsTab({
             <section className="min-w-0 space-y-4">
               <div className="border border-border">
                 <div className="border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">Assigned Work</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">PaperClip ownership projected from ops frontmatter.</p>
+                  <p className="text-sm font-semibold">배정 업무</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">운영 frontmatter에서 읽은 PaperClip 담당 정보입니다.</p>
                 </div>
                 {selectedAgent.currentWork.length ? selectedAgent.currentWork.map((item) => (
                   <EntityRow
@@ -4826,33 +4762,33 @@ function AgentsTab({
                   <EntityRow
                     key={`order:${order.id}`}
                     title={order.title}
-                    subtitle={`office order · ${order.priority}`}
+                    subtitle={`오피스 업무 · ${koStatusLabel(order.priority)}`}
                     leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
                     trailing={<StatusBadge status={order.status} />}
                   />
                 )) : null}
                 {!selectedAgent.currentWork.length && !selectedWorkOrders.length ? (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">No assigned work yet.</p>
+                  <p className="px-4 py-4 text-sm text-muted-foreground">아직 배정된 업무가 없습니다.</p>
                 ) : null}
               </div>
 
               <form className="border border-border" onSubmit={submitInstruction}>
                 <div className="border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">Instruction</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Message is stored as office work and paired with a wake request.</p>
+                  <p className="text-sm font-semibold">지시 보내기</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">메시지는 사무실 업무와 깨우기 요청으로 함께 남습니다.</p>
                 </div>
                 <div className="space-y-3 px-4 py-4">
                   <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     className="min-h-28 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                    placeholder={`Message ${compactAgentName(selectedAgent.name, data.name)}`}
+                    placeholder={`${compactAgentName(selectedAgent.name, data.name)}에게 메시지`}
                     disabled={isSending}
                   />
                   <div className="flex justify-end">
                     <Button type="submit" disabled={!draft.trim() || isSending} className="gap-1.5">
                       <Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />
-                      {isSending ? "Sending" : "Send + Wake"}
+                      {isSending ? "보내는 중" : "보내고 깨우기"}
                     </Button>
                   </div>
                 </div>
@@ -4862,7 +4798,7 @@ function AgentsTab({
             <aside className="min-w-0 space-y-4">
               <section className="border border-border">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">Run History</p>
+                  <p className="text-sm font-semibold">실행 기록</p>
                   <span className="text-xs text-muted-foreground">{selectedRequests.length}</span>
                 </div>
                 <div className="max-h-[310px] overflow-y-auto">
@@ -4877,18 +4813,18 @@ function AgentsTab({
                         <StatusBadge status={request.status} />
                         <span className="text-xs text-muted-foreground">{formatIsoAge(request.updatedAt || request.requestedAt)}</span>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "No note"}</p>
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "메모 없음"}</p>
                       <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{request.id}</p>
                     </button>
                   )) : (
-                    <p className="px-4 py-4 text-sm text-muted-foreground">No run history yet.</p>
+                    <p className="px-4 py-4 text-sm text-muted-foreground">아직 실행 기록이 없습니다.</p>
                   )}
                 </div>
               </section>
 
               <section className="border border-border">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">Recent Messages</p>
+                  <p className="text-sm font-semibold">최근 대화</p>
                   <span className="text-xs text-muted-foreground">{selectedMessages.length}</span>
                 </div>
                 <div className="max-h-[310px] overflow-y-auto">
@@ -4914,7 +4850,7 @@ function AgentsTab({
                       </div>
                     </article>
                   )) : (
-                    <p className="px-4 py-4 text-sm text-muted-foreground">No messages yet.</p>
+                    <p className="px-4 py-4 text-sm text-muted-foreground">아직 메시지가 없습니다.</p>
                   )}
                 </div>
               </section>
@@ -4979,15 +4915,15 @@ function CommsTab({
   if (!selectedAgent) {
     return (
       <div className="space-y-4">
-        <SectionTitle title="Comms" aside="0 agents" />
-        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">No agents found.</p>
+        <SectionTitle title="대화" aside="에이전트 없음" />
+        <p className="border border-border px-4 py-4 text-sm text-muted-foreground">에이전트를 찾을 수 없습니다.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Comms" aside={`${messages.length} messages`} />
+      <SectionTitle title="대화" aside={`메시지 ${messages.length}건`} />
       <div className="grid min-h-[560px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="min-w-0 border border-border">
           {data.agents.map((agent) => {
@@ -5026,7 +4962,7 @@ function CommsTab({
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{compactAgentName(selectedAgent.name, data.name)}</p>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {selectedAgent.currentWork[0]?.title ?? "No assigned work"}
+                  {selectedAgent.currentWork[0]?.title ?? "배정 업무 없음"}
                 </p>
               </div>
             </div>
@@ -5075,7 +5011,7 @@ function CommsTab({
               </article>
             )) : (
               <p className="border border-dashed border-border bg-background px-4 py-4 text-sm text-muted-foreground">
-                No messages for this agent yet.
+                이 에이전트의 메시지가 아직 없습니다.
               </p>
             )}
           </div>
@@ -5085,13 +5021,13 @@ function CommsTab({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               className="min-h-24 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-              placeholder={`Message ${compactAgentName(selectedAgent.name, data.name)}`}
+              placeholder={`${compactAgentName(selectedAgent.name, data.name)}에게 메시지`}
               disabled={isSending}
             />
             <div className="flex justify-end">
               <Button type="submit" disabled={!draft.trim() || isSending} className="gap-1.5">
                 <Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />
-                {isSending ? "Sending" : "Send + Wake"}
+                {isSending ? "보내는 중" : "보내고 깨우기"}
               </Button>
             </div>
           </form>
@@ -5143,7 +5079,7 @@ function TimelineEventRow({
   const targetWorkItem = workItemRefFromTarget(event.targetType, event.targetId);
   const targetRunId = runIdFromTarget(event.targetType, event.targetId);
   const targetWorkOrderId = workOrderIdFromTarget(event.targetType, event.targetId);
-  const targetLabel = targetWorkItem ? "Open Work Desk" : targetRunId ? "Open Run" : targetWorkOrderId ? "Open Work Order" : targetTab ? `Open ${roomTabLabel(targetTab)}` : "";
+  const targetLabel = targetWorkItem ? "업무 책상 열기" : targetRunId ? "실행 열기" : targetWorkOrderId ? "업무 요청 열기" : targetTab ? `${roomTabLabel(targetTab)} 열기` : "";
   const openTarget = () => {
     if (targetWorkItem) {
       onOpenWorkItem(targetWorkItem);
@@ -5209,17 +5145,17 @@ function OfficeZoneSignalBoard({
 }) {
   const counts = timeline?.counts;
   const zones: Array<{ tab: RoomTab; title: string; value: number; subtitle: string; icon: LucideIcon }> = [
-    { tab: "intake", title: "Work Intake", value: counts?.workOrders ?? 0, subtitle: "new work orders", icon: SquarePen },
-    { tab: "desk", title: "Work Desks", value: counts?.work ?? data.activity.length, subtitle: `${data.lanes.active.length} active · ${data.lanes.review.length} review`, icon: SquarePen },
-    { tab: "comms", title: "Comms", value: counts?.messages ?? messages.length, subtitle: `${messages.length} queued messages`, icon: MessageSquare },
-    { tab: "agents", title: "Runner", value: counts?.runs ?? data.requests.length, subtitle: `${data.requests.length} wake requests`, icon: Rocket },
-    { tab: "approvals", title: "Gates", value: (counts?.approvals ?? 0) + (counts?.reviews ?? 0), subtitle: `${counts?.approvals ?? 0} approvals · ${counts?.reviews ?? 0} reviews`, icon: ShieldAlert },
-    { tab: "routines", title: "Routines", value: counts?.routines ?? 0, subtitle: "heartbeat and manual wake logs", icon: Repeat2 },
+    { tab: "intake", title: "업무 접수", value: counts?.workOrders ?? 0, subtitle: "새 업무 요청", icon: SquarePen },
+    { tab: "desk", title: "업무 책상", value: counts?.work ?? data.activity.length, subtitle: `진행 ${data.lanes.active.length} · 검수 ${data.lanes.review.length}`, icon: SquarePen },
+    { tab: "comms", title: "대화", value: counts?.messages ?? messages.length, subtitle: `대기 메시지 ${messages.length}건`, icon: MessageSquare },
+    { tab: "agents", title: "실행기", value: counts?.runs ?? data.requests.length, subtitle: `깨우기 요청 ${data.requests.length}건`, icon: Rocket },
+    { tab: "approvals", title: "검수 관문", value: (counts?.approvals ?? 0) + (counts?.reviews ?? 0), subtitle: `승인 ${counts?.approvals ?? 0} · 검수 ${counts?.reviews ?? 0}`, icon: ShieldAlert },
+    { tab: "routines", title: "루틴", value: counts?.routines ?? 0, subtitle: "하트비트와 수동 깨우기 기록", icon: Repeat2 },
   ];
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="Office Zones" aside="click a desk" />
+      <SectionTitle title="사무실 구역" aside="책상을 선택하세요" />
       <div className="border border-border">
         {zones.map((zone) => {
           const Icon = zone.icon;
@@ -5269,18 +5205,18 @@ function ActivityTab({
   return (
     <div className="space-y-4">
       <section className="space-y-3">
-        <SectionTitle title="Office Timeline" aside={`${events.length || data.activity.length} events`} />
+        <SectionTitle title="사무실 타임라인" aside={`${events.length || data.activity.length}개 이벤트`} />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard icon={Activity} value={counts?.total ?? data.activity.length} label="Office Events" description="timeline signals" />
-          <MetricCard icon={SquarePen} value={counts?.work ?? data.activity.length} label="Work" description="desk and board activity" />
-          <MetricCard icon={MessageSquare} value={counts?.messages ?? messages.length} label="Comms" description="operator to agents" />
-          <MetricCard icon={ShieldAlert} value={(counts?.approvals ?? 0) + (counts?.reviews ?? 0)} label="Gates" description="review and approvals" />
+          <MetricCard icon={Activity} value={counts?.total ?? data.activity.length} label="사무실 이벤트" description="타임라인 신호" />
+          <MetricCard icon={SquarePen} value={counts?.work ?? data.activity.length} label="업무" description="책상과 보드 활동" />
+          <MetricCard icon={MessageSquare} value={counts?.messages ?? messages.length} label="대화" description="운영자와 에이전트" />
+          <MetricCard icon={ShieldAlert} value={(counts?.approvals ?? 0) + (counts?.reviews ?? 0)} label="검수 관문" description="검수와 승인" />
         </div>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="space-y-3">
-          <SectionTitle title="Live Office Log" aside={timeline ? `updated ${formatIsoAge(timeline.generatedAt)}` : "waiting"} />
+          <SectionTitle title="실시간 사무실 기록" aside={timeline ? `${formatIsoAge(timeline.generatedAt)} 갱신` : "대기 중"} />
           <div className="border border-border">
             {events.length ? events.map((event) => (
               <TimelineEventRow
@@ -5293,7 +5229,7 @@ function ActivityTab({
               />
             )) : (
               <div className="space-y-3 px-4 py-4">
-                <p className="text-sm text-muted-foreground">No office timeline signals yet.</p>
+                <p className="text-sm text-muted-foreground">아직 오피스 타임라인 신호가 없습니다.</p>
                 <ActivityList items={data.activity} />
               </div>
             )}
@@ -5303,24 +5239,24 @@ function ActivityTab({
         <div className="space-y-4">
           <OfficeZoneSignalBoard data={data} timeline={timeline} messages={messages} onOpenTab={onOpenTab} />
           <section className="space-y-3">
-            <SectionTitle title="Run Queue" aside={`${data.requests.length} requests`} />
+            <SectionTitle title="실행 대기열" aside={`요청 ${data.requests.length}건`} />
             <div className="border border-border">
               {data.requests.length ? data.requests.map((request) => (
                 <EntityRow
                   key={request.id}
                   title={request.agentName}
-                  subtitle={request.note ?? "No note"}
+                  subtitle={request.note ?? "메모 없음"}
                   leading={<Activity className="h-4 w-4 text-muted-foreground" />}
                   trailing={<StatusBadge status={request.status} />}
                 />
               )) : (
-                <p className="px-4 py-4 text-sm text-muted-foreground">No queued agent runs.</p>
+                <p className="px-4 py-4 text-sm text-muted-foreground">대기 중인 에이전트 실행이 없습니다.</p>
               )}
             </div>
           </section>
 
           <section className="space-y-3">
-            <SectionTitle title="Office Messages" aside={`${messages.length} messages`} />
+            <SectionTitle title="사무실 대화" aside={`메시지 ${messages.length}건`} />
             <div className="border border-border">
               {messages.length ? messages.slice(0, 8).map((message) => (
                 <EntityRow
@@ -5331,7 +5267,7 @@ function ActivityTab({
                   trailing={<span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>}
                 />
               )) : (
-                <p className="px-4 py-4 text-sm text-muted-foreground">No office messages yet.</p>
+                <p className="px-4 py-4 text-sm text-muted-foreground">아직 오피스 메시지가 없습니다.</p>
               )}
             </div>
           </section>
@@ -5344,13 +5280,13 @@ function ActivityTab({
 function DetailsTab({ data }: { data: SpliceWorkspaceRoomData }) {
   const detailItems = [
     data.objective ? { id: data.objective.slug, title: data.objective.name, type: goalKindLabel(data.objective), body: data.objective.description } : null,
-    ...data.projects.slice(0, 2).map((project) => ({ id: project.id, title: project.title, type: "Project", body: project.description })),
-    ...data.lanes.review.slice(0, 2).map((issue) => ({ id: issue.id, title: issue.title, type: "Issue", body: issue.description })),
+    ...data.projects.slice(0, 2).map((project) => ({ id: project.id, title: project.title, type: "프로젝트", body: project.description })),
+    ...data.lanes.review.slice(0, 2).map((issue) => ({ id: issue.id, title: issue.title, type: "이슈", body: issue.description })),
   ].filter((item): item is { id: string; title: string; type: string; body: string | null } => Boolean(item));
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="Details" aside="PaperClip bodies" />
+      <SectionTitle title="상세" aside="PaperClip 본문" />
       <div className="border border-border divide-y divide-border">
         {detailItems.map((item) => {
           const body = displayMarkdownBody(item.body);
@@ -5367,7 +5303,7 @@ function DetailsTab({ data }: { data: SpliceWorkspaceRoomData }) {
                   {body}
                 </MarkdownBody>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No body found.</p>
+                <p className="mt-3 text-sm text-muted-foreground">본문이 없습니다.</p>
               )}
             </article>
           );
@@ -5419,7 +5355,7 @@ function ActivityList({ items }: { items: SpliceWorkspaceRoomData["activity"] })
           trailing={<span className="text-xs text-muted-foreground">{formatAge(item.ageMin)}</span>}
         />
       )) : (
-        <p className="px-4 py-4 text-sm text-muted-foreground">No activity yet.</p>
+        <p className="px-4 py-4 text-sm text-muted-foreground">아직 활동 기록이 없습니다.</p>
       )}
     </div>
   );
@@ -5670,7 +5606,6 @@ function RoomMap({
     : [];
   const selectedPrimaryWork = selectedActor?.currentWork[0] ?? null;
   const selectedPrimaryRequest = selectedRequests[0] ?? null;
-  const wakingSelected = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
   const sendingSelected = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
   const roomWorkOrders = (workOrders?.workOrders ?? []).filter((order) => isOpenOfficeStatus(order.status));
   const visibleRoomWorkOrders = roomWorkOrders.slice(0, 8);
@@ -5715,7 +5650,9 @@ function RoomMap({
     { tab: "lanes", title: "작업 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 사본`, icon: GitBranch },
   ];
   const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
-  const executionNotStarted = runCounts.active === 0 && queuedRuns === 0 && data.totals.assignedAgents > 0;
+  const completedRuns = runCounts.done + runCounts.noop;
+  const completedNeedsReview = runCounts.active === 0 && queuedRuns === 0 && completedRuns > 0;
+  const executionNotStarted = runCounts.active === 0 && queuedRuns === 0 && completedRuns === 0 && data.totals.assignedAgents > 0;
   const priorityItems: Array<{
     tab: RoomTab;
     title: string;
@@ -5744,15 +5681,17 @@ function RoomMap({
       className: runCounts.active > 0 ? "border-emerald-500/50 bg-emerald-500/10" : "border-border bg-background",
     },
     {
-      tab: executionNotStarted ? "runs" : "reviews",
+      tab: executionNotStarted || completedNeedsReview ? "runs" : "reviews",
       title: "현재 병목",
-      value: executionNotStarted ? 1 : reviewAttention,
+      value: completedNeedsReview ? completedRuns : executionNotStarted ? 1 : reviewAttention,
       unit: "건",
-      detail: executionNotStarted
-        ? "업무는 배정됐지만 실제 실행이 아직 시작되지 않음"
-        : `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
+      detail: completedNeedsReview
+        ? `완료된 에이전트 결과 ${completedRuns}건 검수 필요`
+        : executionNotStarted
+          ? "업무는 배정됐지만 실제 실행이 아직 시작되지 않음"
+          : `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
       icon: ShieldAlert,
-      className: executionNotStarted || reviewAttention > 0
+      className: completedNeedsReview || executionNotStarted || reviewAttention > 0
         ? "border-amber-500/50 bg-amber-500/10"
         : "border-border bg-background",
     },
@@ -6007,17 +5946,6 @@ function RoomMap({
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => selectedAgent && onRunAgent(selectedAgent.id)}
-                      disabled={!selectedAgent || wakingSelected}
-                      className="h-8 gap-1.5"
-                    >
-                      <Rocket className={cn("h-3.5 w-3.5", wakingSelected && "animate-pulse")} />
-                      {wakingSelected ? "깨우는 중" : "깨우기"}
-                    </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => openFocusedTab("comms")} className="h-8 gap-1.5">
                       <MessageSquare className="h-3.5 w-3.5" />
                       대화 보기
@@ -6034,7 +5962,7 @@ function RoomMap({
 
                   <details className="border border-border bg-background">
                     <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">
-                      Splice에서 직접 지시하기
+                      고급 운영 도구: Splice에서 직접 지시하기
                     </summary>
                     <form
                       data-testid="desk-focus-instruction-form"
@@ -6423,7 +6351,7 @@ export function SpliceWorkspaceRoom() {
           Could not load Puzzle Game
         </div>
         <p className="mt-2 text-red-800/80 dark:text-red-200/80">
-          {roomQuery.error instanceof Error ? roomQuery.error.message : "Unknown error"}
+          {roomQuery.error instanceof Error ? roomQuery.error.message : "알 수 없는 오류"}
         </p>
       </div>
     );
