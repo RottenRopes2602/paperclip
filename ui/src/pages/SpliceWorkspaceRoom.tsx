@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Goal, Issue, Project } from "@paperclipai/shared";
 import {
@@ -985,16 +985,18 @@ function PuzzleSidebar({
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
+  const compactDesktop = typeof window !== "undefined" && window.innerWidth >= 640;
+  const mobileLayout = isMobile && !compactDesktop;
   const selectTab = (tab: RoomTab) => {
     onTabChange(tab);
-    if (isMobile) setSidebarOpen(false);
+    if (mobileLayout) setSidebarOpen(false);
   };
 
   const activeGroup = roomNavigationGroupForTab(activeTab);
 
   return (
     <>
-      {isMobile && sidebarOpen ? (
+      {mobileLayout && sidebarOpen ? (
         <button
           type="button"
           className="fixed inset-0 z-40 bg-black/50"
@@ -1004,35 +1006,24 @@ function PuzzleSidebar({
       ) : null}
       <aside
         className={cn(
-          "w-60 shrink-0 border-r border-border bg-background",
+          "w-[156px] shrink-0 border-r border-border bg-background",
           "flex h-full min-h-0 flex-col",
-          isMobile
+          mobileLayout
             ? cn(
                 "fixed inset-y-0 left-0 z-50 pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
                 sidebarOpen ? "translate-x-0" : "-translate-x-full",
               )
-            : "hidden md:flex",
+            : "hidden sm:flex",
         )}
       >
-        <div className="flex h-12 shrink-0 items-center gap-2 px-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1">
-            <CompanyPatternIcon companyName={data.name} className="h-7 w-7 shrink-0 rounded-md" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{data.name}</p>
-              <p className="truncate text-[11px] text-muted-foreground">PZ · 퍼즐 사무실</p>
-            </div>
+        <div className="flex h-[70px] shrink-0 items-center px-5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{data.name}</p>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">관찰 전용</p>
           </div>
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground"
-            aria-label="퍼즐게임 테스트베드에서는 검색이 비활성화되어 있습니다"
-            disabled
-          >
-            <Search className="h-4 w-4" />
-          </button>
         </div>
 
-        <nav aria-label="Splice 주요 탐색" className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2">
+        <nav aria-label="Splice 주요 탐색" className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2.5 py-2">
           {roomNavigationGroups.map((group) => {
             const Icon = group.icon;
             const active = activeGroup === group.value;
@@ -1043,8 +1034,8 @@ function PuzzleSidebar({
                 aria-current={active ? "page" : undefined}
                 onClick={() => selectTab(group.defaultTab)}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] font-medium transition-colors",
-                  active ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+                  "flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                  active ? "bg-[#339cf4] text-white hover:bg-[#339cf4]" : "text-muted-foreground hover:bg-[#eef6ff] hover:text-[#2586d4]",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -1055,8 +1046,8 @@ function PuzzleSidebar({
           })}
         </nav>
 
-        <div className="border-t border-border px-3 py-3 text-[11px] text-muted-foreground">
-          <p className="truncate">{data.dataSource}</p>
+        <div className="border-t border-border px-5 py-3 text-[11px] leading-4 text-muted-foreground">
+          <p>입력 기능은 기본 화면에서 숨김</p>
         </div>
       </aside>
     </>
@@ -1144,7 +1135,36 @@ function PuzzleWorkspaceShell({
   }, [activeTab, setBreadcrumbs]);
 
   return (
-    <div className="flex h-full min-h-0 bg-background text-foreground">
+    <div
+      className="splice-observer-light flex h-full min-h-0 bg-background text-foreground"
+      style={{
+        "--background": "#ffffff",
+        "--foreground": "#181a1f",
+        "--card": "#f4f5f7",
+        "--card-foreground": "#181a1f",
+        "--popover": "#ffffff",
+        "--popover-foreground": "#181a1f",
+        "--primary": "#339cf4",
+        "--primary-foreground": "#ffffff",
+        "--secondary": "#f4f5f7",
+        "--secondary-foreground": "#181a1f",
+        "--muted": "#f4f5f7",
+        "--muted-foreground": "#858991",
+        "--accent": "#eaf5ff",
+        "--accent-foreground": "#2586d4",
+        "--border": "#e5e7eb",
+        "--input": "#e5e7eb",
+        "--ring": "#339cf4",
+        "--sidebar": "#ffffff",
+        "--sidebar-foreground": "#181a1f",
+        "--sidebar-primary": "#339cf4",
+        "--sidebar-primary-foreground": "#ffffff",
+        "--sidebar-accent": "#eaf5ff",
+        "--sidebar-accent-foreground": "#2586d4",
+        "--sidebar-border": "#e5e7eb",
+        "--sidebar-ring": "#339cf4",
+      } as CSSProperties}
+    >
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1158,16 +1178,16 @@ function PuzzleWorkspaceShell({
         onTabChange={onTabChange}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <BreadcrumbBar scope="splice" />
-        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-4 outline-none md:p-6">
+        {activeTab !== "dashboard" ? <BreadcrumbBar scope="splice" /> : null}
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-[18px] outline-none">
           <div className="space-y-6">
-            <RoomContextualTabs activeTab={activeTab} onTabChange={onTabChange} />
-            <div className="flex items-center justify-end">
+            {activeTab !== "dashboard" ? <RoomContextualTabs activeTab={activeTab} onTabChange={onTabChange} /> : null}
+            {activeTab !== "dashboard" ? <div className="flex items-center justify-end">
               <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
                 <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
                 새로고침
               </Button>
-            </div>
+            </div> : null}
             {children}
           </div>
         </main>
@@ -5669,7 +5689,7 @@ function RoomMap({
       unit: "개",
       detail: copyDetail || "연결된 사본 없음",
       icon: GitBranch,
-      className: data.executionLanes.length > 1 ? "border-sky-500/50 bg-sky-500/10" : "border-border bg-background",
+      className: "border-0 bg-muted",
     },
     {
       tab: "runs",
@@ -5678,11 +5698,11 @@ function RoomMap({
       unit: "명",
       detail: `업무 배정 ${data.totals.assignedAgents} · 실행 대기 ${queuedRuns}`,
       icon: Bot,
-      className: runCounts.active > 0 ? "border-emerald-500/50 bg-emerald-500/10" : "border-border bg-background",
+      className: "border-0 bg-muted",
     },
     {
       tab: executionNotStarted || completedNeedsReview ? "runs" : "reviews",
-      title: "현재 병목",
+      title: "확인 필요",
       value: completedNeedsReview ? completedRuns : executionNotStarted ? 1 : reviewAttention,
       unit: "건",
       detail: completedNeedsReview
@@ -5691,9 +5711,7 @@ function RoomMap({
           ? "업무는 배정됐지만 실제 실행이 아직 시작되지 않음"
           : `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
       icon: ShieldAlert,
-      className: completedNeedsReview || executionNotStarted || reviewAttention > 0
-        ? "border-amber-500/50 bg-amber-500/10"
-        : "border-border bg-background",
+      className: "border-0 bg-muted",
     },
   ];
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
@@ -5706,11 +5724,11 @@ function RoomMap({
   };
 
   return (
-    <section className="space-y-7">
-      <header className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="space-y-3">
+      <header className="flex flex-col gap-3 border-b border-border pb-0 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">관제</h2>
-          <p className="mt-1 text-sm text-muted-foreground">현재 상태와 먼저 확인할 일을 봅니다.</p>
+          <p className="mt-1 text-xs text-muted-foreground">현재 상태와 먼저 확인할 일</p>
         </div>
         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
           <span className="border border-border px-2.5 py-1">작업 사본 {data.executionLanes.length}</span>
@@ -5719,7 +5737,7 @@ function RoomMap({
         </div>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
           {priorityItems.map((item, index) => {
             const Icon = item.icon;
             return (
@@ -5728,7 +5746,7 @@ function RoomMap({
                 type="button"
                 onClick={() => onOpenTab(item.tab)}
                 className={cn(
-                  "min-w-0 border px-3 py-3 text-left transition-colors hover:bg-accent/50",
+                  "min-w-0 rounded-2xl border-0 px-4 py-3 text-left transition-colors hover:bg-accent/70",
                   item.className,
                 )}
               >
@@ -5738,7 +5756,7 @@ function RoomMap({
                   </span>
                   <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </div>
-                <p className="mt-3 text-2xl font-semibold tabular-nums">
+                <p className="mt-3 text-xl font-semibold tabular-nums">
                   {formatNumber(item.value)}
                   <span className="ml-1 text-xs font-normal text-muted-foreground">{item.unit}</span>
                 </p>
@@ -5748,7 +5766,7 @@ function RoomMap({
           })}
       </div>
 
-      <section>
+      <section className="pt-2">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">내가 확인할 것</h3>
           <span className="text-xs text-muted-foreground">우선순위순</span>
@@ -5782,7 +5800,7 @@ function RoomMap({
         </div>
       </section>
 
-      <section>
+      <section className="pt-2">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">현재 움직임</h3>
           <span className="text-xs text-muted-foreground">최근 작업 사본과 세션</span>
