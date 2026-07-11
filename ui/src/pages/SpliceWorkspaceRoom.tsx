@@ -78,6 +78,11 @@ const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID
 type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
 type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null };
+type SelectedWorkspaceTarget =
+  | { kind: "role"; actorId: string }
+  | { kind: "lane"; laneId: string }
+  | { kind: "session"; laneId: string; actorId: string }
+  | { kind: "run"; runId: string };
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "관제", icon: LayoutDashboard },
@@ -745,25 +750,20 @@ function SharedRoleDesk({
 function ExecutionLaneRoom({
   agents,
   lane,
-  onOpenRun,
-  onOpenTab,
-  onSelectAgent,
+  onSelectTarget,
   runs,
-  selectedActorId,
+  selectedTarget,
   workspaceName,
 }: {
   agents: SpliceWorkspaceRoomActor[];
   lane: SpliceExecutionLane;
-  onOpenRun: (runId: string) => void;
-  onOpenTab: (tab: RoomTab) => void;
-  onSelectAgent: (agent: SpliceWorkspaceRoomActor) => void;
+  onSelectTarget: (target: SelectedWorkspaceTarget) => void;
   runs: SpliceAgentRunRequest[];
-  selectedActorId: string;
+  selectedTarget: SelectedWorkspaceTarget | null;
   workspaceName: string;
 }) {
   const laneActors = lane.actors.map((actor) => ({ actor, canonical: officeActorForLaneActor(actor, agents) }));
   const liveRuns = runs.filter((run) => isLiveOfficeRun(run) && runMatchesExecutionLane(run, lane));
-  const firstAgent = laneActors.find((entry) => entry.canonical)?.canonical ?? null;
   const instanceCount = laneActors.length + liveRuns.length;
   const theme = executionLaneRoomTheme(lane);
 
@@ -789,7 +789,7 @@ function ExecutionLaneRoom({
       <div className="absolute -bottom-[6px] left-1/2 z-30 h-8 w-20 -translate-x-1/2 border-x-[6px] border-t-[6px] bg-[#b98558]" style={{ borderColor: theme.wall }} aria-hidden="true" />
       <button
         type="button"
-        onClick={() => firstAgent ? onSelectAgent(firstAgent) : onOpenTab("lanes")}
+        onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })}
         className="relative z-20 flex w-full min-w-0 items-start justify-between gap-2 border-2 border-black bg-[#101820]/95 px-2.5 py-2 text-left font-mono shadow-[3px_3px_0_rgba(0,0,0,0.38)] focus:outline-none focus:ring-2 focus:ring-cyan-300"
         title={`${lane.name} 코드 사본 열기`}
       >
@@ -803,20 +803,21 @@ function ExecutionLaneRoom({
         {laneActors.slice(0, 3).map(({ actor, canonical }) => (
           <PixelWorkInstance
             key={`actor:${actor.id}`}
-            active={canonical?.id === selectedActorId}
+            active={selectedTarget?.kind === "session" && selectedTarget.laneId === lane.id && selectedTarget.actorId === actor.id}
             label={compactAgentName(actor.name, workspaceName)}
             meta="세션"
             tone={actor.kind === "agent" ? "cyan" : "emerald"}
-            onClick={() => canonical ? onSelectAgent(canonical) : onOpenTab("lanes")}
+            onClick={() => onSelectTarget({ kind: "session", laneId: lane.id, actorId: actor.id })}
           />
         ))}
         {liveRuns.slice(0, 3).map((run) => (
           <PixelWorkInstance
             key={`run:${run.id}`}
+            active={selectedTarget?.kind === "run" && selectedTarget.runId === run.id}
             label={compactAgentName(run.agentName, workspaceName)}
             meta={runtimeLabel(run.runtime, run.status)}
             tone="amber"
-            onClick={() => onOpenRun(run.id)}
+            onClick={() => onSelectTarget({ kind: "run", runId: run.id })}
           />
         ))}
         {instanceCount > 6 ? <span className="border-2 border-black bg-[#273447] px-1.5 py-1 font-mono text-[9px] font-bold text-cyan-50">+{instanceCount - 6}</span> : null}
@@ -830,23 +831,19 @@ function CopyLaneOffice({
   agents,
   filter,
   lanes,
-  onOpenRun,
-  onOpenTab,
-  onSelectAgent,
+  onSelectTarget,
   onSelectFilter,
   runs,
-  selectedActorId,
+  selectedTarget,
   workspaceName,
 }: {
   agents: SpliceWorkspaceRoomActor[];
   filter: OfficeLaneFilter;
   lanes: SpliceExecutionLane[];
-  onOpenRun: (runId: string) => void;
-  onOpenTab: (tab: RoomTab) => void;
-  onSelectAgent: (agent: SpliceWorkspaceRoomActor) => void;
+  onSelectTarget: (target: SelectedWorkspaceTarget) => void;
   onSelectFilter: (filter: OfficeLaneFilter) => void;
   runs: SpliceAgentRunRequest[];
-  selectedActorId: string;
+  selectedTarget: SelectedWorkspaceTarget | null;
   workspaceName: string;
 }) {
   const visibleLanes = lanes.filter((lane) => laneMatchesOfficeFilter(lane, filter));
@@ -881,11 +878,9 @@ function CopyLaneOffice({
             agents={agents}
             lane={lane}
             runs={runs}
-            selectedActorId={selectedActorId}
+            selectedTarget={selectedTarget}
             workspaceName={workspaceName}
-            onSelectAgent={onSelectAgent}
-            onOpenRun={onOpenRun}
-            onOpenTab={onOpenTab}
+            onSelectTarget={onSelectTarget}
           />
         ))}
         {!visibleLanes.length ? (
@@ -908,15 +903,155 @@ function CopyLaneOffice({
             <SharedRoleDesk
               key={actor.id}
               actor={actor}
-              active={actor.id === selectedActorId}
+              active={selectedTarget?.kind === "role" && selectedTarget.actorId === actor.id}
               workspaceName={workspaceName}
-              onSelect={() => onSelectAgent(actor)}
+              onSelect={() => onSelectTarget({ kind: "role", actorId: actor.id })}
             />
           ))}
           {!agents.length ? <span className="font-mono text-[10px] text-amber-100/65">등록 역할이 아직 없습니다.</span> : null}
         </div>
       </section>
     </div>
+  );
+}
+
+function SelectionInspector({
+  data,
+  onFocusAgent,
+  onOpenRun,
+  onOpenTab,
+  onOpenWorkItem,
+  onSend,
+  onSelectTarget,
+  runs,
+  selectedTarget,
+  sendingAgentId,
+  workProducts,
+}: {
+  data: SpliceWorkspaceRoomData;
+  onFocusAgent: (agentId: string) => void;
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
+  onSend: (agentId: string, body: string) => void;
+  onSelectTarget: (target: SelectedWorkspaceTarget) => void;
+  runs: SpliceAgentRunRequest[];
+  selectedTarget: SelectedWorkspaceTarget | null;
+  sendingAgentId: string | null;
+  workProducts: SpliceWorkProduct[];
+}) {
+  const [instruction, setInstruction] = useState("");
+  const role = selectedTarget?.kind === "role"
+    ? data.agents.find((actor) => actor.id === selectedTarget.actorId) ?? null
+    : null;
+  const lane = selectedTarget?.kind === "lane" || selectedTarget?.kind === "session"
+    ? data.executionLanes.find((candidate) => candidate.id === selectedTarget.laneId) ?? null
+    : null;
+  const sessionActor = selectedTarget?.kind === "session" && lane
+    ? lane.actors.find((actor) => actor.id === selectedTarget.actorId) ?? null
+    : null;
+  const sessionRole = sessionActor
+    ? data.agents.find((actor) => actor.id === sessionActor.id || actor.slug === sessionActor.id || actor.name === sessionActor.name) ?? null
+    : null;
+  const run = selectedTarget?.kind === "run"
+    ? runs.find((candidate) => candidate.id === selectedTarget.runId) ?? null
+    : null;
+  const runRole = run
+    ? data.agents.find((actor) => actor.id === run.agentId || actor.slug === run.agentId || actor.name === run.agentName) ?? null
+    : null;
+  const runLane = run ? data.executionLanes.find((candidate) => runMatchesExecutionLane(run, candidate)) ?? null : null;
+  const roleRuns = role ? runRequestsForActor(runs, role) : [];
+  const roleProducts = role
+    ? workProducts.filter((product) => product.ownerName === role.name || product.agentName === role.name || product.agentId === role.id || product.agentId === role.slug)
+    : [];
+  const roleWork = role?.currentWork[0] ?? null;
+  const runWork = runRole?.currentWork[0] ?? null;
+  const isSending = Boolean(role && sendingAgentId === role.id);
+
+  const submitInstruction = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const body = instruction.trim();
+    if (!role || !body || isSending) return;
+    setInstruction("");
+    onFocusAgent(role.id);
+    onSend(role.id, body);
+  };
+
+  const actionButtonClass = "h-8 gap-1.5";
+  const inspectorTitle = selectedTarget?.kind === "role"
+    ? "등록 역할"
+    : selectedTarget?.kind === "lane"
+      ? "코드 사본"
+      : selectedTarget?.kind === "session"
+        ? "작업 인스턴스"
+        : selectedTarget?.kind === "run"
+          ? "실제 실행"
+          : "선택 없음";
+
+  return (
+    <section data-testid="selection-inspector" className="min-w-0 border-2 border-border bg-background">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 lg:px-5">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">선택 정보</p>
+          <p className="mt-1 text-xs text-muted-foreground">{inspectorTitle}</p>
+        </div>
+        {role ? <StatusBadge status={role.state} /> : null}
+        {lane ? <LaneStatePill state={lane.state} /> : null}
+        {run ? <RunRuntimePill runtime={run.runtime} status={run.status} /> : null}
+      </div>
+
+      {!selectedTarget ? (
+        <p className="px-4 py-5 text-sm text-muted-foreground">등록 역할, 코드 사본 방, 작업 인스턴스 또는 실제 실행을 선택하세요.</p>
+      ) : null}
+
+      {selectedTarget?.kind === "role" && role ? (
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5">
+          <div className="min-w-0 space-y-3">
+            <div>
+              <p className="text-base font-semibold">{compactAgentName(role.name, data.name)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{role.role} · 현재 담당 {role.currentWork[0]?.title ?? "배정 업무 없음"}</p>
+            </div>
+            <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+              <div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">업무 배정</p><p className="mt-1 text-sm font-medium">{role.currentWork.length}건</p></div>
+              <div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">실제 실행</p><p className="mt-1 text-sm font-medium">{roleRuns.filter(isLiveOfficeRun).length}건</p></div>
+              <div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">결과 · 검수</p><p className="mt-1 text-sm font-medium">{roleProducts.length} · {role.reviewCount}</p></div>
+            </div>
+            <div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground">
+              <p>작업 위치: {role.session?.path ?? role.zone}</p>
+              <p className="mt-1">업무 배정은 역할 기준이며, 실제 실행은 코드 사본의 세션과 run에서 별도로 추적합니다.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap content-start gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => roleWork ? onOpenWorkItem(roleWork) : onOpenTab("issues")} className={actionButtonClass}><SquarePen className="h-3.5 w-3.5" />업무</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className={actionButtonClass}><FolderOpen className="h-3.5 w-3.5" />결과</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => { onFocusAgent(role.id); onOpenTab("comms"); }} className={actionButtonClass}><MessageSquare className="h-3.5 w-3.5" />대화</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => roleRuns[0] ? onOpenRun(roleRuns[0].id) : onOpenTab("runs")} className={actionButtonClass}><Activity className="h-3.5 w-3.5" />실행 기록</Button>
+          </div>
+          <details className="border border-border bg-background lg:col-span-2">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">고급 운영 도구: Splice에서 직접 지시하기</summary>
+            <form data-testid="desk-focus-instruction-form" className="space-y-2 border-t border-border px-3 py-3" onSubmit={submitInstruction}>
+              <textarea data-testid="desk-focus-instruction-input" value={instruction} onChange={(event) => setInstruction(event.target.value)} className="min-h-20 w-full resize-y border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-ring" placeholder={`${compactAgentName(role.name, data.name)}에게 보낼 말`} disabled={isSending} />
+              <div className="flex justify-end"><Button type="submit" size="sm" disabled={!instruction.trim() || isSending} className={actionButtonClass}><Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />{isSending ? "전송 중" : "전송 + 깨우기"}</Button></div>
+            </form>
+          </details>
+        </div>
+      ) : null}
+
+      {selectedTarget?.kind === "lane" && lane ? (
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5">
+          <div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{lane.name}</p><p className="mt-1 text-xs text-muted-foreground">{lane.managerLabel} · {lane.copyKindLabel} · {lane.branch}</p></div><div className="grid gap-px border border-border bg-border sm:grid-cols-3"><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">변경 파일</p><p className="mt-1 text-sm font-medium">{lane.dirty}</p></div><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">앞섬 · 뒤처짐</p><p className="mt-1 text-sm font-medium">{lane.ahead} · {lane.behind}</p></div><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">세션 · run</p><p className="mt-1 text-sm font-medium">{lane.actors.length} · {lane.liveRunCount + lane.queuedRunCount}</p></div></div><p className="break-all border border-border bg-muted/25 px-3 py-3 font-mono text-[11px] text-muted-foreground">{lane.path}</p></div>
+          <div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />코드 사본 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("activity")} className={actionButtonClass}><History className="h-3.5 w-3.5" />최근 기록</Button></div>
+        </div>
+      ) : null}
+
+      {selectedTarget?.kind === "session" && lane && sessionActor ? (
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{sessionActor.name}</p><p className="mt-1 text-xs text-muted-foreground">{lane.name}의 세션 · {sessionActor.state}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>코드 사본: {lane.copyKindLabel} · {lane.branch}</p><p className="mt-1">연결 역할: {sessionRole ? `${compactAgentName(sessionRole.name, data.name)} · ${sessionRole.role}` : "등록 역할과 연결되지 않음"}</p><p className="mt-1">이 항목은 실제 에이전트 실행이 아니며, 작업 세션 신호입니다.</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />코드 사본</Button>{sessionRole ? <Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "role", actorId: sessionRole.id })} className={actionButtonClass}><Bot className="h-3.5 w-3.5" />등록 역할</Button> : null}<Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button></div></div>
+      ) : null}
+
+      {selectedTarget?.kind === "run" && run ? (
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{compactAgentName(run.agentName, data.name)}</p><p className="mt-1 break-all font-mono text-xs text-muted-foreground">{run.id}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>등록 역할: {runRole ? `${compactAgentName(runRole.name, data.name)} · ${runRole.role}` : "연결 역할 없음"}</p><p className="mt-1">코드 사본: {runLane ? `${runLane.name} · ${runLane.branch}` : run.workspacePath ?? run.launch?.workspacePath ?? "확인되지 않음"}</p><p className="mt-1">상태 · 시간: {runtimeLabel(run.runtime, run.status)} · {formatIsoAge(run.updatedAt ?? run.requestedAt)}</p><p className="mt-1">연결 업무: {run.note ?? run.launch?.card ?? runWork?.title ?? "연결 정보 없음"}</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenRun(run.id)} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => runWork ? onOpenWorkItem(runWork) : onOpenTab("desk")} className={actionButtonClass}><SquarePen className="h-3.5 w-3.5" />업무</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className={actionButtonClass}><FolderOpen className="h-3.5 w-3.5" />결과</Button></div></div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1754,6 +1889,7 @@ function DashboardTab({
   timeline: SpliceOfficeTimelineData | null;
 }) {
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
+  const queuedRuns = runCounts.requested + runCounts.launchReady;
   const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
   const signals = [
     { tab: "runs" as const, title: "실행 중", value: runCounts.active, detail: `실행 대기 ${runCounts.requested + runCounts.launchReady}`, icon: Rocket },
@@ -5857,6 +5993,7 @@ function OfficeOverview({
     ? roomActors.find((actor) => actor.id === focusedAgentId || actor.slug === focusedAgentId) ?? null
     : null;
   const [selectedActorId, setSelectedActorId] = useState(focusedActor?.id ?? preferredActor?.id ?? "");
+  const [selectedTarget, setSelectedTarget] = useState<SelectedWorkspaceTarget | null>(null);
   const [deskDraft, setDeskDraft] = useState("");
   const [laneFilter, setLaneFilter] = useState<OfficeLaneFilter>("all");
   useEffect(() => {
@@ -5905,7 +6042,22 @@ function OfficeOverview({
     onOpenTab(tab);
   };
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
-  const queuedRuns = runCounts.requested + runCounts.launchReady;
+  useEffect(() => {
+    if (!selectedTarget && preferredActor) {
+      setSelectedTarget({ kind: "role", actorId: preferredActor.id });
+      return;
+    }
+    if (selectedTarget?.kind === "role" && !data.agents.some((actor) => actor.id === selectedTarget.actorId)) {
+      setSelectedTarget(preferredActor ? { kind: "role", actorId: preferredActor.id } : null);
+    }
+  }, [data.agents, preferredActor, selectedTarget]);
+  const selectTarget = (target: SelectedWorkspaceTarget) => {
+    setSelectedTarget(target);
+    if (target.kind === "role") {
+      setSelectedActorId(target.actorId);
+      onFocusAgent(target.actorId);
+    }
+  };
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const body = deskDraft.trim();
@@ -5936,16 +6088,25 @@ function OfficeOverview({
           filter={laneFilter}
           lanes={data.executionLanes}
           runs={roomRunRequests}
-          selectedActorId={selectedActor?.id ?? ""}
+          selectedTarget={selectedTarget}
           workspaceName={data.name}
           onSelectFilter={setLaneFilter}
+          onSelectTarget={selectTarget}
+        />
+        <SelectionInspector
+          data={data}
+          runs={roomRunRequests}
+          selectedTarget={selectedTarget}
+          sendingAgentId={sendingAgentId}
+          workProducts={workProducts}
+          onFocusAgent={onFocusAgent}
           onOpenRun={onOpenRun}
           onOpenTab={onOpenTab}
-          onSelectAgent={(actor) => {
-            setSelectedActorId(actor.id);
-            onFocusAgent(actor.id);
-          }}
+          onOpenWorkItem={onOpenWorkItem}
+          onSend={onSend}
+          onSelectTarget={selectTarget}
         />
+        {false ? (
         <div className="min-w-0 border-2 border-border bg-background">
           <div className="px-4 py-4 lg:px-5">
             <div className="flex items-start justify-between gap-3">
@@ -5970,7 +6131,7 @@ function OfficeOverview({
                     <p className="mt-1 truncate text-xs text-muted-foreground">{actorRoomLine(selectedActor)}</p>
                     {selectedActor.request ? (
                       <p className="mt-2 line-clamp-2 font-mono text-[11px] text-muted-foreground">
-                        {selectedActor.request.note ?? selectedActor.request.id}
+                        {selectedActor.request?.note ?? selectedActor.request?.id}
                       </p>
                     ) : null}
                   </div>
@@ -6089,14 +6250,14 @@ function OfficeOverview({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">직접 지시</p>
-                        {selectedAgent ? <span className="truncate text-[11px] text-muted-foreground">{compactAgentName(selectedAgent.name, data.name)}</span> : null}
+                        {selectedAgent ? <span className="truncate text-[11px] text-muted-foreground">{compactAgentName(selectedAgent?.name ?? selectedActor.name, data.name)}</span> : null}
                       </div>
                       <textarea
                         data-testid="desk-focus-instruction-input"
                         value={deskDraft}
                         onChange={(event) => setDeskDraft(event.target.value)}
                         className="min-h-20 w-full resize-y border border-border bg-background px-2.5 py-2 text-sm outline-none focus:border-ring"
-                        placeholder={selectedAgent ? `${compactAgentName(selectedAgent.name, data.name)}에게 보낼 말` : "먼저 에이전트 책상을 선택하세요"}
+                        placeholder={selectedAgent ? `${compactAgentName(selectedAgent?.name ?? selectedActor.name, data.name)}에게 보낼 말` : "먼저 에이전트 책상을 선택하세요"}
                         disabled={!selectedAgent || sendingSelected}
                       />
                       <div className="flex justify-end">
@@ -6117,40 +6278,8 @@ function OfficeOverview({
             ) : null}
           </div>
 
-          <details className="border-t border-border">
-            <summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground">
-              러너 수동 조작
-            </summary>
-            <div className="border-t border-border px-4 py-3">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDispatchRunner(true)}
-                  disabled={dispatchingRunner || queuedRuns === 0}
-                  className="h-8 gap-1.5"
-                >
-                  <Activity className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
-                  미리 점검
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDispatchRunner(false)}
-                  disabled={dispatchingRunner || queuedRuns === 0}
-                  className="h-8 gap-1.5"
-                >
-                  <Rocket className={cn("h-3.5 w-3.5", dispatchingRunner && "animate-pulse")} />
-                  실행 시작
-                </Button>
-              </div>
-              {runnerNotice ? <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{runnerNotice}</p> : null}
-            </div>
-          </details>
-
         </div>
+        ) : null}
       </section>
     </section>
   );

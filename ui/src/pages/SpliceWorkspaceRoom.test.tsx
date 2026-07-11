@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SpliceRunMonitorData } from "@/api/splice";
 import { SpliceWorkspaceRoom } from "./SpliceWorkspaceRoom";
 
 const roomMock = vi.hoisted(() => vi.fn());
@@ -12,6 +13,7 @@ const roomApiMocks = vi.hoisted(() => ({
   messages: vi.fn(),
   agentConsole: vi.fn(),
   runs: vi.fn(),
+  runDetail: vi.fn(),
   workThread: vi.fn(),
   reviews: vi.fn(),
   routines: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("@/api/splice", () => ({
     workspaceRoomMessages: roomApiMocks.messages,
     workspaceRoomAgentConsole: roomApiMocks.agentConsole,
     workspaceRoomRuns: roomApiMocks.runs,
+    workspaceRoomRunDetail: roomApiMocks.runDetail,
     workspaceRoomWorkThread: roomApiMocks.workThread,
     workspaceRoomReviews: roomApiMocks.reviews,
     workspaceRoomRoutines: roomApiMocks.routines,
@@ -81,8 +84,38 @@ const copyActor = (id: string, name: string, kind: "human" | "agent", state = "i
   state,
 });
 
+const assignedWork = {
+  id: "issue-inspector",
+  type: "issue" as const,
+  title: "선택 정보 인스펙터 검증",
+  status: "in_progress",
+  bucket: "active" as const,
+  progressWeight: 1,
+  ownerSlug: "codex",
+  ownerName: "Codex 등록 역할",
+  projectSlug: "puzzle-game",
+  projectName: "Puzzle Game",
+  priority: "high",
+  ageMin: 3,
+  description: "역할·코드 사본·세션·실행 선택 상태를 확인합니다.",
+};
+
 const rootRole = registeredRole("role-root", "operator", "운영자 등록 역할", "operator", "present");
-const codexRole = registeredRole("role-codex", "codex", "Codex 등록 역할", "engineer");
+const codexRole = {
+  ...registeredRole("role-codex", "codex", "Codex 등록 역할", "engineer", "assigned"),
+  currentWork: [assignedWork],
+  activeCount: 1,
+  reviewCount: 1,
+  queuedCount: 0,
+  session: {
+    branch: "codex/copy-room",
+    dirty: 2,
+    path: "D:/worktrees/puzzle-game-codex",
+    projectPath: "D:/testbeds/puzzle-game",
+    manager: "Codex",
+    lastCommit: { sha: "codex-sha", msg: "codex snapshot", ageMin: 7 },
+  },
+};
 const claudeRole = registeredRole("role-claude", "claude", "Claude 등록 역할", "designer");
 const spliceRole = registeredRole("role-splice", "splice", "Splice 등록 역할", "general");
 
@@ -115,7 +148,7 @@ const executionLanes = [
     activeRequestCount: 0,
     queuedRunCount: 0,
     liveRunCount: 0,
-    actors: [copyActor("copy-actor-root", "원본 세션 인스턴스", "human", "present")],
+    actors: [copyActor("role-root", "원본 세션 인스턴스", "human", "present")],
   },
   {
     id: "lane-codex",
@@ -145,7 +178,7 @@ const executionLanes = [
     activeRequestCount: 1,
     queuedRunCount: 0,
     liveRunCount: 1,
-    actors: [copyActor("copy-actor-codex", "Codex 세션 인스턴스", "agent", "working")],
+    actors: [copyActor("role-codex", "Codex 세션 인스턴스", "agent", "working")],
   },
   {
     id: "lane-claude",
@@ -175,7 +208,7 @@ const executionLanes = [
     activeRequestCount: 0,
     queuedRunCount: 1,
     liveRunCount: 0,
-    actors: [copyActor("copy-actor-claude", "Claude 세션 인스턴스", "agent", "requested")],
+    actors: [copyActor("role-claude", "Claude 세션 인스턴스", "agent", "requested")],
   },
   {
     id: "lane-splice",
@@ -205,7 +238,7 @@ const executionLanes = [
     activeRequestCount: 0,
     queuedRunCount: 0,
     liveRunCount: 0,
-    actors: [copyActor("copy-actor-splice", "Splice 세션 인스턴스", "agent", "idle")],
+    actors: [copyActor("role-splice", "Splice 세션 인스턴스", "agent", "idle")],
   },
 ];
 
@@ -251,7 +284,7 @@ const roomData = {
   requests: [],
 };
 
-const runMonitorFixture = {
+const runMonitorFixture: SpliceRunMonitorData = {
   generatedAt: "2026-07-11T00:00:00.000Z",
   workspaceId: "puzzle-game",
   workspaceName: "Puzzle Game",
@@ -299,7 +332,7 @@ const runMonitorFixture = {
   })),
 };
 
-const zeroRunMonitorFixture = {
+const zeroRunMonitorFixture: SpliceRunMonitorData = {
   ...runMonitorFixture,
   runner: {
     ...runMonitorFixture.runner,
@@ -322,25 +355,43 @@ const zeroRunMonitorFixture = {
   runs: [],
 };
 
-const copyRoomRunFixture = {
+const copyRoomRunFixture: SpliceRunMonitorData = {
   ...zeroRunMonitorFixture,
   counts: { ...zeroRunMonitorFixture.counts, total: 1, active: 1, launched: 1, terminal: 0 },
   runs: [{
-    id: "copy-room-active-run",
+    id: "live-run-codex",
     companyId: "splice",
     companyName: "Splice",
-    workspacePath: `${executionLanes[1].projectPath}/testbeds/puzzle-game`,
-    agentId: "engineer-instance",
+    workspacePath: executionLanes[1].path,
+    agentId: "role-codex",
     agentName: "Engineer 실행 인스턴스",
     status: "launched",
     requestedAt: "2026-07-11T00:00:00.000Z",
     updatedAt: "2026-07-11T00:00:00.000Z",
     error: "",
     expired: false,
-    runtime: null,
+    runtime: {
+      state: "running",
+      ageSeconds: 12,
+      stale: false,
+      process: { pid: 4312, known: true, alive: true, state: "running" },
+      verdict: null,
+    },
     process: null,
     launch: null,
   }],
+};
+
+const runDetailFixture = {
+  generatedAt: "2026-07-11T00:00:00.000Z",
+  workspaceId: "puzzle-game",
+  workspaceName: "Puzzle Game",
+  run: copyRoomRunFixture.runs[0],
+  artifacts: {
+    prompt: { path: null, exists: false, readable: false, size: 0, updatedAt: null, text: "", truncated: false, mode: "none" },
+    output: { path: null, exists: false, readable: false, size: 0, updatedAt: null, text: "", truncated: false, mode: "none" },
+  },
+  related: { comments: [], messages: [], workOrders: [], workProducts: [], routineRuns: [] },
 };
 
 async function flushReact() {
@@ -356,13 +407,37 @@ function exactButton(scope: ParentNode, label: string): HTMLButtonElement {
   return button;
 }
 
+function labelledButton(scope: ParentNode, label: string): HTMLButtonElement {
+  const button = Array.from(scope.querySelectorAll("button")).find((candidate) => candidate.getAttribute("aria-label") === label);
+  if (!button) throw new Error(`Button not found: ${label}`);
+  return button;
+}
+
+function titledButton(scope: ParentNode, title: string): HTMLButtonElement {
+  const button = Array.from(scope.querySelectorAll("button")).find((candidate) => candidate.getAttribute("title") === title);
+  if (!button) throw new Error(`Button not found: ${title}`);
+  return button;
+}
+
+function selectionInspector(container: HTMLDivElement): HTMLElement {
+  const inspector = container.querySelector('[data-testid="selection-inspector"]');
+  if (!inspector) throw new Error("Selection inspector not found");
+  return inspector as HTMLElement;
+}
+
+function expectInspectorWithoutRunnerControls(inspector: HTMLElement) {
+  expect(inspector.textContent).not.toContain("러너 수동 조작");
+  expect(inspector.textContent).not.toContain("Dry Run");
+  expect(inspector.textContent).not.toContain("Dispatch");
+}
+
 function primaryTabLabels(scope: Element): string[] {
   return Array.from(scope.querySelectorAll("button"))
     .filter((button) => !button.closest("details"))
     .map((button) => button.textContent?.trim() ?? "");
 }
 
-async function renderRoom(container: HTMLDivElement, data = roomData, runs = runMonitorFixture) {
+async function renderRoom(container: HTMLDivElement, data = roomData, runs: SpliceRunMonitorData = runMonitorFixture) {
   roomMock.mockResolvedValue(data);
   roomApiMocks.runs.mockResolvedValue(runs);
   const root = createRoot(container);
@@ -395,6 +470,7 @@ describe("SpliceWorkspaceRoom", () => {
     roomApiMocks.messages.mockResolvedValue(null);
     roomApiMocks.agentConsole.mockResolvedValue(null);
     roomApiMocks.runs.mockResolvedValue(runMonitorFixture);
+    roomApiMocks.runDetail.mockResolvedValue(runDetailFixture);
     roomApiMocks.workThread.mockResolvedValue(null);
     roomApiMocks.reviews.mockResolvedValue([]);
     roomApiMocks.routines.mockResolvedValue(null);
@@ -436,7 +512,7 @@ describe("SpliceWorkspaceRoom", () => {
     expect(attentionItems.length).toBeGreaterThan(0);
     expect(attentionItems.length).toBeLessThanOrEqual(5);
     expect(container.textContent).toContain("퍼즐게임 사무실");
-    expect(container.textContent).toContain("선택한 책상");
+    expect(container.textContent).toContain("선택 정보");
 
     const executeButton = exactButton(mainNavigation!, "실행");
     await act(async () => {
@@ -588,6 +664,129 @@ describe("SpliceWorkspaceRoom", () => {
     expect(container.textContent).toContain("Claude 등록 역할");
     expect(container.textContent).toContain("Splice 등록 역할");
     expect(container.textContent).toContain("0");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows the registered-role inspector with assignment actions and collapsed direct instruction", async () => {
+    const root = await renderRoom(container, roomData, copyRoomRunFixture);
+
+    await act(async () => {
+      labelledButton(container, "Codex 등록 역할 공용 대기 책상").click();
+    });
+    await flushReact();
+
+    const inspector = selectionInspector(container);
+    const inspectorText = inspector.textContent ?? "";
+    expect(inspectorText).toContain("등록 역할");
+    expect(inspectorText).toContain("Codex 등록 역할");
+    expect(inspectorText).toContain("선택 정보 인스펙터 검증");
+    expect(inspectorText).toContain("현재 담당");
+    expect(inspectorText).toContain("작업 위치");
+    expect(inspectorText).toContain("결과");
+    expect(inspectorText).toContain("검수");
+    expect(inspectorText).toContain("업무");
+    expect(inspectorText).toContain("대화");
+    expect(inspectorText).toContain("실행 기록");
+    expect(inspectorText).toContain("직접 지시");
+    expect(inspector.querySelector("details")).not.toBeNull();
+    expect((inspector.querySelector("details") as HTMLDetailsElement).open).toBe(false);
+    expectInspectorWithoutRunnerControls(inspector);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows code-copy details when a room title is selected", async () => {
+    const root = await renderRoom(container, roomData, copyRoomRunFixture);
+
+    await act(async () => {
+      titledButton(container, "Codex 코드 방 코드 사본 열기").click();
+    });
+    await flushReact();
+
+    const inspector = selectionInspector(container);
+    const inspectorText = inspector.textContent ?? "";
+    expect(inspectorText).toContain("코드 사본");
+    expect(inspectorText).toContain("Codex 코드 방");
+    expect(inspectorText).toContain("Codex");
+    expect(inspectorText).toContain("codex/copy-room");
+    expect(inspectorText).toContain("D:/worktrees/puzzle-game-codex");
+    expect(inspectorText).toContain("변경");
+    expect(inspectorText).toContain("세션");
+    expect(inspectorText).toContain("실행");
+    expect(inspectorText).not.toContain("직접 지시");
+    expectInspectorWithoutRunnerControls(inspector);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows a session as a work instance, separate from an agent run", async () => {
+    const root = await renderRoom(container, roomData, copyRoomRunFixture);
+
+    await act(async () => {
+      titledButton(container, "Codex 세션 인스턴스 · 세션").click();
+    });
+    await flushReact();
+
+    const inspector = selectionInspector(container);
+    const inspectorText = inspector.textContent ?? "";
+    expect(inspectorText).toContain("작업 인스턴스");
+    expect(inspectorText).toContain("실제 에이전트 실행");
+    expect(inspectorText).toMatch(/실제 에이전트 실행.*아니/);
+    expect(inspectorText).toContain("Codex 코드 방");
+    expect(inspectorText).toContain("Codex 등록 역할");
+    expect(inspectorText).not.toContain("직접 지시");
+    expectInspectorWithoutRunnerControls(inspector);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("shows a live run with run identity, role, and code-copy context", async () => {
+    const root = await renderRoom(container, roomData, copyRoomRunFixture);
+
+    await act(async () => {
+      titledButton(container, "Engineer 실행 인스턴스 · 실행 중").click();
+    });
+    await flushReact();
+    await flushReact();
+
+    const inspector = selectionInspector(container);
+    const inspectorText = inspector.textContent ?? "";
+    expect(inspectorText).toContain("실제 실행");
+    expect(inspectorText).toContain("live-run-codex");
+    expect(inspectorText).toContain("실행 중");
+    expect(inspectorText).toContain("Codex 등록 역할");
+    expect(inspectorText).toContain("Codex 코드 방");
+    expect(inspectorText).not.toContain("직접 지시");
+    expectInspectorWithoutRunnerControls(inspector);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps Dry Run and Dispatch on RunsTab while inspector stays observation-only", async () => {
+    const root = await renderRoom(container, roomData, copyRoomRunFixture);
+    const mainNavigation = container.querySelector('nav[aria-label="Splice 주요 탐색"]')!;
+
+    await act(async () => {
+      const executeButton = Array.from(mainNavigation.querySelectorAll("button")).find((button) => button.textContent?.trim().startsWith("실행"));
+      if (!executeButton) throw new Error("Button not found: 실행");
+      executeButton.click();
+    });
+    await flushReact();
+    const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]')!;
+    expect(primaryTabLabels(executeNavigation)).toContain("실행 현황");
+    expect(container.textContent).toContain("Dry Run");
+    expect(container.textContent).toContain("Dispatch");
 
     await act(async () => {
       root.unmount();
