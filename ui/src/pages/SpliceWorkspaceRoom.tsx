@@ -75,7 +75,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "office" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
 type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null };
 
@@ -84,6 +84,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "inbox", label: "신호함", icon: Inbox },
   { value: "lanes", label: "작업 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
+  { value: "office", label: "사무실", icon: LayoutDashboard },
   { value: "intake", label: "업무 접수", icon: SquarePen },
   { value: "goals", label: "목표", icon: Target },
   { value: "projects", label: "프로젝트", icon: FolderOpen },
@@ -109,8 +110,8 @@ const roomNavigationGroups: Array<{
   advancedTabs: RoomTab[];
 }> = [
   { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox"], advancedTabs: [] },
-  { value: "execute", label: "실행", icon: Rocket, defaultTab: "lanes", tabs: ["lanes", "runs", "agents"], advancedTabs: ["comms", "routines"] },
-  { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "goals"], advancedTabs: ["desk", "intake", "approvals"] },
+  { value: "execute", label: "실행", icon: Rocket, defaultTab: "lanes", tabs: ["lanes", "runs", "agents", "office"], advancedTabs: ["comms", "routines"] },
+  { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "approvals", "goals"], advancedTabs: ["desk", "intake"] },
   { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
 ];
 
@@ -178,6 +179,8 @@ function koStatusLabel(value: string | null | undefined): string {
     high: "높음",
     urgent: "긴급",
     approval: "승인",
+    routine: "루틴",
+    due: "실행 시점",
     work_order: "접수 업무",
     message: "메시지",
     run: "실행",
@@ -1435,90 +1438,62 @@ function OfficeFlowBoard({
 }
 
 function DashboardTab({
-  agentConsole,
   approvals,
   data,
-  dispatchingRunner,
-  focusedAgentId,
   inbox,
-  messages,
-  onDispatchRunner,
-  onFocusAgent,
   onOpenWorkItem,
   onOpenRun,
   onOpenTab,
   onOpenWorkOrder,
-  onRunAgent,
-  onSend,
   routines,
   runs,
   reviews,
-  runningAgentId,
-  runnerNotice,
-  sendingAgentId,
   workOrders,
-  workProducts,
 }: {
-  agentConsole: SpliceAgentConsoleData | null;
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
-  dispatchingRunner: boolean;
-  focusedAgentId: string | null;
   inbox: SpliceOfficeInboxData | null;
-  messages: SpliceAgentMessage[];
-  onDispatchRunner: (dryRun: boolean) => void;
-  onFocusAgent: (agentId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
   onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkOrder: (workOrderId: string) => void;
-  onRunAgent: (agentId: string) => void;
-  onSend: (agentId: string, body: string) => void;
   routines: SpliceOfficeRoutinesData | null;
   runs: SpliceRunMonitorData | null;
   reviews: SpliceReview[];
-  runningAgentId: string | null;
-  runnerNotice: string | null;
-  sendingAgentId: string | null;
   workOrders: SpliceWorkOrdersData | null;
-  workProducts: SpliceWorkProduct[];
 }) {
-  const issues = [...data.lanes.active, ...data.lanes.review, ...data.lanes.next, ...data.lanes.blocked];
+  const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
+  const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
+  const signals = [
+    { tab: "runs" as const, title: "실행 중", value: runCounts.active, detail: `실행 대기 ${runCounts.requested + runCounts.launchReady}`, icon: Rocket },
+    { tab: "reviews" as const, title: "검수와 승인", value: reviewAttention, detail: `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`, icon: ShieldAlert },
+    { tab: "inbox" as const, title: "열린 신호", value: inbox?.counts.open ?? 0, detail: "운영자 확인 대기", icon: Inbox },
+  ];
 
   return (
     <div className="space-y-6">
-      <RoomMap
-        approvals={approvals}
-        data={data}
-        dispatchingRunner={dispatchingRunner}
-        focusedAgentId={focusedAgentId}
-        inbox={inbox}
-        onDispatchRunner={onDispatchRunner}
-        onFocusAgent={onFocusAgent}
-        onOpenWorkItem={onOpenWorkItem}
-        onOpenRun={onOpenRun}
-        onOpenTab={onOpenTab}
-        onOpenWorkOrder={onOpenWorkOrder}
-        onRunAgent={onRunAgent}
-        onSend={onSend}
-        routines={routines}
-        runnerNotice={runnerNotice}
-        runningAgentId={runningAgentId}
-        runs={runs}
-        sendingAgentId={sendingAgentId}
-        workOrders={workOrders}
-        workProducts={workProducts}
-      />
-
-      <details className="border border-border bg-background">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground">
-          세부 현황 펼치기
-        </summary>
-        <div className="space-y-6 border-t border-border p-4">
+      <header className="border-b border-border pb-3">
+        <h2 className="text-lg font-semibold">관제</h2>
+        <p className="mt-1 text-xs text-muted-foreground">현재 상태와 먼저 확인할 일</p>
+      </header>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {signals.map((signal) => {
+          const Icon = signal.icon;
+          return (
+            <button key={signal.title} type="button" onClick={() => onOpenTab(signal.tab)} className="min-w-0 border border-border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-accent/70">
+              <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{signal.title}</span><Icon className="h-4 w-4 shrink-0 text-muted-foreground" /></div>
+              <p className="mt-3 text-xl font-semibold tabular-nums">{formatNumber(signal.value)}<span className="ml-1 text-xs font-normal text-muted-foreground">건</span></p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">{signal.detail}</p>
+            </button>
+          );
+        })}
+      </div>
       <OfficeActionQueue
         approvals={approvals}
         data={data}
         inbox={inbox}
+        maxEntries={3}
+        title="내가 확인할 것"
         onOpenRun={onOpenRun}
         onOpenTab={onOpenTab}
         onOpenWorkItem={onOpenWorkItem}
@@ -1528,76 +1503,6 @@ function DashboardTab({
         runs={runs}
         workOrders={workOrders}
       />
-
-      <OfficeAgentDock
-        agentConsole={agentConsole}
-        data={data}
-        focusedAgentId={focusedAgentId}
-        messages={messages}
-        onFocusAgent={onFocusAgent}
-        onOpenTab={onOpenTab}
-        onRunAgent={onRunAgent}
-        onSend={onSend}
-        runningAgentId={runningAgentId}
-        sendingAgentId={sendingAgentId}
-      />
-
-      <div className="grid grid-cols-2 gap-1 sm:gap-2 xl:grid-cols-4">
-        <MetricCard icon={Bot} value={data.totals.runningAgents ?? data.totals.activeAgents} label="실제 가동 역할" description={`업무 배정 ${data.totals.assignedAgents ?? 0}`} />
-        <MetricCard icon={CircleDot} value={data.totals.activeIssues} label="진행 업무" description={`전체 이슈 ${data.totals.issues}`} />
-        <MetricCard icon={Clock3} value={data.totals.reviewIssues} label="검수 중" description={`다음 대기 ${data.totals.todoIssues}`} />
-        <MetricCard icon={ShieldAlert} value={data.totals.blockedIssues} label="막힘" description={`진척 ${data.totals.progress}%`} />
-      </div>
-
-      <OfficeFlowBoard
-        approvals={approvals}
-        data={data}
-        messages={messages}
-        onOpenRun={onOpenRun}
-        onOpenTab={onOpenTab}
-        onOpenWorkOrder={onOpenWorkOrder}
-        onOpenWorkItem={onOpenWorkItem}
-        reviews={reviews}
-        runs={runs}
-        workOrders={workOrders}
-        workProducts={workProducts}
-      />
-
-      <ExecutionLanesPanel data={data} limit={3} />
-
-      <OfficeRunsSummary data={data} runs={runs} />
-
-      <OfficeWorkOrdersSummary data={data} onOpenWorkOrder={onOpenWorkOrder} workOrders={workOrders} />
-
-      <OfficeInboxSummary inbox={inbox} />
-
-      <OfficeApprovalsSummary approvals={approvals} data={data} />
-
-      <OfficeRoutinesSummary data={data} routines={routines} />
-
-      <OfficeSignalPanel data={data} messages={messages} />
-
-      <RunQueueBoard
-        data={data}
-        dispatchingRunner={dispatchingRunner}
-        onDispatchRunner={onDispatchRunner}
-        runnerNotice={runnerNotice}
-      />
-
-      <ReviewGateSummary data={data} reviews={reviews} />
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="min-w-0 space-y-3">
-          <SectionTitle title="최근 활동" />
-          <ActivityList items={data.activity.slice(0, 8)} />
-        </div>
-        <div className="min-w-0 space-y-3">
-          <SectionTitle title="최근 업무" />
-          <WorkItemList items={issues.slice(0, 8)} empty="아직 업무가 없습니다." />
-        </div>
-      </div>
-        </div>
-      </details>
     </div>
   );
 }
@@ -1623,6 +1528,7 @@ function OfficeActionQueue({
   approvals,
   data,
   inbox,
+  maxEntries = 8,
   onOpenRun,
   onOpenTab,
   onOpenWorkItem,
@@ -1631,10 +1537,12 @@ function OfficeActionQueue({
   routines,
   runs,
   workOrders,
+  title = "우선 처리",
 }: {
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
   inbox: SpliceOfficeInboxData | null;
+  maxEntries?: number;
   onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
@@ -1643,6 +1551,7 @@ function OfficeActionQueue({
   routines: SpliceOfficeRoutinesData | null;
   runs: SpliceRunMonitorData | null;
   workOrders: SpliceWorkOrdersData | null;
+  title?: string;
 }) {
   const openInboxItems = inbox?.items.filter((item) => item.inboxStatus === "open") ?? [];
   const pendingApprovals = approvals?.approvals.filter((approval) => approval.status === "requested" || approval.status === "changes_requested") ?? [];
@@ -1689,7 +1598,7 @@ function OfficeActionQueue({
       subtitle: `${order.agentName ? compactAgentName(order.agentName, data.name) : "미배정"} · ${order.projectName ?? "프로젝트 없음"}`,
       status: order.status,
       severity: "high" as const,
-      source: "work order",
+      source: "work_order",
       icon: SquarePen,
       onOpen: () => onOpenWorkOrder(order.id),
     })),
@@ -1734,16 +1643,16 @@ function OfficeActionQueue({
       onOpen: () => openInboxTarget(item),
     })),
   ];
-  const visibleEntries = entries.slice(0, 8);
+  const visibleEntries = entries.slice(0, maxEntries);
   const highCount = entries.filter((entry) => entry.severity === "high").length;
 
   return (
     <section className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <SectionTitle title="우선 처리" aside={`열림 ${entries.length} · 긴급 ${highCount}`} />
+        <SectionTitle title={title} aside={`열림 ${entries.length} · 긴급 ${highCount}`} />
         <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("inbox")} className="h-8 gap-1.5 self-start sm:self-auto">
           <Inbox className="h-3.5 w-3.5" />
-          Inbox
+          신호함
         </Button>
       </div>
       <div className="grid gap-2 xl:grid-cols-4">
@@ -1767,9 +1676,11 @@ function OfficeActionQueue({
                     <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">{entry.subtitle}</span>
                   </span>
                 </span>
-                <StatusBadge status={entry.status} />
+                <span className="shrink-0 rounded-full border border-border bg-background/70 px-2 py-0.5 text-xs text-muted-foreground">
+                  {koStatusLabel(entry.status)}
+                </span>
               </div>
-              <span className="mt-2 inline-flex text-[11px] uppercase tracking-wider text-muted-foreground">{entry.source}</span>
+              <span className="mt-2 inline-flex text-[11px] text-muted-foreground">{koStatusLabel(entry.source)}</span>
             </button>
           );
         }) : (
@@ -5540,7 +5451,7 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
   );
 }
 
-function RoomMap({
+function OfficeTab({
   approvals,
   data,
   dispatchingRunner,
@@ -5646,16 +5557,6 @@ function RoomMap({
   };
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
-  const copyCounts = data.executionLanes.reduce<Record<string, number>>((counts, lane) => {
-    counts[lane.manager] = (counts[lane.manager] ?? 0) + 1;
-    return counts;
-  }, {});
-  const copyDetail = [
-    copyCounts.codex ? `Codex ${copyCounts.codex}` : null,
-    copyCounts.claude ? `Claude ${copyCounts.claude}` : null,
-    copyCounts.splice ? `Agent ${copyCounts.splice}` : null,
-    copyCounts.local ? `원본 ${copyCounts.local}` : null,
-  ].filter(Boolean).join(" · ");
   const officeSignals: Array<{
     tab: RoomTab;
     title: string;
@@ -5671,51 +5572,6 @@ function RoomMap({
     { tab: "routines", title: "루틴", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} 활성`, icon: Repeat2 },
     { tab: "lanes", title: "작업 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 사본`, icon: GitBranch },
   ];
-  const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
-  const completedRuns = runCounts.done + runCounts.noop;
-  const completedNeedsReview = runCounts.active === 0 && queuedRuns === 0 && completedRuns > 0;
-  const executionNotStarted = runCounts.active === 0 && queuedRuns === 0 && completedRuns === 0 && data.totals.assignedAgents > 0;
-  const priorityItems: Array<{
-    tab: RoomTab;
-    title: string;
-    value: number;
-    unit: string;
-    detail: string;
-    icon: LucideIcon;
-    className: string;
-  }> = [
-    {
-      tab: "lanes",
-      title: "내 작업 사본",
-      value: data.executionLanes.length,
-      unit: "개",
-      detail: copyDetail || "연결된 사본 없음",
-      icon: GitBranch,
-      className: "border-0 bg-muted",
-    },
-    {
-      tab: "runs",
-      title: "실제 에이전트",
-      value: runCounts.active,
-      unit: "명",
-      detail: `업무 배정 ${data.totals.assignedAgents} · 실행 대기 ${queuedRuns}`,
-      icon: Bot,
-      className: "border-0 bg-muted",
-    },
-    {
-      tab: executionNotStarted || completedNeedsReview ? "runs" : "reviews",
-      title: "확인 필요",
-      value: completedNeedsReview ? completedRuns : executionNotStarted ? 1 : reviewAttention,
-      unit: "건",
-      detail: completedNeedsReview
-        ? `완료된 에이전트 결과 ${completedRuns}건 검수 필요`
-        : executionNotStarted
-          ? "업무는 배정됐지만 실제 실행이 아직 시작되지 않음"
-          : `검수 ${data.totals.reviewIssues} · 승인 ${approvals?.counts.pending ?? 0}`,
-      icon: ShieldAlert,
-      className: "border-0 bg-muted",
-    },
-  ];
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const body = deskDraft.trim();
@@ -5729,8 +5585,8 @@ function RoomMap({
     <section className="space-y-3">
       <header className="flex flex-col gap-3 border-b border-border pb-0 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">관제</h2>
-          <p className="mt-1 text-xs text-muted-foreground">현재 상태와 먼저 확인할 일</p>
+          <h2 className="text-lg font-semibold">사무실</h2>
+          <p className="mt-1 text-xs text-muted-foreground">연결된 책상과 실행 상태</p>
         </div>
         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
           <span className="border border-border px-2.5 py-1">작업 사본 {data.executionLanes.length}</span>
@@ -5739,99 +5595,7 @@ function RoomMap({
         </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-          {priorityItems.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.title}
-                type="button"
-                onClick={() => onOpenTab(item.tab)}
-                className={cn(
-                  "min-w-0 rounded-2xl border-0 px-4 py-3 text-left transition-colors hover:bg-accent/70",
-                  item.className,
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-semibold">{item.title}</span>
-                  </span>
-                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </div>
-                <p className="mt-3 text-xl font-semibold tabular-nums">
-                  {formatNumber(item.value)}
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">{item.unit}</span>
-                </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{item.detail}</p>
-              </button>
-            );
-          })}
-      </div>
-
-      <section className="pt-2">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">내가 확인할 것</h3>
-          <span className="text-xs text-muted-foreground">우선순위순</span>
-        </div>
-        <div className="border-y border-border">
-          {completedNeedsReview ? (
-            <button type="button" onClick={() => onOpenTab("runs")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium">완료된 에이전트 결과 검수</span><span className="mt-1 block truncate text-xs text-muted-foreground">완료된 실행 {completedRuns}건을 확인해야 합니다.</span></span>
-              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">결과 {completedRuns}</span>
-            </button>
-          ) : null}
-          {executionNotStarted ? (
-            <button type="button" onClick={() => onOpenTab("runs")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium">배정된 업무의 실행 확인</span><span className="mt-1 block truncate text-xs text-muted-foreground">업무는 배정됐지만 실제 실행이 아직 없습니다.</span></span>
-              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">실행 대기</span>
-            </button>
-          ) : null}
-          {reviewAttention > 0 ? (
-            <button type="button" onClick={() => onOpenTab("reviews")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium">검수와 승인 대기</span><span className="mt-1 block truncate text-xs text-muted-foreground">검수 {data.totals.reviewIssues} · 승인 {approvals?.counts.pending ?? 0}</span></span>
-              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">확인 {reviewAttention}</span>
-            </button>
-          ) : null}
-          {(inbox?.counts.open ?? 0) > 0 ? (
-            <button type="button" onClick={() => onOpenTab("inbox")} className="flex w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted/50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium">새 신호함 항목</span><span className="mt-1 block truncate text-xs text-muted-foreground">업무, 실행, 메시지 신호를 확인하세요.</span></span>
-              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">신호 {inbox?.counts.open ?? 0}</span>
-            </button>
-          ) : null}
-          {!completedNeedsReview && !executionNotStarted && reviewAttention === 0 && (inbox?.counts.open ?? 0) === 0 ? <p className="px-1 py-3 text-sm text-muted-foreground">지금 바로 확인할 운영 신호가 없습니다.</p> : null}
-        </div>
-      </section>
-
-      <section className="pt-2">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">현재 움직임</h3>
-          <span className="text-xs text-muted-foreground">최근 작업 사본과 세션</span>
-        </div>
-        <div className="border-y border-border">
-          {data.executionLanes.slice(0, 4).map((lane) => (
-            <button key={lane.id} type="button" onClick={() => onOpenTab("lanes")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left last:border-b-0 hover:bg-muted/50">
-              <span className="min-w-0"><span className="block truncate text-sm font-medium"><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />{lane.name}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{lane.managerLabel} · {lane.branch} · 변경 {lane.dirty}</span></span>
-              <span className="shrink-0 text-xs text-muted-foreground">{formatAge(lane.lastCommit?.ageMin)}</span>
-            </button>
-          ))}
-          {!data.executionLanes.length ? <p className="px-1 py-3 text-sm text-muted-foreground">감지된 작업 사본이 없습니다.</p> : null}
-        </div>
-      </section>
-
-      <section className="border-t border-border pt-4">
-        <p className="text-sm font-semibold">기능 보존</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {officeSignals.map((signal) => (
-            <button key={signal.tab} type="button" onClick={() => onOpenTab(signal.tab)} className="border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
-              {signal.title} {signal.value}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <details className="border border-border bg-background">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground">픽셀 사무실 보기</summary>
-        <div className="space-y-4 border-t border-border p-4">
+      <section className="space-y-4 border border-border bg-background p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <SectionTitle title="퍼즐게임 사무실" aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
             <div className="flex flex-wrap gap-2">
@@ -6149,8 +5913,7 @@ function RoomMap({
             ))}
           </div>
         </div>
-      </div>
-      </details>
+      </section>
     </section>
   );
 }
@@ -6499,29 +6262,17 @@ export function SpliceWorkspaceRoom() {
     >
       {activeTab === "dashboard" && (
         <DashboardTab
-          agentConsole={agentConsole}
           approvals={approvals}
           data={data}
-          dispatchingRunner={dispatchRunnerMutation.isPending}
-          focusedAgentId={focusedAgentId}
           inbox={inbox}
-          messages={messages}
-          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
-          onFocusAgent={onFocusAgent}
           onOpenRun={onOpenRun}
           onOpenWorkOrder={onOpenWorkOrder}
           onOpenWorkItem={onOpenWorkItem}
           onOpenTab={setActiveTab}
-          onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
-          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
           routines={routines}
           runs={runs}
           reviews={reviews}
-          runningAgentId={runningAgentId}
-          runnerNotice={runnerNotice}
-          sendingAgentId={sendingAgentId}
           workOrders={workOrders}
-          workProducts={workThread?.workProducts ?? []}
         />
       )}
       {activeTab === "inbox" && (
@@ -6553,6 +6304,30 @@ export function SpliceWorkspaceRoom() {
           onOpenWorkOrder={onOpenWorkOrder}
           onOpenWorkItem={onOpenWorkItem}
           onUpdateRunStatus={(runId, status, error) => updateRunStatusMutation.mutate({ runId, status, error })}
+        />
+      )}
+      {activeTab === "office" && (
+        <OfficeTab
+          approvals={approvals}
+          data={data}
+          dispatchingRunner={dispatchRunnerMutation.isPending}
+          focusedAgentId={focusedAgentId}
+          inbox={inbox}
+          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onFocusAgent={onFocusAgent}
+          onOpenWorkItem={onOpenWorkItem}
+          onOpenRun={onOpenRun}
+          onOpenTab={setActiveTab}
+          onOpenWorkOrder={onOpenWorkOrder}
+          onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
+          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
+          routines={routines}
+          runnerNotice={runnerNotice}
+          runningAgentId={runningAgentId}
+          runs={runs}
+          sendingAgentId={sendingAgentId}
+          workOrders={workOrders}
+          workProducts={workThread?.workProducts ?? []}
         />
       )}
       {activeTab === "intake" && (
