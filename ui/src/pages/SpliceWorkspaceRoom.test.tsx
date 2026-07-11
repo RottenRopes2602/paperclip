@@ -616,23 +616,27 @@ describe("SpliceWorkspaceRoom", () => {
     });
   });
 
-  it("narrows visible copy rooms for each office filter without changing the fixture", async () => {
+  it("keeps the four office rooms mounted and highlights the selected room filter", async () => {
     const root = await renderRoom(container);
     const filters = [
-      ["전체", 4, "원본 코드 방"],
-      ["원본 코드", 1, "원본 코드 방"],
-      ["Codex", 1, "Codex 코드 방"],
-      ["Claude", 1, "Claude 코드 방"],
-      ["Splice", 1, "Splice 코드 방"],
+      ["전체", null],
+      ["원본 코드", "root"],
+      ["Codex", "codex"],
+      ["Claude", "claude"],
+      ["Splice", "splice"],
     ] as const;
 
-    for (const [label, expectedCount, expectedRoom] of filters) {
+    for (const [label, activeRoomId] of filters) {
       await act(async () => {
         exactButton(container, label).click();
       });
       await flushReact();
-      expect(copyRooms(container)).toHaveLength(expectedCount);
-      expect(copyRooms(container)[0]?.textContent).toContain(expectedRoom);
+      const rooms = copyRooms(container);
+      expect(rooms).toHaveLength(4);
+      for (const room of rooms) {
+        const isActiveRoom = activeRoomId === null || room.getAttribute("data-room-id") === activeRoomId;
+        expect(room.classList.contains("opacity-45")).toBe(!isActiveRoom);
+      }
     }
 
     expect(roomMock).toHaveBeenCalled();
@@ -649,7 +653,7 @@ describe("SpliceWorkspaceRoom", () => {
     const zeroRunData = {
       ...roomData,
       totals: { ...roomData.totals, liveRuns: 0, runningAgents: 0 },
-      executionLanes: roomData.executionLanes.map((lane) => ({
+      executionLanes: roomData.executionLanes.slice(0, 1).map((lane) => ({
         ...lane,
         requestCount: 0,
         activeRequestCount: 0,

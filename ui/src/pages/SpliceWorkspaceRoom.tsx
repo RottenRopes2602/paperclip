@@ -747,30 +747,90 @@ function SharedRoleDesk({
   );
 }
 
-function ExecutionLaneRoom({
+type FixedOfficeRoomId = Exclude<OfficeLaneFilter, "all">;
+
+const fixedOfficeRooms: Array<{ id: FixedOfficeRoomId; label: string; sublabel: string }> = [
+  { id: "root", label: "원본 코드실", sublabel: "기준 저장소" },
+  { id: "codex", label: "Codex 작업실", sublabel: "Codex 코드 사본" },
+  { id: "claude", label: "Claude 작업실", sublabel: "Claude Code 사본" },
+  { id: "splice", label: "Splice 에이전트실", sublabel: "격리 실행 사본" },
+];
+
+function Cc0OfficeSprite({
+  className,
+  kind,
+}: {
+  className?: string;
+  kind: "couch" | "cubicle" | "plant" | "worker-a" | "worker-b";
+}) {
+  const sprites = {
+    couch: { x: 48, y: 32, width: 64, height: 16 },
+    cubicle: { x: 0, y: 64, width: 48, height: 32 },
+    plant: { x: 160, y: 48, width: 16, height: 32 },
+    "worker-a": { x: 0, y: 96, width: 16, height: 32 },
+    "worker-b": { x: 16, y: 96, width: 16, height: 32 },
+  } as const;
+  const sprite = sprites[kind];
+  const scale = 2;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("absolute block", className)}
+      style={{
+        width: sprite.width * scale,
+        height: sprite.height * scale,
+        backgroundImage: "url('/splice/assets/2dpig-pixel-office/office-assets.png')",
+        backgroundPosition: `${-sprite.x * scale}px ${-sprite.y * scale}px`,
+        backgroundSize: `${256 * scale}px ${160 * scale}px`,
+        imageRendering: "pixelated",
+      }}
+    />
+  );
+}
+
+function FixedOfficeRoom({
   agents,
-  lane,
+  room,
+  lanes,
+  muted,
   onSelectTarget,
   runs,
   selectedTarget,
   workspaceName,
 }: {
   agents: SpliceWorkspaceRoomActor[];
-  lane: SpliceExecutionLane;
+  room: (typeof fixedOfficeRooms)[number];
+  lanes: SpliceExecutionLane[];
+  muted: boolean;
   onSelectTarget: (target: SelectedWorkspaceTarget) => void;
   runs: SpliceAgentRunRequest[];
   selectedTarget: SelectedWorkspaceTarget | null;
   workspaceName: string;
 }) {
-  const laneActors = lane.actors.map((actor) => ({ actor, canonical: officeActorForLaneActor(actor, agents) }));
-  const liveRuns = runs.filter((run) => isLiveOfficeRun(run) && runMatchesExecutionLane(run, lane));
+  const laneActors = lanes.flatMap((lane) => lane.actors.map((actor) => ({ lane, actor, canonical: officeActorForLaneActor(actor, agents) })));
+  const liveRuns = lanes.flatMap((lane) => runs.filter((run) => isLiveOfficeRun(run) && runMatchesExecutionLane(run, lane)).map((run) => ({ lane, run })));
   const instanceCount = laneActors.length + liveRuns.length;
-  const theme = executionLaneRoomTheme(lane);
+  const roomIsOn = instanceCount > 0;
+  const themeLane = lanes[0] ?? null;
+  const theme = themeLane
+    ? executionLaneRoomTheme(themeLane)
+    : room.id === "root"
+      ? { floor: "#9fb5bd", tile: "rgba(45,72,83,0.24)", wall: "#43545b", rug: "bg-[#47727b]" }
+      : room.id === "codex"
+        ? { floor: "#607da0", tile: "rgba(25,45,75,0.28)", wall: "#2f4663", rug: "bg-[#314f78]" }
+        : room.id === "claude"
+          ? { floor: "#71937f", tile: "rgba(35,70,48,0.26)", wall: "#3e5f49", rug: "bg-[#426d50]" }
+          : { floor: "#a98569", tile: "rgba(90,54,35,0.24)", wall: "#684936", rug: "bg-[#76533d]" };
 
   return (
     <article
       data-testid="copy-room"
-      className="relative min-h-[248px] overflow-hidden border-[6px] p-3 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.18)]"
+      data-room-id={room.id}
+      className={cn(
+        "relative min-h-[292px] overflow-hidden border-[6px] p-3 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.18)] transition-[filter,opacity] duration-200",
+        muted && "opacity-45 grayscale-[0.35]",
+      )}
       style={{
         borderColor: theme.wall,
         backgroundColor: theme.floor,
@@ -778,31 +838,45 @@ function ExecutionLaneRoom({
         backgroundSize: "24px 24px",
         imageRendering: "pixelated",
       }}
-      aria-label={`코드 사본 방 ${lane.name}`}
+      aria-label={`고정 사무실 방 ${room.label}`}
     >
-      <div className={cn("absolute bottom-7 left-[24%] h-20 w-[52%] border-4 border-black/70 opacity-65", theme.rug)} aria-hidden="true" />
-      <PixelFurniture kind="plant" className="bottom-3 right-3 scale-125" />
-      <PixelFurniture kind="plant" className="left-4 top-20" />
-      <PixelFurniture kind="desk-island" className="bottom-5 left-[34%] scale-90 origin-bottom-left" />
-      <PixelFurniture kind="shelf" className="right-4 top-16 scale-75 origin-top-right" />
-      <PixelRoomProp kind="terminal" className="bottom-10 left-5 scale-90 origin-bottom-left" />
+      <div className={cn("absolute inset-0 bg-[#101820] transition-opacity", roomIsOn ? "opacity-0" : "opacity-35")} aria-hidden="true" />
+      <div className={cn("absolute right-3 top-3 z-20 h-3 w-3 border-2 border-black", roomIsOn ? "bg-amber-200 shadow-[0_0_18px_6px_rgba(253,230,138,0.7)]" : "bg-slate-700")} title={roomIsOn ? "조명 켜짐" : "조명 꺼짐"} />
+      <div className={cn("absolute bottom-7 left-[28%] h-20 w-[48%] border-4 border-black/70 opacity-55", theme.rug)} aria-hidden="true" />
+      <Cc0OfficeSprite kind="cubicle" className="bottom-4 left-3 opacity-90" />
+      <Cc0OfficeSprite kind="plant" className="bottom-3 right-3 opacity-95" />
+      {room.id === "root" || room.id === "splice" ? <Cc0OfficeSprite kind="couch" className="bottom-5 right-14 opacity-85" /> : null}
+      {roomIsOn ? <Cc0OfficeSprite kind={room.id === "claude" ? "worker-b" : "worker-a"} className="bottom-9 left-16 z-10" /> : null}
       <div className="absolute -bottom-[6px] left-1/2 z-30 h-8 w-20 -translate-x-1/2 border-x-[6px] border-t-[6px] bg-[#b98558]" style={{ borderColor: theme.wall }} aria-hidden="true" />
-      <button
-        type="button"
-        onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })}
-        className="relative z-20 flex w-full min-w-0 items-start justify-between gap-2 border-2 border-black bg-[#101820]/95 px-2.5 py-2 text-left font-mono shadow-[3px_3px_0_rgba(0,0,0,0.38)] focus:outline-none focus:ring-2 focus:ring-cyan-300"
-        title={`${lane.name} 코드 사본 열기`}
-      >
+      <div className="relative z-20 flex w-full min-w-0 items-start justify-between gap-2 border-2 border-black bg-[#101820]/95 px-2.5 py-2 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.38)]">
         <span className="min-w-0">
-          <span className="block truncate text-[10px] font-black uppercase leading-none text-cyan-50">{lane.name}</span>
-          <span className="mt-1 block truncate text-[8px] leading-none text-cyan-100/65">{lane.copyKindLabel} · {lane.managerLabel} · {lane.branch}</span>
+          <span className="block truncate text-[10px] font-black uppercase leading-none text-cyan-50">{room.label}</span>
+          <span className="mt-1 block truncate text-[8px] leading-none text-cyan-100/65">{room.sublabel} · 고정 공간</span>
         </span>
-        <span className={cn("shrink-0 border px-1 py-0.5 text-[8px] font-bold leading-none", laneStateClass[lane.state] ?? laneStateClass.idle)}>변경 {lane.dirty}</span>
-      </button>
-      <div className="relative z-20 mt-3 flex min-h-24 max-w-[72%] flex-wrap content-start gap-2">
-        {laneActors.slice(0, 3).map(({ actor, canonical }) => (
+        <span className={cn("shrink-0 border-2 border-black px-1.5 py-1 text-[8px] font-black", roomIsOn ? "bg-amber-200 text-black" : "bg-slate-700 text-slate-200")}>{roomIsOn ? "ON" : "OFF"}</span>
+      </div>
+      <div className="relative z-20 mt-2 flex min-h-10 flex-wrap content-start gap-1.5 pr-6">
+        {lanes.map((lane) => (
+          <button
+            key={lane.id}
+            type="button"
+            onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })}
+            className={cn(
+              "min-w-0 max-w-[calc(50%-3px)] border-2 border-black bg-[#172631]/95 px-2 py-1 text-left font-mono shadow-[2px_2px_0_rgba(0,0,0,0.35)] focus:outline-none focus:ring-2 focus:ring-cyan-300",
+              selectedTarget?.kind === "lane" && selectedTarget.laneId === lane.id && "ring-2 ring-cyan-300",
+            )}
+            title={`${lane.name} 코드 사본 열기`}
+          >
+            <span className="block truncate text-[9px] font-black uppercase text-cyan-50">{lane.name}</span>
+            <span className="block truncate text-[8px] text-cyan-100/60">{lane.branch} · 변경 {lane.dirty}</span>
+          </button>
+        ))}
+        {!lanes.length ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/20 px-2 py-1 font-mono text-[9px] text-cyan-100/55">연결된 코드 사본 없음</span> : null}
+      </div>
+      <div className="relative z-20 mt-2 flex min-h-20 max-w-[78%] flex-wrap content-start gap-2">
+        {laneActors.slice(0, 4).map(({ lane, actor, canonical }) => (
           <PixelWorkInstance
-            key={`actor:${actor.id}`}
+            key={`actor:${lane.id}:${actor.id}`}
             active={selectedTarget?.kind === "session" && selectedTarget.laneId === lane.id && selectedTarget.actorId === actor.id}
             label={compactAgentName(actor.name, workspaceName)}
             meta="세션"
@@ -810,7 +884,7 @@ function ExecutionLaneRoom({
             onClick={() => onSelectTarget({ kind: "session", laneId: lane.id, actorId: actor.id })}
           />
         ))}
-        {liveRuns.slice(0, 3).map((run) => (
+        {liveRuns.slice(0, 4).map(({ run }) => (
           <PixelWorkInstance
             key={`run:${run.id}`}
             active={selectedTarget?.kind === "run" && selectedTarget.runId === run.id}
@@ -820,8 +894,8 @@ function ExecutionLaneRoom({
             onClick={() => onSelectTarget({ kind: "run", runId: run.id })}
           />
         ))}
-        {instanceCount > 6 ? <span className="border-2 border-black bg-[#273447] px-1.5 py-1 font-mono text-[9px] font-bold text-cyan-50">+{instanceCount - 6}</span> : null}
-        {!instanceCount ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/15 px-2 py-1 font-mono text-[9px] text-cyan-100/55">활성 세션 없음</span> : null}
+        {instanceCount > 8 ? <span className="border-2 border-black bg-[#273447] px-1.5 py-1 font-mono text-[9px] font-bold text-cyan-50">+{instanceCount - 8}</span> : null}
+        {!instanceCount ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/15 px-2 py-1 font-mono text-[9px] text-cyan-100/55">조명 꺼짐 · 활성 세션 없음</span> : null}
       </div>
     </article>
   );
@@ -846,14 +920,14 @@ function CopyLaneOffice({
   selectedTarget: SelectedWorkspaceTarget | null;
   workspaceName: string;
 }) {
-  const visibleLanes = lanes.filter((lane) => laneMatchesOfficeFilter(lane, filter));
+  const filteredLaneCount = filter === "all" ? lanes.length : lanes.filter((lane) => laneMatchesOfficeFilter(lane, filter)).length;
 
   return (
     <div className="relative overflow-hidden border-[6px] border-[#3c2b20] bg-[#b98558] p-4 shadow-[inset_0_0_0_4px_rgba(255,255,255,0.12),8px_8px_0_rgba(0,0,0,0.3)]">
       <div className="absolute inset-0 opacity-75" style={{ backgroundImage: "linear-gradient(90deg,rgba(79,45,24,0.28) 2px,transparent 2px),linear-gradient(rgba(255,255,255,0.12) 2px,transparent 2px)", backgroundSize: "48px 24px", imageRendering: "pixelated" }} aria-hidden="true" />
       <div className="relative z-20 flex items-center justify-between gap-3 border-2 border-black bg-[#101820] px-3 py-2 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
         <span className="text-[11px] font-black text-cyan-100">Puzzle Game · 코드 사본 사무실</span>
-        <span className="text-[10px] font-bold text-emerald-300">{visibleLanes.length}개 방</span>
+        <span className="text-[10px] font-bold text-emerald-300">고정 4개 방 · 코드 사본 {lanes.length}</span>
       </div>
       <div className="relative z-20 mt-3 flex flex-wrap gap-1.5" role="group" aria-label="코드 사본 방 필터">
         {officeLaneFilters.map((option) => (
@@ -872,21 +946,21 @@ function CopyLaneOffice({
         ))}
       </div>
       <div className="relative z-10 mt-4 grid grid-cols-2 gap-3 border-4 border-[#5f412d] bg-[#6f4b32] p-2">
-        {visibleLanes.map((lane) => (
-          <ExecutionLaneRoom
-            key={lane.id}
+        {fixedOfficeRooms.map((room) => (
+          <FixedOfficeRoom
+            key={room.id}
             agents={agents}
-            lane={lane}
+            room={room}
+            lanes={lanes.filter((lane) => laneMatchesOfficeFilter(lane, room.id))}
+            muted={filter !== "all" && filter !== room.id}
             runs={runs}
             selectedTarget={selectedTarget}
             workspaceName={workspaceName}
             onSelectTarget={onSelectTarget}
           />
         ))}
-        {!visibleLanes.length ? (
-          <div className="col-span-2 border-4 border-dashed border-cyan-100/20 bg-black/25 px-5 py-9 text-center font-mono text-xs text-cyan-100/65">이 필터에 해당하는 코드 사본이 없습니다.</div>
-        ) : null}
       </div>
+      {filter !== "all" && filteredLaneCount === 0 ? <p className="relative z-20 mt-2 font-mono text-[9px] text-amber-100/80">선택한 방은 유지되며 현재 연결된 코드 사본만 없습니다.</p> : null}
       <section className="relative z-20 mt-3 min-h-32 overflow-hidden border-[6px] border-[#405745] bg-[#5f8069] px-4 py-4 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.14)]" style={{ backgroundImage: "linear-gradient(90deg,rgba(29,70,47,0.22) 2px,transparent 2px),linear-gradient(rgba(29,70,47,0.22) 2px,transparent 2px)", backgroundSize: "24px 24px" }} aria-label="등록 역할 공용 대기 구역">
         <PixelFurniture kind="meeting" className="bottom-3 right-5 scale-75 origin-bottom-right" />
         <PixelFurniture kind="plant" className="left-3 top-3" />
