@@ -1808,8 +1808,8 @@ function OfficeRunsSummary({ data, runs }: { data: SpliceWorkspaceRoomData; runs
           )) : (
             <p className="px-4 py-4 text-sm text-muted-foreground">아직 실행 요청이 없습니다.</p>
           )}
+          </div>
         </div>
-      </div>
     </section>
   );
 }
@@ -5706,31 +5706,20 @@ function RoomMap({
   };
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <SectionTitle title="퍼즐게임 사무실" aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
-            <Rocket className="h-3.5 w-3.5" />
-            실행 현황
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className="h-8 gap-1.5">
-            <GitBranch className="h-3.5 w-3.5" />
-            작업 사본
-          </Button>
+    <section className="space-y-7">
+      <header className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">관제</h2>
+          <p className="mt-1 text-sm text-muted-foreground">현재 상태와 먼저 확인할 일을 봅니다.</p>
         </div>
-      </div>
-      <div className="border-2 border-border bg-background px-4 py-4 lg:px-5">
-        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-sm font-semibold">지금 운영 상태</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              내 작업 사본과 실제 에이전트 실행을 먼저 분리해 봅니다.
-            </p>
-          </div>
-          <p className="text-[11px] text-muted-foreground">입력보다 관찰 우선</p>
+        <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+          <span className="border border-border px-2.5 py-1">작업 사본 {data.executionLanes.length}</span>
+          <span className="border border-border px-2.5 py-1">세션 {data.room.humans.length}</span>
+          <span className="border border-border px-2.5 py-1">실제 에이전트 {runCounts.active}</span>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3">
+      </header>
+
+      <div className="grid gap-3 md:grid-cols-3">
           {priorityItems.map((item, index) => {
             const Icon = item.icon;
             return (
@@ -5745,9 +5734,6 @@ function RoomMap({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center border border-border bg-background text-[11px] font-semibold">
-                      {index + 1}
-                    </span>
                     <span className="truncate text-sm font-semibold">{item.title}</span>
                   </span>
                   <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -5760,9 +5746,85 @@ function RoomMap({
               </button>
             );
           })}
-        </div>
       </div>
-      <div className="space-y-4">
+
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">내가 확인할 것</h3>
+          <span className="text-xs text-muted-foreground">우선순위순</span>
+        </div>
+        <div className="border-y border-border">
+          {completedNeedsReview ? (
+            <button type="button" onClick={() => onOpenTab("runs")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium">완료된 에이전트 결과 검수</span><span className="mt-1 block truncate text-xs text-muted-foreground">완료된 실행 {completedRuns}건을 확인해야 합니다.</span></span>
+              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">결과 {completedRuns}</span>
+            </button>
+          ) : null}
+          {executionNotStarted ? (
+            <button type="button" onClick={() => onOpenTab("runs")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium">배정된 업무의 실행 확인</span><span className="mt-1 block truncate text-xs text-muted-foreground">업무는 배정됐지만 실제 실행이 아직 없습니다.</span></span>
+              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">실행 대기</span>
+            </button>
+          ) : null}
+          {reviewAttention > 0 ? (
+            <button type="button" onClick={() => onOpenTab("reviews")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left hover:bg-muted/50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium">검수와 승인 대기</span><span className="mt-1 block truncate text-xs text-muted-foreground">검수 {data.totals.reviewIssues} · 승인 {approvals?.counts.pending ?? 0}</span></span>
+              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">확인 {reviewAttention}</span>
+            </button>
+          ) : null}
+          {(inbox?.counts.open ?? 0) > 0 ? (
+            <button type="button" onClick={() => onOpenTab("inbox")} className="flex w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted/50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium">새 신호함 항목</span><span className="mt-1 block truncate text-xs text-muted-foreground">업무, 실행, 메시지 신호를 확인하세요.</span></span>
+              <span className="shrink-0 border border-border px-2 py-0.5 text-xs">신호 {inbox?.counts.open ?? 0}</span>
+            </button>
+          ) : null}
+          {!completedNeedsReview && !executionNotStarted && reviewAttention === 0 && (inbox?.counts.open ?? 0) === 0 ? <p className="px-1 py-3 text-sm text-muted-foreground">지금 바로 확인할 운영 신호가 없습니다.</p> : null}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">현재 움직임</h3>
+          <span className="text-xs text-muted-foreground">최근 작업 사본과 세션</span>
+        </div>
+        <div className="border-y border-border">
+          {data.executionLanes.slice(0, 4).map((lane) => (
+            <button key={lane.id} type="button" onClick={() => onOpenTab("lanes")} className="flex w-full items-center justify-between gap-3 border-b border-border px-1 py-3 text-left last:border-b-0 hover:bg-muted/50">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium"><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />{lane.name}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{lane.managerLabel} · {lane.branch} · 변경 {lane.dirty}</span></span>
+              <span className="shrink-0 text-xs text-muted-foreground">{formatAge(lane.lastCommit?.ageMin)}</span>
+            </button>
+          ))}
+          {!data.executionLanes.length ? <p className="px-1 py-3 text-sm text-muted-foreground">감지된 작업 사본이 없습니다.</p> : null}
+        </div>
+      </section>
+
+      <section className="border-t border-border pt-4">
+        <p className="text-sm font-semibold">기능 보존</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {officeSignals.map((signal) => (
+            <button key={signal.tab} type="button" onClick={() => onOpenTab(signal.tab)} className="border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+              {signal.title} {signal.value}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <details className="border border-border bg-background">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground">픽셀 사무실 보기</summary>
+        <div className="space-y-4 border-t border-border p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <SectionTitle title="퍼즐게임 사무실" aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
+                <Rocket className="h-3.5 w-3.5" />
+                실행 현황
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className="h-8 gap-1.5">
+                <GitBranch className="h-3.5 w-3.5" />
+                작업 사본
+              </Button>
+            </div>
+          </div>
         <div
           className="relative h-[360px] min-h-[340px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[420px] 2xl:h-[520px]"
           style={{
@@ -6068,6 +6130,7 @@ function RoomMap({
           </div>
         </div>
       </div>
+      </details>
     </section>
   );
 }
