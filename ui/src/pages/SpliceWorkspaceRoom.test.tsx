@@ -502,9 +502,10 @@ describe("SpliceWorkspaceRoom", () => {
     const mainNavigation = container.querySelector('nav[aria-label="Splice 주요 탐색"]');
     expect(mainNavigation?.textContent).toContain("관제");
     expect(mainNavigation?.textContent).toContain("실행");
+    expect(mainNavigation?.textContent).toContain("코드 사본");
     expect(mainNavigation?.textContent).toContain("업무");
     expect(mainNavigation?.textContent).toContain("기록");
-    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(4);
+    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(5);
 
     expect(container.textContent).toContain("내가 확인할 것");
     const attentionQueue = Array.from(container.querySelectorAll("section")).find((section) => section.textContent?.includes("내가 확인할 것"));
@@ -522,10 +523,20 @@ describe("SpliceWorkspaceRoom", () => {
 
     const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]');
     expect(executeNavigation).not.toBeNull();
-    expect(primaryTabLabels(executeNavigation!)).toEqual(["실행 현황", "코드 사본", "에이전트"]);
+    expect(primaryTabLabels(executeNavigation!)).toEqual(["실행 현황", "에이전트"]);
+    expect(primaryTabLabels(executeNavigation!)).not.toContain("코드 사본");
     expect(primaryTabLabels(executeNavigation!)).not.toContain("사무실");
     expect(executeNavigation?.querySelector('button[aria-current="page"]')?.textContent?.trim()).toBe("실행 현황");
     expect(container.textContent).toContain("실행 현황");
+
+    const codeCopiesButton = exactButton(mainNavigation!, "코드 사본");
+    await act(async () => {
+      codeCopiesButton.click();
+    });
+    await flushReact();
+
+    expect(container.querySelector('[aria-label="코드 사본 보조 탐색"]')).not.toBeNull();
+    expect(container.textContent).toContain("프로젝트 코드 사본");
 
     await act(async () => {
       root.unmount();

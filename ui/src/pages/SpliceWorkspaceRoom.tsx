@@ -103,7 +103,7 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "details", label: "상세", icon: FileText },
 ];
 
-type RoomNavigationGroup = "observe" | "execute" | "work" | "history";
+type RoomNavigationGroup = "observe" | "execute" | "code" | "work" | "history";
 
 const roomNavigationGroups: Array<{
   value: RoomNavigationGroup;
@@ -114,7 +114,8 @@ const roomNavigationGroups: Array<{
   advancedTabs: RoomTab[];
 }> = [
   { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox"], advancedTabs: [] },
-  { value: "execute", label: "실행", icon: Rocket, defaultTab: "runs", tabs: ["runs", "lanes", "agents"], advancedTabs: ["comms", "routines"] },
+  { value: "execute", label: "실행", icon: Rocket, defaultTab: "runs", tabs: ["runs", "agents"], advancedTabs: ["comms", "routines"] },
+  { value: "code", label: "코드 사본", icon: GitBranch, defaultTab: "lanes", tabs: ["lanes"], advancedTabs: [] },
   { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "approvals", "goals"], advancedTabs: ["desk", "intake"] },
   { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
 ];
@@ -1541,6 +1542,7 @@ function PuzzleSidebar({
 
 function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; onTabChange: (tab: RoomTab) => void }) {
   const group = roomNavigationGroups.find((item) => item.value === roomNavigationGroupForTab(activeTab))!;
+  const singleScreenGroup = group.tabs.length === 1 && group.advancedTabs.length === 0;
   const renderTab = (tab: RoomTab) => {
     const item = roomTabs.find((candidate) => candidate.value === tab)!;
     const Icon = item.icon;
@@ -1564,9 +1566,9 @@ function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; on
   return (
     <section aria-label={`${group.label} 보조 탐색`} className="border-b border-border">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
-          <span className="shrink-0 text-sm font-semibold">{group.label}</span>
-          <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div>
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+            <span className="shrink-0 text-sm font-semibold">{group.label}</span>
+            {!singleScreenGroup ? <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div> : null}
         </div>
         {group.advancedTabs.length ? (
           <details className="relative shrink-0 border-l border-border pl-3 pr-1">
