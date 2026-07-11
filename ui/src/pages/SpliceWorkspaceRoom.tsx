@@ -1078,12 +1078,14 @@ function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; on
 
   return (
     <section aria-label={`${group.label} 보조 탐색`} className="border-b border-border">
-      <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
-        <span className="shrink-0 text-sm font-semibold">{group.label}</span>
-        <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+          <span className="shrink-0 text-sm font-semibold">{group.label}</span>
+          <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div>
+        </div>
         {group.advancedTabs.length ? (
-          <details className="relative ml-auto shrink-0">
-            <summary className="cursor-pointer list-none py-2 text-xs font-medium text-muted-foreground hover:text-foreground">고급 운영 도구</summary>
+          <details className="relative shrink-0 border-l border-border pl-3 pr-1">
+            <summary className="cursor-pointer list-none whitespace-nowrap rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">고급 운영 도구</summary>
             <div className="absolute right-0 z-10 mt-1 flex min-w-36 flex-col border border-border bg-background p-1 shadow-md">
               {group.advancedTabs.map((tab) => {
                 const item = roomTabs.find((candidate) => candidate.value === tab)!;
