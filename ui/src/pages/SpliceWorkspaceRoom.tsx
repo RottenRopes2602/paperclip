@@ -574,19 +574,6 @@ function PixelRoomProp({ kind, className }: { kind: "terminal" | "board"; classN
   );
 }
 
-function OfficeRoom({ label, className }: { label: string; className: string }) {
-  return (
-    <div className={cn(
-      "absolute z-0 border-4 border-[#25313b] bg-[#111821]/78 shadow-[5px_5px_0_rgba(0,0,0,0.45)]",
-      className,
-    )}>
-      <div className="absolute left-2 top-2 border-2 border-black bg-[#162536] px-2 py-1 font-mono text-[10px] font-bold uppercase leading-none text-cyan-100 shadow-[2px_2px_0_rgba(0,0,0,0.45)]">
-        {label}
-      </div>
-    </div>
-  );
-}
-
 function PixelFurniture({
   kind,
   className,
@@ -615,34 +602,321 @@ function PixelFurniture({
   return <div className={cn(shared, classes[kind], className)} aria-hidden="true" />;
 }
 
-function OfficeLayout() {
+type OfficeLaneFilter = "all" | "root" | "codex" | "claude" | "splice";
+
+const officeLaneFilters: Array<{ value: OfficeLaneFilter; label: string }> = [
+  { value: "all", label: "전체" },
+  { value: "root", label: "원본 코드" },
+  { value: "codex", label: "Codex" },
+  { value: "claude", label: "Claude" },
+  { value: "splice", label: "Splice" },
+];
+
+function laneMatchesOfficeFilter(lane: SpliceExecutionLane, filter: OfficeLaneFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "root") return lane.isMain || lane.copyKind === "root" || lane.manager === "local";
+  if (filter === "codex") return lane.manager === "codex" || lane.kind === "codex";
+  if (filter === "claude") return lane.manager === "claude" || lane.kind === "claude";
+  return lane.manager === "splice" || lane.manager === "conductor" || lane.kind === "conductor";
+}
+
+function isLiveOfficeRun(run: SpliceAgentRunRequest): boolean {
+  if (run.expired) return false;
+  const status = String(run.status);
+  const runtime = run.runtime?.state;
+  return ["requested", "launch_ready", "launched"].includes(status)
+    || ["queued", "ready", "launched", "running"].includes(String(runtime));
+}
+
+function normalizedOfficePath(path: string | null | undefined): string {
+  return String(path ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+function runMatchesExecutionLane(run: SpliceAgentRunRequest, lane: SpliceExecutionLane): boolean {
+  const runPath = normalizedOfficePath(run.workspacePath ?? run.launch?.workspacePath);
+  const lanePath = normalizedOfficePath(lane.path);
+  const projectPath = normalizedOfficePath(lane.projectPath);
+  const actorMatch = lane.actors.some((actor) => actor.id === run.agentId || actor.name === run.agentName);
+  return actorMatch || Boolean(runPath && (runPath === lanePath || runPath === projectPath));
+}
+
+function officeActorForLaneActor(
+  actor: SpliceExecutionLane["actors"][number],
+  agents: SpliceWorkspaceRoomActor[],
+): SpliceWorkspaceRoomActor | null {
+  return agents.find((agent) => agent.id === actor.id || agent.slug === actor.id || agent.name === actor.name) ?? null;
+}
+
+function executionLaneRoomTheme(lane: SpliceExecutionLane) {
+  if (lane.isMain || lane.manager === "local") return { floor: "#9fb5bd", tile: "rgba(45,72,83,0.24)", wall: "#43545b", rug: "bg-[#47727b]" };
+  if (lane.manager === "codex") return { floor: "#607da0", tile: "rgba(25,45,75,0.28)", wall: "#2f4663", rug: "bg-[#314f78]" };
+  if (lane.manager === "claude") return { floor: "#71937f", tile: "rgba(35,70,48,0.26)", wall: "#3e5f49", rug: "bg-[#426d50]" };
+  if (lane.manager === "splice" || lane.manager === "conductor") return { floor: "#a98569", tile: "rgba(90,54,35,0.24)", wall: "#684936", rug: "bg-[#76533d]" };
+  return { floor: "#7e8794", tile: "rgba(38,45,55,0.24)", wall: "#4a515c", rug: "bg-[#525d6b]" };
+}
+
+function PixelWorkInstance({
+  active,
+  label,
+  meta,
+  onClick,
+  tone = "cyan",
+}: {
+  active?: boolean;
+  label: string;
+  meta: string;
+  onClick: () => void;
+  tone?: "cyan" | "emerald" | "amber";
+}) {
+  const colors = tone === "emerald"
+    ? { o: "#101014", b: "#1c5b49", l: "#7af0be", s: "#d4a17f", h: "#24221f", c: "#b7f7d9" }
+    : tone === "amber"
+      ? { o: "#101014", b: "#765128", l: "#ffd56b", s: "#d4a17f", h: "#24221f", c: "#fff0b2" }
+      : { o: "#101014", b: "#244b68", l: "#79d8ff", s: "#d4a17f", h: "#24221f", c: "#c9f3ff" };
+  const rows = [
+    "  oooooooo  ",
+    "  obbbbbbo  ",
+    "  oblllbbo  ",
+    "   oooo     ",
+    "    ohho    ",
+    "    osso    ",
+    "   osssso   ",
+  ];
+
   return (
-    <>
-      <div className="absolute inset-3 z-0 border-4 border-[#293640] shadow-[inset_0_0_0_4px_rgba(0,0,0,0.35)]" />
-      <div className="absolute left-[4%] right-[4%] top-[12%] z-0 h-1 bg-[#293640]" />
-      <div className="absolute left-[4%] right-[4%] bottom-[22%] z-0 h-1 bg-[#293640]" />
-      <div className="absolute bottom-[22%] left-[25%] top-[12%] z-0 w-1 bg-[#293640]" />
-      <div className="absolute bottom-[22%] left-[48%] top-[12%] z-0 w-1 bg-[#293640]" />
-      <div className="absolute bottom-[22%] right-[24%] top-[12%] z-0 w-1 bg-[#293640]" />
-      <OfficeRoom label="회의" className="left-[5%] top-[5%] h-[27%] w-[24%]" />
-      <OfficeRoom label="설계" className="left-[27%] top-[16%] h-[41%] w-[22%]" />
-      <OfficeRoom label="구현" className="left-[50%] top-[16%] h-[48%] w-[24%]" />
-      <OfficeRoom label="검토" className="right-[5%] top-[16%] h-[48%] w-[20%]" />
-      <OfficeRoom label="운영자" className="bottom-[5%] left-[5%] h-[22%] w-[25%]" />
-      <OfficeRoom label="출시" className="bottom-[5%] left-[37%] h-[22%] w-[22%]" />
-      <OfficeRoom label="인프라" className="bottom-[5%] right-[5%] h-[22%] w-[26%]" />
-      <PixelFurniture kind="meeting" className="left-[11%] top-[18%]" />
-      <PixelFurniture kind="desk-island" className="left-[31%] top-[35%]" />
-      <PixelFurniture kind="desk" className="left-[55%] top-[39%]" />
-      <PixelFurniture kind="desk" className="right-[9%] top-[31%]" />
-      <PixelFurniture kind="desk" className="left-[10%] bottom-[9%]" />
-      <PixelFurniture kind="shelf" className="left-[42%] bottom-[10%]" />
-      <PixelFurniture kind="server" className="right-[11%] bottom-[9%]" />
-      <PixelFurniture kind="plant" className="left-[3%] bottom-[30%]" />
-      <PixelFurniture kind="plant" className="right-[3%] top-[7%]" />
-      <PixelRoomProp kind="board" className="left-[7%] top-[9%]" />
-      <PixelRoomProp kind="terminal" className="right-[13%] bottom-[33%]" />
-    </>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative z-20 flex min-w-0 items-center gap-1.5 border-2 border-black bg-[#101820]/95 px-1.5 py-1 text-left font-mono shadow-[2px_2px_0_rgba(0,0,0,0.52)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300",
+        active && "ring-2 ring-cyan-300",
+      )}
+      title={`${label} · ${meta}`}
+    >
+      <PixelGrid rows={rows} colors={colors} pixel={2} />
+      <span className="min-w-0 leading-none text-cyan-50">
+        <span className="block truncate text-[9px] font-bold uppercase">{label}</span>
+        <span className="mt-1 block truncate text-[8px] text-cyan-100/70">{meta}</span>
+      </span>
+    </button>
+  );
+}
+
+function SharedRoleDesk({
+  active,
+  actor,
+  onSelect,
+  workspaceName,
+}: {
+  active: boolean;
+  actor: SpliceWorkspaceRoomActor;
+  onSelect: () => void;
+  workspaceName: string;
+}) {
+  const palette = actorPixelColors(actor);
+  const rows = [
+    "  ohhhho  ",
+    "  ohssho  ",
+    "   ottto  ",
+    " ooottttoo",
+    "  odDDdo  ",
+    "  oddddo  ",
+  ];
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex min-w-0 items-center gap-1 border-2 border-black bg-[#15212a] px-1.5 py-1 text-left font-mono shadow-[2px_2px_0_rgba(0,0,0,0.45)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300",
+        active && "bg-cyan-950 ring-2 ring-cyan-300",
+      )}
+      aria-label={`${compactAgentName(actor.name, workspaceName)} 공용 대기 책상`}
+    >
+      <PixelGrid rows={rows} colors={palette} pixel={2} />
+      <span className="min-w-0">
+        <span className="block truncate text-[9px] font-bold uppercase leading-none text-cyan-50">{compactAgentName(actor.name, workspaceName)}</span>
+        <span className="mt-1 block truncate text-[8px] leading-none text-cyan-100/65">{actor.role}</span>
+      </span>
+    </button>
+  );
+}
+
+function ExecutionLaneRoom({
+  agents,
+  lane,
+  onOpenRun,
+  onOpenTab,
+  onSelectAgent,
+  runs,
+  selectedActorId,
+  workspaceName,
+}: {
+  agents: SpliceWorkspaceRoomActor[];
+  lane: SpliceExecutionLane;
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onSelectAgent: (agent: SpliceWorkspaceRoomActor) => void;
+  runs: SpliceAgentRunRequest[];
+  selectedActorId: string;
+  workspaceName: string;
+}) {
+  const laneActors = lane.actors.map((actor) => ({ actor, canonical: officeActorForLaneActor(actor, agents) }));
+  const liveRuns = runs.filter((run) => isLiveOfficeRun(run) && runMatchesExecutionLane(run, lane));
+  const firstAgent = laneActors.find((entry) => entry.canonical)?.canonical ?? null;
+  const instanceCount = laneActors.length + liveRuns.length;
+  const theme = executionLaneRoomTheme(lane);
+
+  return (
+    <article
+      data-testid="copy-room"
+      className="relative min-h-[248px] overflow-hidden border-[6px] p-3 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.18)]"
+      style={{
+        borderColor: theme.wall,
+        backgroundColor: theme.floor,
+        backgroundImage: `linear-gradient(90deg,${theme.tile} 2px,transparent 2px),linear-gradient(${theme.tile} 2px,transparent 2px)`,
+        backgroundSize: "24px 24px",
+        imageRendering: "pixelated",
+      }}
+      aria-label={`코드 사본 방 ${lane.name}`}
+    >
+      <div className={cn("absolute bottom-7 left-[24%] h-20 w-[52%] border-4 border-black/70 opacity-65", theme.rug)} aria-hidden="true" />
+      <PixelFurniture kind="plant" className="bottom-3 right-3 scale-125" />
+      <PixelFurniture kind="plant" className="left-4 top-20" />
+      <PixelFurniture kind="desk-island" className="bottom-5 left-[34%] scale-90 origin-bottom-left" />
+      <PixelFurniture kind="shelf" className="right-4 top-16 scale-75 origin-top-right" />
+      <PixelRoomProp kind="terminal" className="bottom-10 left-5 scale-90 origin-bottom-left" />
+      <div className="absolute -bottom-[6px] left-1/2 z-30 h-8 w-20 -translate-x-1/2 border-x-[6px] border-t-[6px] bg-[#b98558]" style={{ borderColor: theme.wall }} aria-hidden="true" />
+      <button
+        type="button"
+        onClick={() => firstAgent ? onSelectAgent(firstAgent) : onOpenTab("lanes")}
+        className="relative z-20 flex w-full min-w-0 items-start justify-between gap-2 border-2 border-black bg-[#101820]/95 px-2.5 py-2 text-left font-mono shadow-[3px_3px_0_rgba(0,0,0,0.38)] focus:outline-none focus:ring-2 focus:ring-cyan-300"
+        title={`${lane.name} 코드 사본 열기`}
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-[10px] font-black uppercase leading-none text-cyan-50">{lane.name}</span>
+          <span className="mt-1 block truncate text-[8px] leading-none text-cyan-100/65">{lane.copyKindLabel} · {lane.managerLabel} · {lane.branch}</span>
+        </span>
+        <span className={cn("shrink-0 border px-1 py-0.5 text-[8px] font-bold leading-none", laneStateClass[lane.state] ?? laneStateClass.idle)}>변경 {lane.dirty}</span>
+      </button>
+      <div className="relative z-20 mt-3 flex min-h-24 max-w-[72%] flex-wrap content-start gap-2">
+        {laneActors.slice(0, 3).map(({ actor, canonical }) => (
+          <PixelWorkInstance
+            key={`actor:${actor.id}`}
+            active={canonical?.id === selectedActorId}
+            label={compactAgentName(actor.name, workspaceName)}
+            meta="세션"
+            tone={actor.kind === "agent" ? "cyan" : "emerald"}
+            onClick={() => canonical ? onSelectAgent(canonical) : onOpenTab("lanes")}
+          />
+        ))}
+        {liveRuns.slice(0, 3).map((run) => (
+          <PixelWorkInstance
+            key={`run:${run.id}`}
+            label={compactAgentName(run.agentName, workspaceName)}
+            meta={runtimeLabel(run.runtime, run.status)}
+            tone="amber"
+            onClick={() => onOpenRun(run.id)}
+          />
+        ))}
+        {instanceCount > 6 ? <span className="border-2 border-black bg-[#273447] px-1.5 py-1 font-mono text-[9px] font-bold text-cyan-50">+{instanceCount - 6}</span> : null}
+        {!instanceCount ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/15 px-2 py-1 font-mono text-[9px] text-cyan-100/55">활성 세션 없음</span> : null}
+      </div>
+    </article>
+  );
+}
+
+function CopyLaneOffice({
+  agents,
+  filter,
+  lanes,
+  onOpenRun,
+  onOpenTab,
+  onSelectAgent,
+  onSelectFilter,
+  runs,
+  selectedActorId,
+  workspaceName,
+}: {
+  agents: SpliceWorkspaceRoomActor[];
+  filter: OfficeLaneFilter;
+  lanes: SpliceExecutionLane[];
+  onOpenRun: (runId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
+  onSelectAgent: (agent: SpliceWorkspaceRoomActor) => void;
+  onSelectFilter: (filter: OfficeLaneFilter) => void;
+  runs: SpliceAgentRunRequest[];
+  selectedActorId: string;
+  workspaceName: string;
+}) {
+  const visibleLanes = lanes.filter((lane) => laneMatchesOfficeFilter(lane, filter));
+
+  return (
+    <div className="relative overflow-hidden border-[6px] border-[#3c2b20] bg-[#b98558] p-4 shadow-[inset_0_0_0_4px_rgba(255,255,255,0.12),8px_8px_0_rgba(0,0,0,0.3)]">
+      <div className="absolute inset-0 opacity-75" style={{ backgroundImage: "linear-gradient(90deg,rgba(79,45,24,0.28) 2px,transparent 2px),linear-gradient(rgba(255,255,255,0.12) 2px,transparent 2px)", backgroundSize: "48px 24px", imageRendering: "pixelated" }} aria-hidden="true" />
+      <div className="relative z-20 flex items-center justify-between gap-3 border-2 border-black bg-[#101820] px-3 py-2 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
+        <span className="text-[11px] font-black text-cyan-100">Puzzle Game · 코드 사본 사무실</span>
+        <span className="text-[10px] font-bold text-emerald-300">{visibleLanes.length}개 방</span>
+      </div>
+      <div className="relative z-20 mt-3 flex flex-wrap gap-1.5" role="group" aria-label="코드 사본 방 필터">
+        {officeLaneFilters.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onSelectFilter(option.value)}
+            aria-pressed={filter === option.value}
+            className={cn(
+              "border-2 border-black px-2 py-1 font-mono text-[10px] font-bold leading-none shadow-[2px_2px_0_rgba(0,0,0,0.45)] focus:outline-none focus:ring-2 focus:ring-cyan-300",
+              filter === option.value ? "bg-cyan-300 text-black" : "bg-[#273447] text-cyan-50 hover:bg-[#365069]",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className="relative z-10 mt-4 grid grid-cols-2 gap-3 border-4 border-[#5f412d] bg-[#6f4b32] p-2">
+        {visibleLanes.map((lane) => (
+          <ExecutionLaneRoom
+            key={lane.id}
+            agents={agents}
+            lane={lane}
+            runs={runs}
+            selectedActorId={selectedActorId}
+            workspaceName={workspaceName}
+            onSelectAgent={onSelectAgent}
+            onOpenRun={onOpenRun}
+            onOpenTab={onOpenTab}
+          />
+        ))}
+        {!visibleLanes.length ? (
+          <div className="col-span-2 border-4 border-dashed border-cyan-100/20 bg-black/25 px-5 py-9 text-center font-mono text-xs text-cyan-100/65">이 필터에 해당하는 코드 사본이 없습니다.</div>
+        ) : null}
+      </div>
+      <section className="relative z-20 mt-3 min-h-32 overflow-hidden border-[6px] border-[#405745] bg-[#5f8069] px-4 py-4 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.14)]" style={{ backgroundImage: "linear-gradient(90deg,rgba(29,70,47,0.22) 2px,transparent 2px),linear-gradient(rgba(29,70,47,0.22) 2px,transparent 2px)", backgroundSize: "24px 24px" }} aria-label="등록 역할 공용 대기 구역">
+        <PixelFurniture kind="meeting" className="bottom-3 right-5 scale-75 origin-bottom-right" />
+        <PixelFurniture kind="plant" className="left-3 top-3" />
+        <PixelRoomProp kind="board" className="right-7 top-3 scale-75 origin-top-right" />
+        <div className="relative z-10 flex items-center justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] font-black text-white">등록 역할 · 공용 대기 라운지</p>
+            <p className="mt-1 font-mono text-[9px] text-white/75">역할은 한 번만 표시되고, 실제 세션은 각 코드 사본 방에 나타납니다.</p>
+          </div>
+          <span className="border-2 border-black bg-amber-300 px-1.5 py-1 font-mono text-[9px] font-black text-black">{agents.length}</span>
+        </div>
+        <div className="relative z-10 mt-3 flex min-h-11 flex-wrap gap-2 pr-32">
+          {agents.map((actor) => (
+            <SharedRoleDesk
+              key={actor.id}
+              actor={actor}
+              active={actor.id === selectedActorId}
+              workspaceName={workspaceName}
+              onSelect={() => onSelectAgent(actor)}
+            />
+          ))}
+          {!agents.length ? <span className="font-mono text-[10px] text-amber-100/65">등록 역할이 아직 없습니다.</span> : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -5577,19 +5851,14 @@ function OfficeOverview({
   workOrders: SpliceWorkOrdersData | null;
   workProducts: SpliceWorkProduct[];
 }) {
-  const roomActors = [...data.room.humans, ...data.room.agents];
+  const roomActors = [...data.room.humans, ...data.agents];
   const preferredActor = roomActors.find((actor) => actor.state === "requested") ?? roomActors.find((actor) => actor.state === "working") ?? roomActors.find((actor) => actor.state === "assigned") ?? roomActors[0] ?? null;
   const focusedActor = focusedAgentId
     ? roomActors.find((actor) => actor.id === focusedAgentId || actor.slug === focusedAgentId) ?? null
     : null;
   const [selectedActorId, setSelectedActorId] = useState(focusedActor?.id ?? preferredActor?.id ?? "");
   const [deskDraft, setDeskDraft] = useState("");
-  const zoneCounts = new Map<string, number>();
-  const roomActorEntries = roomActors.map((actor) => {
-    const slotIndex = zoneCounts.get(actor.zone) ?? 0;
-    zoneCounts.set(actor.zone, slotIndex + 1);
-    return { actor, slotIndex };
-  });
+  const [laneFilter, setLaneFilter] = useState<OfficeLaneFilter>("all");
   useEffect(() => {
     if (!roomActors.length) {
       setSelectedActorId("");
@@ -5623,9 +5892,6 @@ function OfficeOverview({
   const selectedPrimaryWork = selectedActor?.currentWork[0] ?? null;
   const selectedPrimaryRequest = selectedRequests[0] ?? null;
   const sendingSelected = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
-  const roomWorkOrders = (workOrders?.workOrders ?? []).filter((order) => isOpenOfficeStatus(order.status));
-  const visibleRoomWorkOrders = roomWorkOrders.slice(0, 8);
-  const roomWorkOrderOverflow = Math.max(0, roomWorkOrders.length - visibleRoomWorkOrders.length);
   const openFocusedTab = (tab: RoomTab) => {
     if (selectedAgent) onFocusAgent(selectedAgent.id);
     if (tab === "desk" && selectedPrimaryWork) {
@@ -5665,61 +5931,21 @@ function OfficeOverview({
               </Button>
             </div>
           </div>
-        <div
-          className="relative h-[360px] min-h-[340px] overflow-hidden border-4 border-black bg-[#10140f] shadow-[inset_0_0_0_4px_rgba(255,255,255,0.06),8px_8px_0_rgba(0,0,0,0.35)] md:h-[420px] 2xl:h-[520px]"
-          style={{
-            backgroundImage:
-              "linear-gradient(45deg, rgba(255,255,255,0.035) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.035) 75%), linear-gradient(45deg, rgba(0,0,0,0.22) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.22) 75%), linear-gradient(to right, rgba(255,255,255,0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(255,255,255,0.06) 2px, transparent 2px)",
-            backgroundPosition: "0 0, 16px 16px, 0 0, 0 0",
-            backgroundSize: "32px 32px, 32px 32px, 32px 32px, 32px 32px",
-            imageRendering: "pixelated",
+        <CopyLaneOffice
+          agents={data.agents}
+          filter={laneFilter}
+          lanes={data.executionLanes}
+          runs={roomRunRequests}
+          selectedActorId={selectedActor?.id ?? ""}
+          workspaceName={data.name}
+          onSelectFilter={setLaneFilter}
+          onOpenRun={onOpenRun}
+          onOpenTab={onOpenTab}
+          onSelectAgent={(actor) => {
+            setSelectedActorId(actor.id);
+            onFocusAgent(actor.id);
           }}
-        >
-          <div className="absolute left-4 top-4 z-10 border-2 border-black bg-[#101820] px-3 py-2 font-mono text-[11px] font-bold uppercase leading-none text-cyan-100 shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
-            퍼즐 사무실
-            <span className="ml-2 text-emerald-300">
-              {`· ${runCounts.active} 가동`}
-            </span>
-          </div>
-          <OfficeLayout />
-          <OfficeWorkProductStack count={workProducts.length} onClick={() => onOpenTab("desk")} />
-          <OfficeMapHotspot className="left-[6%] bottom-[33%]" count={inbox?.counts.open ?? 0} icon={Inbox} label="신호함" onClick={() => onOpenTab("inbox")} tone="cyan" />
-          <OfficeMapHotspot className="right-[7%] top-[17%]" count={approvals?.counts.pending ?? 0} icon={ShieldAlert} label="검수" onClick={() => onOpenTab("approvals")} tone={(approvals?.counts.pending ?? 0) > 0 ? "amber" : "green"} />
-          <OfficeMapHotspot className="right-[7%] bottom-[7%]" count={runCounts.active} icon={Rocket} label="실행" onClick={() => onOpenTab("runs")} tone={runCounts.failed > 0 ? "red" : "green"} />
-          {visibleRoomWorkOrders.map((order, index) => (
-            <OfficeWorkOrderMarker
-              key={order.id}
-              data={data}
-              index={index}
-              order={order}
-              onOpen={() => onOpenWorkOrder(order.id)}
-            />
-          ))}
-          {roomWorkOrderOverflow > 0 ? (
-            <button
-              type="button"
-              onClick={() => onOpenTab("intake")}
-              className="absolute bottom-[30%] left-[29%] z-20 border-4 border-black bg-[#e7d57a] px-2 py-1 font-mono text-[10px] font-black uppercase leading-none text-black shadow-[4px_4px_0_rgba(0,0,0,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-            >
-              +{roomWorkOrderOverflow} 업무
-            </button>
-          ) : null}
-          {roomActorEntries.map(({ actor, slotIndex }) => (
-            <RoomActorSprite
-              key={actor.id}
-              active={selectedActor?.id === actor.id}
-              actor={actor}
-              workspaceName={data.name}
-              slotIndex={slotIndex}
-              onSelect={() => {
-                setSelectedActorId(actor.id);
-                if (data.agents.some((agent) => agent.id === actor.id || agent.slug === actor.slug)) {
-                  onFocusAgent(actor.id);
-                }
-              }}
-            />
-          ))}
-        </div>
+        />
         <div className="min-w-0 border-2 border-border bg-background">
           <div className="px-4 py-4 lg:px-5">
             <div className="flex items-start justify-between gap-3">

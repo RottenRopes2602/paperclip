@@ -56,6 +56,159 @@ vi.mock("@/components/BreadcrumbBar", () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
+const registeredRole = (id: string, slug: string, name: string, role: string, state = "idle") => ({
+  id,
+  slug,
+  name,
+  initials: name.slice(0, 2),
+  role,
+  state,
+  zone: "registered-roles",
+  x: 0,
+  y: 0,
+  currentWork: [],
+  activeCount: 0,
+  reviewCount: 0,
+  queuedCount: 0,
+  request: null,
+  session: null,
+});
+
+const copyActor = (id: string, name: string, kind: "human" | "agent", state = "idle") => ({
+  id,
+  name,
+  kind,
+  state,
+});
+
+const rootRole = registeredRole("role-root", "operator", "운영자 등록 역할", "operator", "present");
+const codexRole = registeredRole("role-codex", "codex", "Codex 등록 역할", "engineer");
+const claudeRole = registeredRole("role-claude", "claude", "Claude 등록 역할", "designer");
+const spliceRole = registeredRole("role-splice", "splice", "Splice 등록 역할", "general");
+
+const executionLanes = [
+  {
+    id: "lane-root",
+    name: "원본 코드 방",
+    kind: "main",
+    kindLabel: "원본 코드",
+    copyKind: "root",
+    copyKindLabel: "원본 코드",
+    manager: "local",
+    managerLabel: "Splice Hub",
+    state: "active",
+    projectSpaceId: "space-puzzle-game",
+    projectSpaceName: "Puzzle Game",
+    path: "D:/testbeds/puzzle-game",
+    shortPath: "testbeds/puzzle-game",
+    projectPath: "D:/testbeds/puzzle-game",
+    projectShortPath: "testbeds/puzzle-game",
+    projectPresent: true,
+    repositoryRoot: "D:/testbeds/puzzle-game",
+    branch: "main",
+    isMain: true,
+    dirty: 0,
+    ahead: 0,
+    behind: 0,
+    lastCommit: { sha: "root-sha", msg: "root snapshot", ageMin: 4 },
+    requestCount: 0,
+    activeRequestCount: 0,
+    queuedRunCount: 0,
+    liveRunCount: 0,
+    actors: [copyActor("copy-actor-root", "원본 세션 인스턴스", "human", "present")],
+  },
+  {
+    id: "lane-codex",
+    name: "Codex 코드 방",
+    kind: "codex",
+    kindLabel: "Codex",
+    copyKind: "worktree",
+    copyKindLabel: "Codex",
+    manager: "codex",
+    managerLabel: "Codex",
+    state: "dirty",
+    projectSpaceId: "space-puzzle-game",
+    projectSpaceName: "Puzzle Game",
+    path: "D:/worktrees/puzzle-game-codex",
+    shortPath: "worktrees/puzzle-game-codex",
+    projectPath: "D:/worktrees/puzzle-game-codex",
+    projectShortPath: "worktrees/puzzle-game-codex",
+    projectPresent: true,
+    repositoryRoot: "D:/testbeds/puzzle-game",
+    branch: "codex/copy-room",
+    isMain: false,
+    dirty: 2,
+    ahead: 1,
+    behind: 0,
+    lastCommit: { sha: "codex-sha", msg: "codex snapshot", ageMin: 7 },
+    requestCount: 1,
+    activeRequestCount: 1,
+    queuedRunCount: 0,
+    liveRunCount: 1,
+    actors: [copyActor("copy-actor-codex", "Codex 세션 인스턴스", "agent", "working")],
+  },
+  {
+    id: "lane-claude",
+    name: "Claude 코드 방",
+    kind: "claude",
+    kindLabel: "Claude Code",
+    copyKind: "worktree",
+    copyKindLabel: "Claude",
+    manager: "claude",
+    managerLabel: "Claude Code",
+    state: "queued",
+    projectSpaceId: "space-puzzle-game",
+    projectSpaceName: "Puzzle Game",
+    path: "D:/worktrees/puzzle-game-claude",
+    shortPath: "worktrees/puzzle-game-claude",
+    projectPath: "D:/worktrees/puzzle-game-claude",
+    projectShortPath: "worktrees/puzzle-game-claude",
+    projectPresent: true,
+    repositoryRoot: "D:/testbeds/puzzle-game",
+    branch: "claude/copy-room",
+    isMain: false,
+    dirty: 1,
+    ahead: 0,
+    behind: 1,
+    lastCommit: { sha: "claude-sha", msg: "claude snapshot", ageMin: 9 },
+    requestCount: 1,
+    activeRequestCount: 0,
+    queuedRunCount: 1,
+    liveRunCount: 0,
+    actors: [copyActor("copy-actor-claude", "Claude 세션 인스턴스", "agent", "requested")],
+  },
+  {
+    id: "lane-splice",
+    name: "Splice 코드 방",
+    kind: "splice",
+    kindLabel: "Splice",
+    copyKind: "clone",
+    copyKindLabel: "Splice",
+    manager: "splice",
+    managerLabel: "Splice",
+    state: "idle",
+    projectSpaceId: "space-puzzle-game",
+    projectSpaceName: "Puzzle Game",
+    path: "D:/worktrees/puzzle-game-splice",
+    shortPath: "worktrees/puzzle-game-splice",
+    projectPath: "D:/worktrees/puzzle-game-splice",
+    projectShortPath: "worktrees/puzzle-game-splice",
+    projectPresent: true,
+    repositoryRoot: "D:/testbeds/puzzle-game",
+    branch: "splice/copy-room",
+    isMain: false,
+    dirty: 0,
+    ahead: 0,
+    behind: 0,
+    lastCommit: { sha: "splice-sha", msg: "splice snapshot", ageMin: 12 },
+    requestCount: 0,
+    activeRequestCount: 0,
+    queuedRunCount: 0,
+    liveRunCount: 0,
+    actors: [copyActor("copy-actor-splice", "Splice 세션 인스턴스", "agent", "idle")],
+  },
+];
+
 const roomData = {
   generatedAt: "2026-07-11T00:00:00.000Z",
   id: "puzzle-game",
@@ -76,24 +229,24 @@ const roomData = {
     todoIssues: 0,
     blockedIssues: 0,
     doneIssues: 0,
-    agents: 0,
+    agents: 3,
     activeAgents: 0,
     runningAgents: 0,
-    assignedAgents: 0,
+    assignedAgents: 3,
     progress: 0,
     agentOwned: 0,
     humanOwned: 0,
     liveRuns: 0,
     requests: 0,
-    executionLanes: 0,
-    activeExecutionLanes: 0,
+    executionLanes: executionLanes.length,
+    activeExecutionLanes: 3,
   },
   buckets: { active: 0, review: 0, todo: 0, blocked: 0, done: 0 },
-  room: { zones: [], agents: [], humans: [] },
+  room: { zones: [], agents: [codexRole, claudeRole, spliceRole], humans: [rootRole] },
   lanes: { active: [], review: [], next: [], blocked: [] },
   projects: [],
-  agents: [],
-  executionLanes: [],
+  agents: [codexRole, claudeRole, spliceRole],
+  executionLanes,
   activity: [],
   requests: [],
 };
@@ -146,6 +299,50 @@ const runMonitorFixture = {
   })),
 };
 
+const zeroRunMonitorFixture = {
+  ...runMonitorFixture,
+  runner: {
+    ...runMonitorFixture.runner,
+    total: 0,
+  },
+  counts: {
+    total: 0,
+    active: 0,
+    requested: 0,
+    launchReady: 0,
+    launched: 0,
+    done: 0,
+    failed: 0,
+    blocked: 0,
+    noop: 0,
+    cancelled: 0,
+    expired: 0,
+    terminal: 0,
+  },
+  runs: [],
+};
+
+const copyRoomRunFixture = {
+  ...zeroRunMonitorFixture,
+  counts: { ...zeroRunMonitorFixture.counts, total: 1, active: 1, launched: 1, terminal: 0 },
+  runs: [{
+    id: "copy-room-active-run",
+    companyId: "splice",
+    companyName: "Splice",
+    workspacePath: `${executionLanes[1].projectPath}/testbeds/puzzle-game`,
+    agentId: "engineer-instance",
+    agentName: "Engineer 실행 인스턴스",
+    status: "launched",
+    requestedAt: "2026-07-11T00:00:00.000Z",
+    updatedAt: "2026-07-11T00:00:00.000Z",
+    error: "",
+    expired: false,
+    runtime: null,
+    process: null,
+    launch: null,
+  }],
+};
+
 async function flushReact() {
   await act(async () => {
     await Promise.resolve();
@@ -163,6 +360,28 @@ function primaryTabLabels(scope: Element): string[] {
   return Array.from(scope.querySelectorAll("button"))
     .filter((button) => !button.closest("details"))
     .map((button) => button.textContent?.trim() ?? "");
+}
+
+async function renderRoom(container: HTMLDivElement, data = roomData, runs = runMonitorFixture) {
+  roomMock.mockResolvedValue(data);
+  roomApiMocks.runs.mockResolvedValue(runs);
+  const root = createRoot(container);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <SpliceWorkspaceRoom />
+      </QueryClientProvider>,
+    );
+  });
+  await flushReact();
+  await flushReact();
+  return root;
+}
+
+function copyRooms(container: HTMLDivElement): Element[] {
+  return Array.from(container.querySelectorAll('[data-testid="copy-room"]'));
 }
 
 describe("SpliceWorkspaceRoom", () => {
@@ -279,6 +498,96 @@ describe("SpliceWorkspaceRoom", () => {
     expect(primaryTabLabels(historyNavigation)).toEqual(["활동", "상세"]);
     expect(historyNavigation.querySelector('button[aria-current="page"]')?.textContent?.trim()).toBe("활동");
     expect(container.textContent).toContain("사무실 타임라인");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("renders one copy room per lane and keeps registered roles distinct from room instances", async () => {
+    const runMatchedLanes = roomData.executionLanes.map((lane) => lane.id === "lane-codex"
+      ? { ...lane, projectPath: `${lane.path}/testbeds/puzzle-game` }
+      : lane);
+    const root = await renderRoom(container, { ...roomData, executionLanes: runMatchedLanes }, copyRoomRunFixture);
+    const rooms = copyRooms(container);
+    const roomText = rooms.map((room) => room.textContent ?? "").join(" ");
+
+    expect(rooms).toHaveLength(4);
+    expect(roomText).toContain("원본 코드 방");
+    expect(roomText).toContain("Codex 코드 방");
+    expect(roomText).toContain("Claude 코드 방");
+    expect(roomText).toContain("Splice 코드 방");
+    expect(roomText).toContain("원본 코드");
+    expect(roomText).toContain("Codex");
+    expect(roomText).toContain("Claude");
+    expect(roomText).toContain("Splice");
+    expect(roomText).toContain("원본 세션 인스턴스");
+    expect(roomText).toContain("Codex 세션 인스턴스");
+    expect(roomText).toContain("Claude 세션 인스턴스");
+    expect(roomText).toContain("Splice 세션 인스턴스");
+    expect(roomText).toContain("Engineer 실행 인스턴스");
+
+    const registeredRoleText = container.textContent ?? "";
+    expect(registeredRoleText).toContain("Codex 등록 역할");
+    expect(registeredRoleText).toContain("Claude 등록 역할");
+    expect(registeredRoleText).toContain("Splice 등록 역할");
+    expect(roomText).not.toContain("Codex 등록 역할");
+    expect(roomText).not.toContain("Claude 등록 역할");
+    expect(roomText).not.toContain("Splice 등록 역할");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("narrows visible copy rooms for each office filter without changing the fixture", async () => {
+    const root = await renderRoom(container);
+    const filters = [
+      ["전체", 4, "원본 코드 방"],
+      ["원본 코드", 1, "원본 코드 방"],
+      ["Codex", 1, "Codex 코드 방"],
+      ["Claude", 1, "Claude 코드 방"],
+      ["Splice", 1, "Splice 코드 방"],
+    ] as const;
+
+    for (const [label, expectedCount, expectedRoom] of filters) {
+      await act(async () => {
+        exactButton(container, label).click();
+      });
+      await flushReact();
+      expect(copyRooms(container)).toHaveLength(expectedCount);
+      expect(copyRooms(container)[0]?.textContent).toContain(expectedRoom);
+    }
+
+    expect(roomMock).toHaveBeenCalled();
+    expect(roomMock.mock.calls.length).toBe(1);
+    const unchangedFixture = roomMock.mock.results[0]?.value;
+    expect(unchangedFixture).toBeInstanceOf(Promise);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps copy rooms and registered roles visible when there are zero runs", async () => {
+    const zeroRunData = {
+      ...roomData,
+      totals: { ...roomData.totals, liveRuns: 0, runningAgents: 0 },
+      executionLanes: roomData.executionLanes.map((lane) => ({
+        ...lane,
+        requestCount: 0,
+        activeRequestCount: 0,
+        queuedRunCount: 0,
+        liveRunCount: 0,
+      })),
+    };
+    const root = await renderRoom(container, zeroRunData, zeroRunMonitorFixture);
+
+    expect(copyRooms(container)).toHaveLength(4);
+    expect(container.textContent).toContain("Codex 등록 역할");
+    expect(container.textContent).toContain("Claude 등록 역할");
+    expect(container.textContent).toContain("Splice 등록 역할");
+    expect(container.textContent).toContain("0");
 
     await act(async () => {
       root.unmount();
