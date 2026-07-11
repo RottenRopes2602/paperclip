@@ -82,7 +82,7 @@ type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "관제", icon: LayoutDashboard },
   { value: "inbox", label: "신호함", icon: Inbox },
-  { value: "lanes", label: "작업 사본", icon: GitBranch },
+  { value: "lanes", label: "코드 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
   { value: "office", label: "사무실", icon: LayoutDashboard },
   { value: "intake", label: "업무 접수", icon: SquarePen },
@@ -388,7 +388,7 @@ function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
   if (counts.length) return counts.join(" · ");
   if (actor.session) return `${actor.session.branch} · 변경 ${actor.session.dirty}`;
   if (actor.request) return "실행 요청됨";
-  return actor.state === "away" ? "활성 작업 사본 없음" : "대기 중";
+  return actor.state === "away" ? "활성 코드 사본 없음" : "대기 중";
 }
 
 function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
@@ -5331,7 +5331,7 @@ function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
 
       <div className="mt-3 space-y-1.5">
         <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono text-[11px] text-muted-foreground">
-          <span>사본</span>
+          <span>코드 위치</span>
           <span className="truncate">{lane.path}</span>
           <span>프로젝트</span>
           <span className="truncate">{lane.projectPath}</span>
@@ -5349,7 +5349,7 @@ function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
         <span className="text-muted-foreground">세션 신호</span>
         <span>{lane.actors.length ? `${lane.actors.length}개 활동 신호 감지` : "아직 연결된 활동 없음"}</span>
         <span className="text-muted-foreground">내부 경로</span>
-        <span className={lane.projectPresent ? "text-foreground" : "text-destructive"}>{lane.projectPresent ? "확인됨" : "이 사본에 없음"}</span>
+        <span className={lane.projectPresent ? "text-foreground" : "text-destructive"}>{lane.projectPresent ? "확인됨" : "이 코드 사본에 없음"}</span>
       </div>
 
       {lane.actors.length ? (
@@ -5378,7 +5378,8 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="프로젝트 작업 사본" aside={`${allLanes.length}개 감지`} />
+      <SectionTitle title="프로젝트 코드 사본" aside={`${allLanes.length}개 감지`} />
+      <p className="text-xs text-muted-foreground">원본 코드와 Codex·Claude·Splice가 만든 Git 워크트리의 경로, 브랜치, 변경 상태를 비교합니다.</p>
       <div className="border border-border bg-muted/20 px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -5395,7 +5396,7 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
           <div className="grid grid-cols-3 gap-px border border-border bg-border text-xs">
             <div className="min-w-[88px] bg-background px-3 py-2">
               <p className="font-semibold tabular-nums">{allLanes.length}</p>
-              <p className="text-[11px] text-muted-foreground">작업 사본</p>
+              <p className="text-[11px] text-muted-foreground">코드 사본</p>
             </div>
             <div className="min-w-[88px] bg-background px-3 py-2">
               <p className="font-semibold tabular-nums">{data.totals.activeExecutionLanes ?? 0}</p>
@@ -5413,7 +5414,7 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
         {lanes.length ? lanes.map((lane) => (
           <LaneCard key={lane.id} lane={lane} />
         )) : (
-          <div className="border border-border px-4 py-4 text-sm text-muted-foreground">감지된 작업 사본이 없습니다.</div>
+          <div className="border border-border px-4 py-4 text-sm text-muted-foreground">감지된 코드 사본이 없습니다.</div>
         )}
       </div>
     </section>
@@ -5427,7 +5428,7 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
     <div className="space-y-6">
       <ExecutionLanesPanel data={data} />
       <section className="space-y-3">
-        <SectionTitle title="세션·실행 연결 상태" aside={`${lanes.length}개 사본`} />
+        <SectionTitle title="세션·실행 연결 상태" aside={`${lanes.length}개 코드 사본`} />
         <div className="border border-border">
           {lanes.map((lane) => (
             <EntityRow
@@ -5570,7 +5571,7 @@ function OfficeTab({
     { tab: "desk", title: "산출물", value: workProducts.length, subtitle: "책상에 저장", icon: FileText },
     { tab: "approvals", title: "승인", value: approvals?.counts.pending ?? 0, subtitle: "대기 중", icon: CheckCircle2 },
     { tab: "routines", title: "루틴", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} 활성`, icon: Repeat2 },
-    { tab: "lanes", title: "작업 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 사본`, icon: GitBranch },
+    { tab: "lanes", title: "코드 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 감지`, icon: GitBranch },
   ];
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -5589,7 +5590,7 @@ function OfficeTab({
           <p className="mt-1 text-xs text-muted-foreground">연결된 책상과 실행 상태</p>
         </div>
         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-          <span className="border border-border px-2.5 py-1">작업 사본 {data.executionLanes.length}</span>
+          <span className="border border-border px-2.5 py-1">코드 사본 {data.executionLanes.length}</span>
           <span className="border border-border px-2.5 py-1">세션 {data.room.humans.length}</span>
           <span className="border border-border px-2.5 py-1">실제 에이전트 {runCounts.active}</span>
         </div>
@@ -5597,7 +5598,7 @@ function OfficeTab({
 
       <section className="space-y-4 border border-border bg-background p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <SectionTitle title="퍼즐게임 사무실" aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
+            <SectionTitle title="퍼즐게임 사무실" aside={`코드 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
                 <Rocket className="h-3.5 w-3.5" />
@@ -5605,7 +5606,7 @@ function OfficeTab({
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className="h-8 gap-1.5">
                 <GitBranch className="h-3.5 w-3.5" />
-                작업 사본
+                코드 사본
               </Button>
             </div>
           </div>

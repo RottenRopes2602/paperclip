@@ -152,6 +152,8 @@ describe("SpliceWorkspaceRoom", () => {
     });
     await flushReact();
 
+    expect(container.textContent).toContain("코드 사본");
+    expect(container.textContent).not.toContain("작업 사본");
     expect(container.textContent).toContain("사무실");
     const officeButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === "사무실",
