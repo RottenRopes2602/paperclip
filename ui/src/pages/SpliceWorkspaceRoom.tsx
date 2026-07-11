@@ -75,7 +75,7 @@ import { cn } from "@/lib/utils";
 const PUZZLE_TESTBED_ID = "puzzle-game";
 const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
 
-type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "office" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
+type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
 type WorkThreadCommentInput = { itemType: string; itemId: string; body: string; wakeAgent?: boolean; sourceRunRequestId?: string | null };
 
@@ -84,7 +84,6 @@ const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "inbox", label: "신호함", icon: Inbox },
   { value: "lanes", label: "코드 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
-  { value: "office", label: "사무실", icon: LayoutDashboard },
   { value: "intake", label: "업무 접수", icon: SquarePen },
   { value: "goals", label: "목표", icon: Target },
   { value: "projects", label: "프로젝트", icon: FolderOpen },
@@ -110,7 +109,7 @@ const roomNavigationGroups: Array<{
   advancedTabs: RoomTab[];
 }> = [
   { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox"], advancedTabs: [] },
-  { value: "execute", label: "실행", icon: Rocket, defaultTab: "lanes", tabs: ["lanes", "runs", "agents", "office"], advancedTabs: ["comms", "routines"] },
+  { value: "execute", label: "실행", icon: Rocket, defaultTab: "runs", tabs: ["runs", "lanes", "agents"], advancedTabs: ["comms", "routines"] },
   { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "approvals", "goals"], advancedTabs: ["desk", "intake"] },
   { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
 ];
@@ -1440,27 +1439,45 @@ function OfficeFlowBoard({
 function DashboardTab({
   approvals,
   data,
+  dispatchingRunner,
+  focusedAgentId,
   inbox,
+  onDispatchRunner,
+  onFocusAgent,
   onOpenWorkItem,
   onOpenRun,
   onOpenTab,
   onOpenWorkOrder,
+  onSend,
+  runnerNotice,
+  sendingAgentId,
   routines,
   runs,
   reviews,
   workOrders,
+  workProducts,
+  timeline,
 }: {
   approvals: SpliceOfficeApprovalsData | null;
   data: SpliceWorkspaceRoomData;
+  dispatchingRunner: boolean;
+  focusedAgentId: string | null;
   inbox: SpliceOfficeInboxData | null;
+  onDispatchRunner: (dryRun: boolean) => void;
+  onFocusAgent: (agentId: string) => void;
   onOpenWorkItem: (item: WorkItemRef) => void;
   onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkOrder: (workOrderId: string) => void;
+  onSend: (agentId: string, body: string) => void;
+  runnerNotice: string | null;
+  sendingAgentId: string | null;
   routines: SpliceOfficeRoutinesData | null;
   runs: SpliceRunMonitorData | null;
   reviews: SpliceReview[];
   workOrders: SpliceWorkOrdersData | null;
+  workProducts: SpliceWorkProduct[];
+  timeline: SpliceOfficeTimelineData | null;
 }) {
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const reviewAttention = data.totals.reviewIssues + (approvals?.counts.pending ?? 0);
@@ -1492,7 +1509,7 @@ function DashboardTab({
         approvals={approvals}
         data={data}
         inbox={inbox}
-        maxEntries={3}
+        maxEntries={5}
         title="내가 확인할 것"
         onOpenRun={onOpenRun}
         onOpenTab={onOpenTab}
@@ -1503,7 +1520,78 @@ function DashboardTab({
         runs={runs}
         workOrders={workOrders}
       />
+      <OfficeOverview
+        approvals={approvals}
+        data={data}
+        dispatchingRunner={dispatchingRunner}
+        focusedAgentId={focusedAgentId}
+        inbox={inbox}
+        onDispatchRunner={onDispatchRunner}
+        onFocusAgent={onFocusAgent}
+        onOpenWorkItem={onOpenWorkItem}
+        onOpenRun={onOpenRun}
+        onOpenTab={onOpenTab}
+        onOpenWorkOrder={onOpenWorkOrder}
+        onSend={onSend}
+        runnerNotice={runnerNotice}
+        runs={runs}
+        sendingAgentId={sendingAgentId}
+        workOrders={workOrders}
+        workProducts={workProducts}
+      />
+      <RecentMovement
+        data={data}
+        timeline={timeline}
+        onOpenRun={onOpenRun}
+        onOpenTab={onOpenTab}
+        onOpenWorkItem={onOpenWorkItem}
+        onOpenWorkOrder={onOpenWorkOrder}
+      />
     </div>
+  );
+}
+
+function RecentMovement({
+  data,
+  timeline,
+  onOpenTab,
+  onOpenRun,
+  onOpenWorkOrder,
+  onOpenWorkItem,
+}: {
+  data: SpliceWorkspaceRoomData;
+  timeline: SpliceOfficeTimelineData | null;
+  onOpenTab: (tab: RoomTab) => void;
+  onOpenRun: (runId: string) => void;
+  onOpenWorkOrder: (workOrderId: string) => void;
+  onOpenWorkItem: (item: WorkItemRef) => void;
+}) {
+  const events = timeline?.events.slice(0, 5) ?? [];
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <SectionTitle title="최근 움직임" aside={timeline ? `${formatIsoAge(timeline.generatedAt)} 갱신` : "기록 대기"} />
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("activity")} className="h-8 gap-1.5">
+          <History className="h-3.5 w-3.5" />
+          전체 기록
+        </Button>
+      </div>
+      <div className="border border-border">
+        {events.length ? events.map((event) => (
+          <TimelineEventRow
+            key={event.id}
+            event={event}
+            onOpenTab={onOpenTab}
+            onOpenRun={onOpenRun}
+            onOpenWorkOrder={onOpenWorkOrder}
+            onOpenWorkItem={onOpenWorkItem}
+          />
+        )) : (
+          <ActivityList items={data.activity.slice(0, 5)} />
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -5452,7 +5540,7 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
   );
 }
 
-function OfficeTab({
+function OfficeOverview({
   approvals,
   data,
   dispatchingRunner,
@@ -5464,11 +5552,8 @@ function OfficeTab({
   onOpenRun,
   onOpenTab,
   onOpenWorkOrder,
-  onRunAgent,
   onSend,
-  routines,
   runnerNotice,
-  runningAgentId,
   runs,
   sendingAgentId,
   workOrders,
@@ -5485,11 +5570,8 @@ function OfficeTab({
   onOpenRun: (runId: string) => void;
   onOpenTab: (tab: RoomTab) => void;
   onOpenWorkOrder: (workOrderId: string) => void;
-  onRunAgent: (agentId: string) => void;
   onSend: (agentId: string, body: string) => void;
-  routines: SpliceOfficeRoutinesData | null;
   runnerNotice: string | null;
-  runningAgentId: string | null;
   runs: SpliceRunMonitorData | null;
   sendingAgentId: string | null;
   workOrders: SpliceWorkOrdersData | null;
@@ -5558,21 +5640,6 @@ function OfficeTab({
   };
   const runCounts = runs?.counts ?? runMonitorFallbackCounts(data.requests);
   const queuedRuns = runCounts.requested + runCounts.launchReady;
-  const officeSignals: Array<{
-    tab: RoomTab;
-    title: string;
-    value: number;
-    subtitle: string;
-    icon: LucideIcon;
-  }> = [
-    { tab: "runs", title: "실행 중", value: runCounts.active, subtitle: `${queuedRuns} 대기`, icon: Rocket },
-    { tab: "inbox", title: "신호함", value: inbox?.counts.open ?? 0, subtitle: "열린 신호", icon: Inbox },
-    { tab: "intake", title: "접수 업무", value: workOrders?.counts.open ?? 0, subtitle: `${workOrders?.counts.queued ?? 0} 대기`, icon: SquarePen },
-    { tab: "desk", title: "산출물", value: workProducts.length, subtitle: "책상에 저장", icon: FileText },
-    { tab: "approvals", title: "승인", value: approvals?.counts.pending ?? 0, subtitle: "대기 중", icon: CheckCircle2 },
-    { tab: "routines", title: "루틴", value: routines?.counts.due ?? 0, subtitle: `${routines?.counts.enabled ?? 0} 활성`, icon: Repeat2 },
-    { tab: "lanes", title: "코드 사본", value: data.totals.activeExecutionLanes ?? 0, subtitle: `${data.executionLanes.length}개 감지`, icon: GitBranch },
-  ];
   const submitDeskInstruction = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const body = deskDraft.trim();
@@ -5583,20 +5650,8 @@ function OfficeTab({
   };
 
   return (
-    <section className="space-y-3">
-      <header className="flex flex-col gap-3 border-b border-border pb-0 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">사무실</h2>
-          <p className="mt-1 text-xs text-muted-foreground">연결된 책상과 실행 상태</p>
-        </div>
-        <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-          <span className="border border-border px-2.5 py-1">코드 사본 {data.executionLanes.length}</span>
-          <span className="border border-border px-2.5 py-1">세션 {data.room.humans.length}</span>
-          <span className="border border-border px-2.5 py-1">실제 에이전트 {runCounts.active}</span>
-        </div>
-      </header>
-
-      <section className="space-y-4 border border-border bg-background p-4">
+    <section className="space-y-4">
+      <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <SectionTitle title="퍼즐게임 사무실" aside={`코드 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
             <div className="flex flex-wrap gap-2">
@@ -5666,17 +5721,7 @@ function OfficeTab({
           ))}
         </div>
         <div className="min-w-0 border-2 border-border bg-background">
-          <div className="flex flex-col gap-2 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">사무실 상황판</p>
-              <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{data.shortPath}</p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              연결 책상 {roomActors.length} · 실행 대기 {queuedRuns} · 산출물 {workProducts.length}
-            </p>
-          </div>
-
-          <div className="border-t border-border px-4 py-4 lg:px-5">
+          <div className="px-4 py-4 lg:px-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold">선택한 책상</p>
@@ -5846,29 +5891,6 @@ function OfficeTab({
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-px border-t border-border bg-border md:grid-cols-4 xl:grid-cols-7">
-            {officeSignals.map((signal) => {
-              const Icon = signal.icon;
-              return (
-                <button
-                  key={signal.tab}
-                  type="button"
-                  onClick={() => onOpenTab(signal.tab)}
-                  className="min-w-0 bg-background px-3 py-3 text-left transition-colors hover:bg-accent/50"
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                      {signal.title}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{formatNumber(signal.value)}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{signal.subtitle}</p>
-                </button>
-              );
-            })}
-          </div>
-
           <details className="border-t border-border">
             <summary className="cursor-pointer px-4 py-3 text-xs font-semibold text-muted-foreground hover:text-foreground">
               러너 수동 조작
@@ -5902,17 +5924,6 @@ function OfficeTab({
             </div>
           </details>
 
-          <div className="grid border-t border-border md:grid-cols-2 xl:grid-cols-5">
-            {data.agents.slice(0, 7).map((agent) => (
-              <EntityRow
-                key={agent.id}
-                title={compactAgentName(agent.name, data.name)}
-                subtitle={agent.currentWork[0]?.title ?? "배정 업무 없음"}
-                leading={<Dot state={agent.state} />}
-                trailing={<span className="text-xs text-muted-foreground">{koStatusLabel(agent.state)}</span>}
-              />
-            ))}
-          </div>
         </div>
       </section>
     </section>
@@ -6265,15 +6276,24 @@ export function SpliceWorkspaceRoom() {
         <DashboardTab
           approvals={approvals}
           data={data}
+          dispatchingRunner={dispatchRunnerMutation.isPending}
+          focusedAgentId={focusedAgentId}
           inbox={inbox}
+          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
+          onFocusAgent={onFocusAgent}
           onOpenRun={onOpenRun}
           onOpenWorkOrder={onOpenWorkOrder}
           onOpenWorkItem={onOpenWorkItem}
           onOpenTab={setActiveTab}
+          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
+          runnerNotice={runnerNotice}
+          sendingAgentId={sendingAgentId}
           routines={routines}
           runs={runs}
           reviews={reviews}
           workOrders={workOrders}
+          workProducts={workThread?.workProducts ?? []}
+          timeline={timeline}
         />
       )}
       {activeTab === "inbox" && (
@@ -6305,30 +6325,6 @@ export function SpliceWorkspaceRoom() {
           onOpenWorkOrder={onOpenWorkOrder}
           onOpenWorkItem={onOpenWorkItem}
           onUpdateRunStatus={(runId, status, error) => updateRunStatusMutation.mutate({ runId, status, error })}
-        />
-      )}
-      {activeTab === "office" && (
-        <OfficeTab
-          approvals={approvals}
-          data={data}
-          dispatchingRunner={dispatchRunnerMutation.isPending}
-          focusedAgentId={focusedAgentId}
-          inbox={inbox}
-          onDispatchRunner={(dryRun) => dispatchRunnerMutation.mutate(dryRun)}
-          onFocusAgent={onFocusAgent}
-          onOpenWorkItem={onOpenWorkItem}
-          onOpenRun={onOpenRun}
-          onOpenTab={setActiveTab}
-          onOpenWorkOrder={onOpenWorkOrder}
-          onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
-          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
-          routines={routines}
-          runnerNotice={runnerNotice}
-          runningAgentId={runningAgentId}
-          runs={runs}
-          sendingAgentId={sendingAgentId}
-          workOrders={workOrders}
-          workProducts={workThread?.workProducts ?? []}
         />
       )}
       {activeTab === "intake" && (
