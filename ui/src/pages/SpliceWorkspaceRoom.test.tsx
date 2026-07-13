@@ -505,7 +505,8 @@ describe("SpliceWorkspaceRoom", () => {
     expect(mainNavigation?.textContent).toContain("코드 사본");
     expect(mainNavigation?.textContent).toContain("업무");
     expect(mainNavigation?.textContent).toContain("기록");
-    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(5);
+    expect(mainNavigation?.textContent).toContain("신호함");
+    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(6);
 
     expect(container.textContent).toContain("내가 확인할 것");
     const attentionQueue = Array.from(container.querySelectorAll("section")).find((section) => section.textContent?.includes("내가 확인할 것"));
@@ -521,14 +522,17 @@ describe("SpliceWorkspaceRoom", () => {
     });
     await flushReact();
 
-    const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]');
-    expect(executeNavigation).not.toBeNull();
-    expect(primaryTabLabels(executeNavigation!)).toEqual(["에이전트"]);
-    expect(primaryTabLabels(executeNavigation!)).not.toContain("실행 현황");
-    expect(primaryTabLabels(executeNavigation!)).not.toContain("코드 사본");
-    expect(primaryTabLabels(executeNavigation!)).not.toContain("사무실");
-    expect(executeNavigation?.querySelector('button[aria-current="page"]')).toBeNull();
+    expect(container.querySelector('[aria-label="실행 보조 탐색"]')).toBeNull();
+    expect(mainNavigation?.textContent).toContain("에이전트");
+    expect(mainNavigation?.textContent).toContain("대화");
+    expect(mainNavigation?.textContent).toContain("루틴");
     expect(container.textContent).toContain("실행 현황");
+
+    await act(async () => {
+      exactButton(mainNavigation!, "에이전트").click();
+    });
+    await flushReact();
+    expect(container.textContent).toContain("에이전트 현황");
 
     const codeCopiesButton = exactButton(mainNavigation!, "코드 사본");
     await act(async () => {
@@ -562,29 +566,27 @@ describe("SpliceWorkspaceRoom", () => {
     const executeButton = exactButton(mainNavigation!, "실행");
     await act(async () => executeButton.click());
     await flushReact();
-    const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]')!;
-    const executeAdvanced = executeNavigation.querySelector("details")!;
-    expect(executeAdvanced.textContent).toContain("고급 운영 도구");
-    await act(async () => executeAdvanced.querySelector("summary")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(executeAdvanced.textContent).toContain("대화");
-    expect(executeAdvanced.textContent).toContain("루틴");
+    expect(container.querySelector('[aria-label="실행 보조 탐색"]')).toBeNull();
+    expect(mainNavigation?.textContent).toContain("에이전트");
+    expect(mainNavigation?.textContent).toContain("대화");
+    expect(mainNavigation?.textContent).toContain("루틴");
 
     const workButton = exactButton(mainNavigation!, "업무");
     await act(async () => workButton.click());
     await flushReact();
-    const workNavigation = container.querySelector('[aria-label="업무 보조 탐색"]')!;
-    expect(primaryTabLabels(workNavigation)).toEqual(["프로젝트", "검수", "승인", "목표"]);
-    const workAdvanced = workNavigation.querySelector("details")!;
-    expect(workAdvanced.textContent).toContain("고급 운영 도구");
-    expect(workAdvanced.textContent).toContain("업무 책상");
-    expect(workAdvanced.textContent).toContain("업무 접수");
+    expect(container.querySelector('[aria-label="업무 보조 탐색"]')).toBeNull();
+    expect(mainNavigation?.textContent).toContain("프로젝트");
+    expect(mainNavigation?.textContent).toContain("검수");
+    expect(mainNavigation?.textContent).toContain("승인");
+    expect(mainNavigation?.textContent).toContain("목표");
+    expect(mainNavigation?.textContent).toContain("업무 책상");
+    expect(mainNavigation?.textContent).toContain("업무 접수");
 
     const historyButton = exactButton(mainNavigation!, "기록");
     await act(async () => historyButton.click());
     await flushReact();
-    const historyNavigation = container.querySelector('[aria-label="기록 보조 탐색"]')!;
-    expect(primaryTabLabels(historyNavigation)).toEqual(["상세"]);
-    expect(historyNavigation.querySelector('button[aria-current="page"]')).toBeNull();
+    expect(container.querySelector('[aria-label="기록 보조 탐색"]')).toBeNull();
+    expect(mainNavigation?.textContent).toContain("상세");
     expect(container.textContent).toContain("사무실 타임라인");
 
     await act(async () => {
@@ -799,9 +801,8 @@ describe("SpliceWorkspaceRoom", () => {
       executeButton.click();
     });
     await flushReact();
-    const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]')!;
-    expect(primaryTabLabels(executeNavigation)).not.toContain("실행 현황");
-    expect(primaryTabLabels(executeNavigation)).toContain("에이전트");
+    expect(container.querySelector('[aria-label="실행 보조 탐색"]')).toBeNull();
+    expect(mainNavigation.textContent).toContain("에이전트");
     expect(container.textContent).toContain("Dry Run");
     expect(container.textContent).toContain("Dispatch");
 

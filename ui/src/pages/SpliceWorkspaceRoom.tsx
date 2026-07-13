@@ -1511,21 +1511,48 @@ function PuzzleSidebar({
           {roomNavigationGroups.map((group) => {
             const Icon = group.icon;
             const active = activeGroup === group.value;
+            const subTabs = [...group.tabs.filter((tab) => tab !== group.defaultTab), ...group.advancedTabs];
             return (
-              <button
-                key={group.value}
-                type="button"
-                aria-current={active ? "page" : undefined}
-                onClick={() => selectTab(group.defaultTab)}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
-                  active ? "bg-[#339cf4] text-white hover:bg-[#339cf4]" : "text-muted-foreground hover:bg-[#eef6ff] hover:text-[#2586d4]",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="flex-1 truncate">{group.label}</span>
-                {group.value === "execute" && runActiveCount > 0 ? <span className="text-[11px] text-blue-600 dark:text-blue-400">{runActiveCount} 가동</span> : null}
-              </button>
+              <div key={group.value} className="space-y-1">
+                <button
+                  type="button"
+                  aria-current={active && activeTab === group.defaultTab ? "page" : undefined}
+                  aria-expanded={subTabs.length ? active : undefined}
+                  onClick={() => selectTab(group.defaultTab)}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
+                    active ? "bg-[#339cf4] text-white hover:bg-[#339cf4]" : "text-muted-foreground hover:bg-[#eef6ff] hover:text-[#2586d4]",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 truncate">{group.label}</span>
+                  {group.value === "execute" && runActiveCount > 0 ? <span className="text-[11px] text-blue-600 dark:text-blue-400">{runActiveCount} 가동</span> : null}
+                </button>
+                {active && subTabs.length ? (
+                  <div className="ml-4 border-l border-border pl-2">
+                    {subTabs.map((tab) => {
+                      const item = roomTabs.find((candidate) => candidate.value === tab)!;
+                      const SubIcon = item.icon;
+                      const selected = activeTab === tab;
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          aria-current={selected ? "page" : undefined}
+                          onClick={() => selectTab(tab)}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                            selected ? "bg-[#eaf5ff] font-medium text-[#2586d4]" : "text-muted-foreground hover:bg-[#eef6ff] hover:text-[#2586d4]",
+                          )}
+                        >
+                          <SubIcon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>
@@ -1535,60 +1562,6 @@ function PuzzleSidebar({
         </div>
       </aside>
     </>
-  );
-}
-
-function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; onTabChange: (tab: RoomTab) => void }) {
-  const group = roomNavigationGroups.find((item) => item.value === roomNavigationGroupForTab(activeTab))!;
-  const siblingTabs = group.tabs.filter((tab) => tab !== activeTab);
-  const singleScreenGroup = group.tabs.length === 1 && group.advancedTabs.length === 0;
-  const renderTab = (tab: RoomTab) => {
-    const item = roomTabs.find((candidate) => candidate.value === tab)!;
-    const Icon = item.icon;
-    return (
-      <button
-        key={tab}
-        type="button"
-        onClick={() => onTabChange(tab)}
-        aria-current={activeTab === tab ? "page" : undefined}
-        className={cn(
-          "inline-flex h-8 shrink-0 items-center gap-1.5 border-b-2 px-1 text-xs font-medium transition-colors",
-          activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" />
-        {item.label}
-      </button>
-    );
-  };
-
-  if (singleScreenGroup) return null;
-
-  return (
-    <section aria-label={`${group.label} 보조 탐색`} className="border-b border-border">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
-          <div className="flex min-w-0 items-center gap-3">{siblingTabs.map(renderTab)}</div>
-        </div>
-        {group.advancedTabs.length ? (
-          <details className="relative shrink-0 border-l border-border pl-3 pr-1">
-            <summary className="cursor-pointer list-none whitespace-nowrap rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">고급 운영 도구</summary>
-            <div className="absolute right-0 z-10 mt-1 flex min-w-36 flex-col border border-border bg-background p-1 shadow-md">
-              {group.advancedTabs.map((tab) => {
-                const item = roomTabs.find((candidate) => candidate.value === tab)!;
-                const Icon = item.icon;
-                return (
-                  <button key={tab} type="button" onClick={() => onTabChange(tab)} className="flex items-center gap-2 px-2 py-2 text-left text-xs hover:bg-accent">
-                    <Icon className="h-3.5 w-3.5" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          </details>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -1663,7 +1636,6 @@ function PuzzleWorkspaceShell({
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-[18px] outline-none">
           <div className="space-y-6">
-            {activeTab !== "dashboard" ? <RoomContextualTabs activeTab={activeTab} onTabChange={onTabChange} /> : null}
             {activeTab !== "dashboard" ? <div className="flex items-center justify-end">
               <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing} className="w-fit gap-1.5">
                 <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
