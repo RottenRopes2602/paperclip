@@ -7,6 +7,8 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
+  Check,
+  ChevronDown,
   CircleDot,
   Clock3,
   FileText,
@@ -30,7 +32,7 @@ import {
   Target,
   type LucideIcon,
 } from "lucide-react";
-import { useParams } from "@/lib/router";
+import { Link, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { CompanyPatternIcon } from "@/components/CompanyPatternIcon";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -42,6 +44,14 @@ import { OkrTree } from "@/components/OkrTree";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSidebar } from "@/context/SidebarContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   spliceApi,
   type SpliceAgentConsoleData,
@@ -1460,17 +1470,25 @@ function roomTabLabel(tab: RoomTab): string {
 function WorkspaceSidebar({
   activeTab,
   data,
+  workspaceId,
   runActiveCount,
   onTabChange,
 }: {
   activeTab: RoomTab;
   data: SpliceWorkspaceRoomData;
+  workspaceId: string;
   runActiveCount: number;
   onTabChange: (tab: RoomTab) => void;
 }) {
   const { isMobile, sidebarOpen, setSidebarOpen } = useSidebar();
   const compactDesktop = typeof window !== "undefined" && window.innerWidth >= 640;
   const mobileLayout = isMobile && !compactDesktop;
+  const testWorkspacesQuery = useQuery({
+    queryKey: ["splice", "test-workspaces"],
+    queryFn: spliceApi.testWorkspaces,
+    staleTime: 30000,
+  });
+  const testWorkspaces = testWorkspacesQuery.data?.workspaces ?? [];
   const selectTab = (tab: RoomTab) => {
     onTabChange(tab);
     if (mobileLayout) setSidebarOpen(false);
@@ -1500,11 +1518,70 @@ function WorkspaceSidebar({
             : "hidden sm:flex",
         )}
       >
-        <div className="flex h-[70px] shrink-0 items-center px-5">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{data.name}</p>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground">관찰 전용</p>
-          </div>
+        <div className="shrink-0 border-b border-border px-2.5 py-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="테스트 프로젝트 바꾸기"
+                className="flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-[#eef6ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#339cf4]"
+              >
+                <CompanyPatternIcon companyName={data.name} className="h-7 w-7 shrink-0 rounded-md" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{data.name}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">테스트 프로젝트</span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" sideOffset={8} className="w-64">
+              <DropdownMenuLabel>테스트 프로젝트 이동</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {testWorkspacesQuery.isLoading ? (
+                <DropdownMenuItem disabled>프로젝트를 불러오는 중...</DropdownMenuItem>
+              ) : null}
+              {!testWorkspacesQuery.isLoading && testWorkspaces.length === 0 ? (
+                <DropdownMenuItem disabled>연결된 테스트 프로젝트가 없습니다</DropdownMenuItem>
+              ) : null}
+              {testWorkspaces.map((workspace) => {
+                const current = workspace.id === workspaceId;
+                const itemContent = (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{workspace.name}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {workspace.available ? "연결됨" : "폴더를 찾을 수 없음"}
+                      </div>
+                    </div>
+                    {current ? <Check className="mt-0.5 text-[#2586d4]" /> : null}
+                  </>
+                );
+
+                if (current || !workspace.available) {
+                  return (
+                    <DropdownMenuItem key={workspace.id} disabled className="items-start py-2">
+                      {itemContent}
+                    </DropdownMenuItem>
+                  );
+                }
+
+                return (
+                  <DropdownMenuItem key={workspace.id} asChild className="items-start py-2">
+                    <Link to={`/splice/workspace-room/${encodeURIComponent(workspace.id)}`} className="flex w-full items-start gap-2">
+                      {itemContent}
+                    </Link>
+                  </DropdownMenuItem>
+                );
+              })}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to="/splice/">
+                  <ArrowRight className="rotate-180" />
+                  테스트 프로젝트 입구로
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <nav aria-label="Splice 주요 탐색" className="scrollbar-auto-hide flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2.5 py-2">
@@ -1570,6 +1647,7 @@ function WorkspaceRoomShell({
   activeTab,
   children,
   data,
+  workspaceId,
   inboxOpenCount,
   runActiveCount,
   routineDueCount,
@@ -1582,6 +1660,7 @@ function WorkspaceRoomShell({
   activeTab: RoomTab;
   children: ReactNode;
   data: SpliceWorkspaceRoomData;
+  workspaceId: string;
   inboxOpenCount: number;
   runActiveCount: number;
   routineDueCount: number;
@@ -1630,6 +1709,7 @@ function WorkspaceRoomShell({
       <WorkspaceSidebar
         activeTab={activeTab}
         data={data}
+        workspaceId={workspaceId}
         runActiveCount={runActiveCount}
         onTabChange={onTabChange}
       />
@@ -6650,6 +6730,7 @@ export function SpliceWorkspaceRoom() {
   return (
     <WorkspaceRoomShell
       data={data}
+      workspaceId={roomWorkspaceId}
       approvalPendingCount={approvals?.counts.pending ?? 0}
       activeTab={activeTab}
       inboxOpenCount={inbox?.counts.open ?? 0}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { SpliceWorkspaceRoom } from "./SpliceWorkspaceRoom";
 
 const roomMock = vi.hoisted(() => vi.fn());
 const roomApiMocks = vi.hoisted(() => ({
+  testWorkspaces: vi.fn(),
   inbox: vi.fn(),
   messages: vi.fn(),
   agentConsole: vi.fn(),
@@ -24,6 +25,7 @@ const roomApiMocks = vi.hoisted(() => ({
 
 vi.mock("@/api/splice", () => ({
   spliceApi: {
+    testWorkspaces: roomApiMocks.testWorkspaces,
     workspaceRoom: roomMock,
     workspaceRoomInbox: roomApiMocks.inbox,
     workspaceRoomMessages: roomApiMocks.messages,
@@ -40,6 +42,7 @@ vi.mock("@/api/splice", () => ({
 }));
 
 vi.mock("@/lib/router", () => ({
+  Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
   Navigate: () => null,
   useParams: () => ({ workspaceId: "puzzle-game" }),
 }));
@@ -466,6 +469,12 @@ describe("SpliceWorkspaceRoom", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     roomMock.mockResolvedValue(roomData);
+    roomApiMocks.testWorkspaces.mockResolvedValue({
+      workspaces: [
+        { id: "puzzle-game", name: "Puzzle Game", path: "D:/00_WorkSpace/08_PuzzleGame", kind: "testbed", source: "env", available: true, totals: null, workspaceBinding: null },
+        { id: "music", name: "Music(Draft)", path: "D:/00_WorkSpace/07_Music(Draft)", kind: "testbed", source: "env", available: true, totals: null, workspaceBinding: null },
+      ],
+    });
     roomApiMocks.inbox.mockResolvedValue(null);
     roomApiMocks.messages.mockResolvedValue(null);
     roomApiMocks.agentConsole.mockResolvedValue(null);
@@ -513,7 +522,8 @@ describe("SpliceWorkspaceRoom", () => {
     const attentionItems = Array.from(attentionQueue?.querySelectorAll("button") ?? []).filter((button) => button.textContent?.includes("확인 항목"));
     expect(attentionItems.length).toBeGreaterThan(0);
     expect(attentionItems.length).toBeLessThanOrEqual(5);
-    expect(container.textContent).toContain("퍼즐게임 사무실");
+    expect(container.querySelector('button[aria-label="테스트 프로젝트 바꾸기"]')).not.toBeNull();
+    expect(container.textContent).toContain("Puzzle Game 사무실");
     expect(container.textContent).toContain("선택 정보");
 
     const executeButton = exactButton(mainNavigation!, "실행");
