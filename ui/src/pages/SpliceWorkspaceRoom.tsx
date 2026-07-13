@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 import { Navigate, useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
-import { BreadcrumbBar } from "@/components/BreadcrumbBar";
 import { CompanyPatternIcon } from "@/components/CompanyPatternIcon";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { EntityRow } from "@/components/EntityRow";
@@ -42,7 +41,6 @@ import { MissionVisionCards } from "@/components/MissionVisionCards";
 import { OkrTree } from "@/components/OkrTree";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useSidebar } from "@/context/SidebarContext";
 import {
   spliceApi,
@@ -1542,6 +1540,7 @@ function PuzzleSidebar({
 
 function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; onTabChange: (tab: RoomTab) => void }) {
   const group = roomNavigationGroups.find((item) => item.value === roomNavigationGroupForTab(activeTab))!;
+  const siblingTabs = group.tabs.filter((tab) => tab !== activeTab);
   const singleScreenGroup = group.tabs.length === 1 && group.advancedTabs.length === 0;
   const renderTab = (tab: RoomTab) => {
     const item = roomTabs.find((candidate) => candidate.value === tab)!;
@@ -1563,12 +1562,13 @@ function RoomContextualTabs({ activeTab, onTabChange }: { activeTab: RoomTab; on
     );
   };
 
+  if (singleScreenGroup) return null;
+
   return (
     <section aria-label={`${group.label} 보조 탐색`} className="border-b border-border">
       <div className="flex min-w-0 items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
-            <span className="shrink-0 text-sm font-semibold">{group.label}</span>
-            {!singleScreenGroup ? <div className="flex min-w-0 items-center gap-3">{group.tabs.map(renderTab)}</div> : null}
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+          <div className="flex min-w-0 items-center gap-3">{siblingTabs.map(renderTab)}</div>
         </div>
         {group.advancedTabs.length ? (
           <details className="relative shrink-0 border-l border-border pl-3 pr-1">
@@ -1617,12 +1617,6 @@ function PuzzleWorkspaceShell({
   onTabChange: (tab: RoomTab) => void;
   refreshing: boolean;
 }) {
-  const { setBreadcrumbs } = useBreadcrumbs();
-
-  useEffect(() => {
-    setBreadcrumbs([{ label: roomTabLabel(activeTab) }]);
-  }, [activeTab, setBreadcrumbs]);
-
   return (
     <div
       className="splice-observer-light flex h-full min-h-0 bg-background text-foreground"
@@ -1667,7 +1661,6 @@ function PuzzleWorkspaceShell({
         onTabChange={onTabChange}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        {activeTab !== "dashboard" ? <BreadcrumbBar scope="splice" /> : null}
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto p-[18px] outline-none">
           <div className="space-y-6">
             {activeTab !== "dashboard" ? <RoomContextualTabs activeTab={activeTab} onTabChange={onTabChange} /> : null}
@@ -2988,8 +2981,8 @@ function RunMonitorCard({
 
 function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["artifacts"]["output"]; title: string }) {
   return (
-    <section className="border border-border">
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+    <details className="border border-border">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-3 hover:bg-accent/40">
         <div className="min-w-0">
           <p className="text-sm font-semibold">{title}</p>
           <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{artifact.path ?? "산출물 경로 없음"}</p>
@@ -2997,7 +2990,7 @@ function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["
         {artifact.exists ? (
           <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(artifact.size)}</span>
         ) : null}
-      </div>
+      </summary>
       {artifact.error ? (
         <p className="px-4 py-4 text-sm text-red-600 dark:text-red-300">{artifact.error}</p>
       ) : artifact.exists && artifact.readable ? (
@@ -3008,7 +3001,7 @@ function RunArtifactPanel({ artifact, title }: { artifact: SpliceRunDetailData["
       ) : (
         <p className="px-4 py-4 text-sm text-muted-foreground">아직 저장된 산출물이 없습니다.</p>
       )}
-    </section>
+    </details>
   );
 }
 
@@ -3176,7 +3169,7 @@ function RunInspector({
           <p className="text-sm font-semibold">연결된 오피스 업무</p>
         </div>
         {comments.length || messages.length || workOrders.length || workProducts.length || routineRuns.length ? (
-          <div>
+          <div className="max-h-72 overflow-y-auto">
             {comments.map((comment) => {
               const item = workItemRefFromTarget(comment.itemType, comment.itemId);
               return (
@@ -3375,56 +3368,60 @@ function RunsTab({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="min-w-0 space-y-3">
-          <SectionTitle title="현재 실행·대기" aside={`${activeRuns.length}`} />
-          {activeRuns.length ? activeRuns.map((run) => (
-            <RunMonitorCard
-              key={run.id}
-              data={data}
-              onSelectRun={selectRun}
-              run={run}
-              selected={selectedRun?.id === run.id}
-              updatingRunId={updatingRunId}
-              onUpdateRunStatus={onUpdateRunStatus}
-            />
-          )) : (
-            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">현재 실행되거나 대기 중인 요청이 없습니다.</p>
-          )}
-        </section>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+        <div className="min-w-0 space-y-6">
+          <section className="min-w-0 space-y-3">
+            <SectionTitle title="현재 실행·대기" aside={`${activeRuns.length}`} />
+            {activeRuns.length ? activeRuns.map((run) => (
+              <RunMonitorCard
+                key={run.id}
+                data={data}
+                onSelectRun={selectRun}
+                run={run}
+                selected={selectedRun?.id === run.id}
+                updatingRunId={updatingRunId}
+                onUpdateRunStatus={onUpdateRunStatus}
+              />
+            )) : (
+              <p className="border border-border px-4 py-4 text-sm text-muted-foreground">현재 실행되거나 대기 중인 요청이 없습니다.</p>
+            )}
+          </section>
 
-        <RunInspector
-          data={data}
-          detail={selectedRunDetailQuery.data ?? null}
-          loading={selectedRunDetailQuery.isFetching}
-          onAddComment={onAddComment}
-          onFocusAgent={onFocusAgent}
-          onOpenTab={onOpenTab}
-          onOpenWorkOrder={onOpenWorkOrder}
-          onOpenWorkItem={onOpenWorkItem}
-          postingCommentKey={postingCommentKey}
-          run={selectedRun}
-        />
-      </div>
-
-      <section className="min-w-0 space-y-3">
-        <SectionTitle title="실행 기록" aside={`${historyRuns.length}건`} />
-        <div className="grid gap-3 xl:grid-cols-2">
-          {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
-            <RunMonitorCard
-              key={run.id}
-              data={data}
-              onSelectRun={selectRun}
-              run={run}
-              selected={selectedRun?.id === run.id}
-              updatingRunId={updatingRunId}
-              onUpdateRunStatus={onUpdateRunStatus}
-            />
-          )) : (
-            <p className="border border-border px-4 py-4 text-sm text-muted-foreground">아직 완료된 실행이 없습니다.</p>
-          )}
+          <section className="min-w-0 space-y-3">
+            <SectionTitle title="실행 기록" aside={`${historyRuns.length}건`} />
+            <div className="grid gap-3 xl:grid-cols-2">
+              {historyRuns.length ? historyRuns.slice(0, 18).map((run) => (
+                <RunMonitorCard
+                  key={run.id}
+                  data={data}
+                  onSelectRun={selectRun}
+                  run={run}
+                  selected={selectedRun?.id === run.id}
+                  updatingRunId={updatingRunId}
+                  onUpdateRunStatus={onUpdateRunStatus}
+                />
+              )) : (
+                <p className="border border-border px-4 py-4 text-sm text-muted-foreground">아직 완료된 실행이 없습니다.</p>
+              )}
+            </div>
+          </section>
         </div>
-      </section>
+
+        <div className="min-w-0 xl:sticky xl:top-4">
+          <RunInspector
+            data={data}
+            detail={selectedRunDetailQuery.data ?? null}
+            loading={selectedRunDetailQuery.isFetching}
+            onAddComment={onAddComment}
+            onFocusAgent={onFocusAgent}
+            onOpenTab={onOpenTab}
+            onOpenWorkOrder={onOpenWorkOrder}
+            onOpenWorkItem={onOpenWorkItem}
+            postingCommentKey={postingCommentKey}
+            run={selectedRun}
+          />
+        </div>
+      </div>
     </div>
   );
 }

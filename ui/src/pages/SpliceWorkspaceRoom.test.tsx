@@ -523,10 +523,11 @@ describe("SpliceWorkspaceRoom", () => {
 
     const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]');
     expect(executeNavigation).not.toBeNull();
-    expect(primaryTabLabels(executeNavigation!)).toEqual(["실행 현황", "에이전트"]);
+    expect(primaryTabLabels(executeNavigation!)).toEqual(["에이전트"]);
+    expect(primaryTabLabels(executeNavigation!)).not.toContain("실행 현황");
     expect(primaryTabLabels(executeNavigation!)).not.toContain("코드 사본");
     expect(primaryTabLabels(executeNavigation!)).not.toContain("사무실");
-    expect(executeNavigation?.querySelector('button[aria-current="page"]')?.textContent?.trim()).toBe("실행 현황");
+    expect(executeNavigation?.querySelector('button[aria-current="page"]')).toBeNull();
     expect(container.textContent).toContain("실행 현황");
 
     const codeCopiesButton = exactButton(mainNavigation!, "코드 사본");
@@ -535,7 +536,7 @@ describe("SpliceWorkspaceRoom", () => {
     });
     await flushReact();
 
-    expect(container.querySelector('[aria-label="코드 사본 보조 탐색"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="코드 사본 보조 탐색"]')).toBeNull();
     expect(container.textContent).toContain("프로젝트 코드 사본");
 
     await act(async () => {
@@ -572,7 +573,7 @@ describe("SpliceWorkspaceRoom", () => {
     await act(async () => workButton.click());
     await flushReact();
     const workNavigation = container.querySelector('[aria-label="업무 보조 탐색"]')!;
-    expect(primaryTabLabels(workNavigation)).toEqual(["이슈", "프로젝트", "검수", "승인", "목표"]);
+    expect(primaryTabLabels(workNavigation)).toEqual(["프로젝트", "검수", "승인", "목표"]);
     const workAdvanced = workNavigation.querySelector("details")!;
     expect(workAdvanced.textContent).toContain("고급 운영 도구");
     expect(workAdvanced.textContent).toContain("업무 책상");
@@ -582,8 +583,8 @@ describe("SpliceWorkspaceRoom", () => {
     await act(async () => historyButton.click());
     await flushReact();
     const historyNavigation = container.querySelector('[aria-label="기록 보조 탐색"]')!;
-    expect(primaryTabLabels(historyNavigation)).toEqual(["활동", "상세"]);
-    expect(historyNavigation.querySelector('button[aria-current="page"]')?.textContent?.trim()).toBe("활동");
+    expect(primaryTabLabels(historyNavigation)).toEqual(["상세"]);
+    expect(historyNavigation.querySelector('button[aria-current="page"]')).toBeNull();
     expect(container.textContent).toContain("사무실 타임라인");
 
     await act(async () => {
@@ -799,7 +800,8 @@ describe("SpliceWorkspaceRoom", () => {
     });
     await flushReact();
     const executeNavigation = container.querySelector('[aria-label="실행 보조 탐색"]')!;
-    expect(primaryTabLabels(executeNavigation)).toContain("실행 현황");
+    expect(primaryTabLabels(executeNavigation)).not.toContain("실행 현황");
+    expect(primaryTabLabels(executeNavigation)).toContain("에이전트");
     expect(container.textContent).toContain("Dry Run");
     expect(container.textContent).toContain("Dispatch");
 
