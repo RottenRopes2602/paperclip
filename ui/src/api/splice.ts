@@ -678,7 +678,7 @@ export interface SpliceWorkspaceRoomWorkItem {
   type: "project" | "issue";
   title: string;
   status: string;
-  bucket: "active" | "review" | "todo" | "blocked" | "done" | string;
+  bucket: "active" | "review" | "todo" | "blocked" | "done" | "archived" | string;
   progressWeight: number;
   ownerSlug: string | null;
   ownerName: string;
@@ -697,6 +697,7 @@ export interface SpliceWorkspaceRoomProject extends SpliceWorkspaceRoomWorkItem 
     todo: number;
     blocked: number;
     done: number;
+    archived: number;
   };
   issueTotal: number;
 }
@@ -813,8 +814,10 @@ export interface SpliceWorkspaceRoomData {
   goals: SpliceWorkspaceRoomGoal[];
   totals: {
     projects: number;
+    archivedProjects: number;
     activeProjects: number;
     issues: number;
+    archivedIssues: number;
     activeIssues: number;
     reviewIssues: number;
     todoIssues: number;
@@ -838,6 +841,7 @@ export interface SpliceWorkspaceRoomData {
     todo: number;
     blocked: number;
     done: number;
+    archived: number;
   };
   room: {
     zones: Array<{ id: string; label: string; x: number; y: number; workCount: number }>;
@@ -851,6 +855,8 @@ export interface SpliceWorkspaceRoomData {
     blocked: SpliceWorkspaceRoomWorkItem[];
   };
   projects: SpliceWorkspaceRoomProject[];
+  archivedProjects: SpliceWorkspaceRoomProject[];
+  archivedIssues: SpliceWorkspaceRoomWorkItem[];
   agents: SpliceWorkspaceRoomActor[];
   executionLanes: SpliceExecutionLane[];
   activity: Array<{

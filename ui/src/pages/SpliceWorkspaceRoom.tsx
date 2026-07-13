@@ -1360,12 +1360,17 @@ function RoomActorSprite({
   );
 }
 
-function goalKindLabel(goal: SpliceWorkspaceRoomGoal): string {
-  if (goal.kind === "key_result") return "핵심 결과";
-  if (goal.kind === "mission") return "미션";
-  if (goal.kind === "vision") return "비전";
-  if (goal.kind === "objective") return "목표";
-  return goal.kind.replace(/[-_]+/g, " ");
+function goalKindLabel(goal: { kind?: string | null }): string {
+  const kind = goal.kind ?? "goal";
+  if (kind === "key_result") return "핵심 결과";
+  if (kind === "mission") return "미션";
+  if (kind === "vision") return "비전";
+  if (kind === "objective") return "목표";
+  return kind.replace(/[-_]+/g, " ");
+}
+
+function isArchivedStatus(status: string | null | undefined): boolean {
+  return ["cancelled", "canceled", "dropped", "archived"].includes(String(status ?? "").toLowerCase());
 }
 
 function toPaperGoal(goal: SpliceWorkspaceRoomGoal, index: number, companyId: string): Goal {
@@ -3676,29 +3681,51 @@ function InboxTab({
 }
 
 function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Project[]; issues: Issue[] }) {
-  const okrCount = goals.filter((goal) => goal.kind === "objective" || goal.kind === "key_result").length;
+  const liveGoals = goals.filter((goal) => !isArchivedStatus(goal.status));
+  const archivedGoals = goals.filter((goal) => isArchivedStatus(goal.status));
+  const okrCount = liveGoals.filter((goal) => goal.kind === "objective" || goal.kind === "key_result").length;
 
   return (
     <div className="space-y-8">
       <section className="space-y-3">
         <SectionTitle title="미션 · 비전" aside="최상위 기준" />
-        <MissionVisionCards goals={goals} goalLink={() => null} />
+        <MissionVisionCards goals={liveGoals} goalLink={() => null} />
       </section>
 
       <section className="space-y-3">
         <SectionTitle title="목표와 핵심 결과" aside={`${okrCount}개 항목`} />
-        <OkrTree goals={goals} projects={projects} issues={issues} />
+        <OkrTree goals={liveGoals} projects={projects} issues={issues} />
       </section>
+
+      {archivedGoals.length ? (
+        <details className="border border-border">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
+            보관된 목표 기록 <span className="ml-1 text-xs font-normal text-muted-foreground">{archivedGoals.length}개</span>
+          </summary>
+          <div className="border-t border-border">
+            {archivedGoals.map((goal) => (
+              <div key={goal.id} className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{goal.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{goalKindLabel(goal)} · {koStatusLabel(goal.status)}</p>
+                  {goal.description ? <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{plainSummary(goal.description, "설명 없음")}</p> : null}
+                </div>
+                {goal.identifier ? <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{goal.identifier}</span> : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
 
-function ProjectsTab({ projects }: { projects: SpliceWorkspaceRoomProject[] }) {
+function ProjectsTab({ projects, archivedProjects }: { projects: SpliceWorkspaceRoomProject[]; archivedProjects: SpliceWorkspaceRoomProject[] }) {
   return (
     <div className="space-y-4">
       <SectionTitle title="프로젝트" aside={`진행 ${projects.length}개`} />
       <div className="border border-border">
-        {projects.map((project) => (
+        {projects.length ? projects.map((project) => (
           <EntityRow
             key={project.id}
             identifier={project.id}
@@ -3712,8 +3739,27 @@ function ProjectsTab({ projects }: { projects: SpliceWorkspaceRoomProject[] }) {
               </div>
             )}
           />
-        ))}
+        )) : <p className="px-4 py-4 text-sm text-muted-foreground">현재 진행 중인 프로젝트가 없습니다.</p>}
       </div>
+      {archivedProjects.length ? (
+        <details className="border border-border">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
+            보관된 프로젝트 기록 <span className="ml-1 text-xs font-normal text-muted-foreground">{archivedProjects.length}개</span>
+          </summary>
+          <div className="border-t border-border">
+            {archivedProjects.map((project) => (
+              <EntityRow
+                key={project.id}
+                identifier={project.id}
+                title={project.title}
+                subtitle={plainSummary(project.description, `${project.ownerName} · 이슈 ${project.issueTotal}개`)}
+                leading={<History className="h-4 w-4 text-muted-foreground" />}
+                trailing={<StatusBadge status={project.status} ns="project" />}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -4046,6 +4092,16 @@ function IssuesTab({
           <WorkItemList items={lane.items} empty={`${lane.title} 업무가 없습니다.`} onOpenWorkItem={onOpenWorkItem} />
         </section>
       ))}
+      {data.archivedIssues.length ? (
+        <details className="border border-border">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
+            보관된 이슈 기록 <span className="ml-1 text-xs font-normal text-muted-foreground">{data.archivedIssues.length}개</span>
+          </summary>
+          <div className="border-t border-border">
+            <WorkItemList items={data.archivedIssues} empty="보관된 이슈가 없습니다." onOpenWorkItem={onOpenWorkItem} />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -6826,7 +6882,7 @@ export function SpliceWorkspaceRoom() {
         />
       )}
       {activeTab === "goals" && <GoalsTab goals={paperGoals} projects={paperProjects} issues={paperIssues} />}
-      {activeTab === "projects" && <ProjectsTab projects={data.projects} />}
+      {activeTab === "projects" && <ProjectsTab projects={data.projects} archivedProjects={data.archivedProjects} />}
       {activeTab === "issues" && <IssuesTab data={data} onOpenWorkItem={onOpenWorkItem} />}
       {activeTab === "desk" && (
         <WorkDeskTab
