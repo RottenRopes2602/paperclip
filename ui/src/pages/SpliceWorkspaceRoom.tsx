@@ -30,7 +30,7 @@ import {
   Target,
   type LucideIcon,
 } from "lucide-react";
-import { Navigate, useParams } from "@/lib/router";
+import { useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { CompanyPatternIcon } from "@/components/CompanyPatternIcon";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -70,8 +70,8 @@ import {
 } from "@/api/splice";
 import { cn } from "@/lib/utils";
 
-const PUZZLE_TESTBED_ID = "puzzle-game";
-const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room", PUZZLE_TESTBED_ID] as const;
+const DEFAULT_TEST_WORKSPACE_ID = "puzzle-game";
+const WORKSPACE_ROOM_QUERY_ROOT = ["splice", "workspace-room"] as const;
 
 type RoomTab = "dashboard" | "inbox" | "lanes" | "runs" | "intake" | "goals" | "projects" | "issues" | "desk" | "reviews" | "approvals" | "routines" | "agents" | "comms" | "activity" | "details";
 type WorkItemRef = Pick<SpliceWorkspaceRoomWorkItem, "id" | "type">;
@@ -925,7 +925,7 @@ function CopyLaneOffice({
     <div className="relative overflow-hidden border-[6px] border-[#3c2b20] bg-[#b98558] p-4 shadow-[inset_0_0_0_4px_rgba(255,255,255,0.12),8px_8px_0_rgba(0,0,0,0.3)]">
       <div className="absolute inset-0 opacity-75" style={{ backgroundImage: "linear-gradient(90deg,rgba(79,45,24,0.28) 2px,transparent 2px),linear-gradient(rgba(255,255,255,0.12) 2px,transparent 2px)", backgroundSize: "48px 24px", imageRendering: "pixelated" }} aria-hidden="true" />
       <div className="relative z-20 flex items-center justify-between gap-3 border-2 border-black bg-[#101820] px-3 py-2 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
-        <span className="text-[11px] font-black text-cyan-100">Puzzle Game · 코드 사본 사무실</span>
+        <span className="text-[11px] font-black text-cyan-100">{workspaceName} · 코드 사본 사무실</span>
         <span className="text-[10px] font-bold text-emerald-300">고정 4개 방 · 코드 사본 {lanes.length}</span>
       </div>
       <div className="relative z-20 mt-3 flex flex-wrap gap-1.5" role="group" aria-label="코드 사본 방 필터">
@@ -1358,10 +1358,10 @@ function goalKindLabel(goal: SpliceWorkspaceRoomGoal): string {
   return goal.kind.replace(/[-_]+/g, " ");
 }
 
-function toPaperGoal(goal: SpliceWorkspaceRoomGoal, index: number): Goal {
+function toPaperGoal(goal: SpliceWorkspaceRoomGoal, index: number, companyId: string): Goal {
   return {
     id: goal.slug,
-    companyId: PUZZLE_TESTBED_ID,
+    companyId,
     title: goal.name,
     description: displayMarkdownBody(goal.description),
     level: (goal.kind === "mission" || goal.kind === "vision" ? "company" : goal.level ?? "team") as Goal["level"],
@@ -1376,10 +1376,10 @@ function toPaperGoal(goal: SpliceWorkspaceRoomGoal, index: number): Goal {
   };
 }
 
-function toPaperProject(project: SpliceWorkspaceRoomProject, index: number): Project {
+function toPaperProject(project: SpliceWorkspaceRoomProject, index: number, companyId: string): Project {
   return {
     id: project.id,
-    companyId: PUZZLE_TESTBED_ID,
+    companyId,
     urlKey: project.id,
     goalId: null,
     goalIds: [],
@@ -1415,10 +1415,10 @@ function toPaperProject(project: SpliceWorkspaceRoomProject, index: number): Pro
   } as Project;
 }
 
-function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number): Issue {
+function toPaperIssue(item: SpliceWorkspaceRoomWorkItem, index: number, companyId: string): Issue {
   return {
     id: item.id,
-    companyId: PUZZLE_TESTBED_ID,
+    companyId,
     projectId: item.projectSlug,
     projectWorkspaceId: null,
     goalId: null,
@@ -1457,7 +1457,7 @@ function roomTabLabel(tab: RoomTab): string {
   return roomTabs.find((item) => item.value === tab)?.label ?? "관제";
 }
 
-function PuzzleSidebar({
+function WorkspaceSidebar({
   activeTab,
   data,
   runActiveCount,
@@ -1565,7 +1565,7 @@ function PuzzleSidebar({
   );
 }
 
-function PuzzleWorkspaceShell({
+function WorkspaceRoomShell({
   approvalPendingCount,
   activeTab,
   children,
@@ -1627,7 +1627,7 @@ function PuzzleWorkspaceShell({
       >
         본문으로 건너뛰기
       </a>
-      <PuzzleSidebar
+      <WorkspaceSidebar
         activeTab={activeTab}
         data={data}
         runActiveCount={runActiveCount}
@@ -3223,6 +3223,7 @@ function RunInspector({
 
 function RunsTab({
   data,
+  workspaceId,
   dispatchingRunner,
   focusedRunId,
   onAddComment,
@@ -3239,6 +3240,7 @@ function RunsTab({
   updatingRunId,
 }: {
   data: SpliceWorkspaceRoomData;
+  workspaceId: string;
   dispatchingRunner: boolean;
   focusedRunId: string | null;
   onAddComment: (input: WorkThreadCommentInput) => void;
@@ -3285,8 +3287,8 @@ function RunsTab({
 
   const selectedRun = runList.find((run) => run.id === selectedRunId) ?? runList[0] ?? null;
   const selectedRunDetailQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "run-detail", selectedRun?.id ?? "none"],
-    queryFn: () => spliceApi.workspaceRoomRunDetail(PUZZLE_TESTBED_ID, selectedRun?.id ?? ""),
+    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, workspaceId, "run-detail", selectedRun?.id ?? "none"],
+    queryFn: () => spliceApi.workspaceRoomRunDetail(workspaceId, selectedRun?.id ?? ""),
     enabled: Boolean(selectedRun?.id),
     refetchInterval: 3000,
   });
@@ -6116,7 +6118,7 @@ function OfficeOverview({
     <section className="space-y-4">
       <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <SectionTitle title="퍼즐게임 사무실" aside={`코드 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
+            <SectionTitle title={`${data.name} 사무실`} aside={`코드 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
                 <Rocket className="h-3.5 w-3.5" />
@@ -6332,6 +6334,8 @@ function OfficeOverview({
 
 export function SpliceWorkspaceRoom() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
+  const roomWorkspaceId = workspaceId?.trim() || DEFAULT_TEST_WORKSPACE_ID;
+  const workspaceRoomQueryRoot = [...WORKSPACE_ROOM_QUERY_ROOT, roomWorkspaceId] as const;
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<RoomTab>("dashboard");
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
@@ -6361,62 +6365,62 @@ export function SpliceWorkspaceRoom() {
     setActiveTab("intake");
   }, []);
   const roomQuery = useQuery({
-    queryKey: WORKSPACE_ROOM_QUERY_ROOT,
-    queryFn: () => spliceApi.workspaceRoom(PUZZLE_TESTBED_ID),
+    queryKey: workspaceRoomQueryRoot,
+    queryFn: () => spliceApi.workspaceRoom(roomWorkspaceId),
     refetchInterval: 10000,
   });
   const inboxQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "inbox"],
-    queryFn: () => spliceApi.workspaceRoomInbox(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "inbox"],
+    queryFn: () => spliceApi.workspaceRoomInbox(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const messagesQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "messages"],
-    queryFn: () => spliceApi.workspaceRoomMessages(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "messages"],
+    queryFn: () => spliceApi.workspaceRoomMessages(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const agentConsoleQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "agent-console"],
-    queryFn: () => spliceApi.workspaceRoomAgentConsole(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "agent-console"],
+    queryFn: () => spliceApi.workspaceRoomAgentConsole(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const runsQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "runs"],
-    queryFn: () => spliceApi.workspaceRoomRuns(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "runs"],
+    queryFn: () => spliceApi.workspaceRoomRuns(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const workThreadQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-thread"],
-    queryFn: () => spliceApi.workspaceRoomWorkThread(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "work-thread"],
+    queryFn: () => spliceApi.workspaceRoomWorkThread(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const reviewsQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "reviews"],
-    queryFn: () => spliceApi.workspaceRoomReviews(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "reviews"],
+    queryFn: () => spliceApi.workspaceRoomReviews(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const routinesQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "routines"],
-    queryFn: () => spliceApi.workspaceRoomRoutines(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "routines"],
+    queryFn: () => spliceApi.workspaceRoomRoutines(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const approvalsQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "approvals"],
-    queryFn: () => spliceApi.workspaceRoomApprovals(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "approvals"],
+    queryFn: () => spliceApi.workspaceRoomApprovals(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const timelineQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "timeline"],
-    queryFn: () => spliceApi.workspaceRoomTimeline(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "timeline"],
+    queryFn: () => spliceApi.workspaceRoomTimeline(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const workOrdersQuery = useQuery({
-    queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "work-orders"],
-    queryFn: () => spliceApi.workspaceRoomWorkOrders(PUZZLE_TESTBED_ID),
+    queryKey: [...workspaceRoomQueryRoot, "work-orders"],
+    queryFn: () => spliceApi.workspaceRoomWorkOrders(roomWorkspaceId),
     refetchInterval: 5000,
   });
   const runAgentMutation = useMutation({
-    mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(PUZZLE_TESTBED_ID, agentId),
+    mutationFn: (agentId: string) => spliceApi.runWorkspaceRoomAgent(roomWorkspaceId, agentId),
     onSuccess: () => {
       void roomQuery.refetch();
       void inboxQuery.refetch();
@@ -6428,7 +6432,7 @@ export function SpliceWorkspaceRoom() {
   });
   const sendMessageMutation = useMutation({
     mutationFn: ({ agentId, body }: { agentId: string; body: string }) =>
-      spliceApi.sendWorkspaceRoomMessage(PUZZLE_TESTBED_ID, agentId, body),
+      spliceApi.sendWorkspaceRoomMessage(roomWorkspaceId, agentId, body),
     onSuccess: () => {
       void roomQuery.refetch();
       void inboxQuery.refetch();
@@ -6441,14 +6445,14 @@ export function SpliceWorkspaceRoom() {
   });
   const updateRoutineMutation = useMutation({
     mutationFn: ({ routineId, input }: { routineId: string; input: { enabled?: boolean; intervalMinutes?: number } }) =>
-      spliceApi.updateWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId, input),
+      spliceApi.updateWorkspaceRoomRoutine(roomWorkspaceId, routineId, input),
     onSuccess: () => {
       void routinesQuery.refetch();
       void timelineQuery.refetch();
     },
   });
   const runRoutineMutation = useMutation({
-    mutationFn: (routineId: string) => spliceApi.runWorkspaceRoomRoutine(PUZZLE_TESTBED_ID, routineId),
+    mutationFn: (routineId: string) => spliceApi.runWorkspaceRoomRoutine(roomWorkspaceId, routineId),
     onSuccess: () => {
       void routinesQuery.refetch();
       void roomQuery.refetch();
@@ -6460,7 +6464,7 @@ export function SpliceWorkspaceRoom() {
   });
   const createApprovalMutation = useMutation({
     mutationFn: (input: { agentId?: string | null; kind: string; title: string; body: string }) =>
-      spliceApi.createWorkspaceRoomApproval(PUZZLE_TESTBED_ID, input),
+      spliceApi.createWorkspaceRoomApproval(roomWorkspaceId, input),
     onSuccess: () => {
       void approvalsQuery.refetch();
       void inboxQuery.refetch();
@@ -6469,7 +6473,7 @@ export function SpliceWorkspaceRoom() {
   });
   const decideApprovalMutation = useMutation({
     mutationFn: ({ approvalId, decision, body, wakeAgent }: { approvalId: string; decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent: boolean }) =>
-      spliceApi.createWorkspaceRoomApprovalDecision(PUZZLE_TESTBED_ID, approvalId, { decision, body, wakeAgent }),
+      spliceApi.createWorkspaceRoomApprovalDecision(roomWorkspaceId, approvalId, { decision, body, wakeAgent }),
     onSuccess: () => {
       void approvalsQuery.refetch();
       void inboxQuery.refetch();
@@ -6481,7 +6485,7 @@ export function SpliceWorkspaceRoom() {
   });
   const addCommentMutation = useMutation({
     mutationFn: (input: WorkThreadCommentInput) =>
-      spliceApi.createWorkspaceRoomComment(PUZZLE_TESTBED_ID, input),
+      spliceApi.createWorkspaceRoomComment(roomWorkspaceId, input),
     onSuccess: () => {
       void workThreadQuery.refetch();
       void roomQuery.refetch();
@@ -6489,12 +6493,12 @@ export function SpliceWorkspaceRoom() {
       void agentConsoleQuery.refetch();
       void runsQuery.refetch();
       void timelineQuery.refetch();
-      void queryClient.invalidateQueries({ queryKey: [...WORKSPACE_ROOM_QUERY_ROOT, "run-detail"] });
+      void queryClient.invalidateQueries({ queryKey: [...workspaceRoomQueryRoot, "run-detail"] });
     },
   });
   const addWorkProductMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; kind?: string }) =>
-      spliceApi.createWorkspaceRoomWorkProduct(PUZZLE_TESTBED_ID, input),
+      spliceApi.createWorkspaceRoomWorkProduct(roomWorkspaceId, input),
     onSuccess: () => {
       void workThreadQuery.refetch();
       void timelineQuery.refetch();
@@ -6502,7 +6506,7 @@ export function SpliceWorkspaceRoom() {
   });
   const requestReviewMutation = useMutation({
     mutationFn: (input: { itemType: string; itemId: string; title: string; body: string; reviewerAgentId?: string | null; sourceWorkProductId?: string | null }) =>
-      spliceApi.createWorkspaceRoomReview(PUZZLE_TESTBED_ID, input),
+      spliceApi.createWorkspaceRoomReview(roomWorkspaceId, input),
     onSuccess: () => {
       void reviewsQuery.refetch();
       void workThreadQuery.refetch();
@@ -6512,7 +6516,7 @@ export function SpliceWorkspaceRoom() {
   });
   const decideReviewMutation = useMutation({
     mutationFn: ({ reviewId, decision, body, wakeAgent }: { reviewId: string; decision: "approved" | "changes_requested" | "rejected"; body: string; wakeAgent: boolean }) =>
-      spliceApi.createWorkspaceRoomReviewDecision(PUZZLE_TESTBED_ID, reviewId, { decision, body, wakeAgent }),
+      spliceApi.createWorkspaceRoomReviewDecision(roomWorkspaceId, reviewId, { decision, body, wakeAgent }),
     onSuccess: () => {
       void reviewsQuery.refetch();
       void workThreadQuery.refetch();
@@ -6525,7 +6529,7 @@ export function SpliceWorkspaceRoom() {
   });
   const updateInboxMutation = useMutation({
     mutationFn: ({ itemId, status }: { itemId: string; status: "open" | "done" }) =>
-      spliceApi.updateWorkspaceRoomInboxStatus(PUZZLE_TESTBED_ID, itemId, status),
+      spliceApi.updateWorkspaceRoomInboxStatus(roomWorkspaceId, itemId, status),
     onSuccess: () => {
       void inboxQuery.refetch();
       void timelineQuery.refetch();
@@ -6549,7 +6553,7 @@ export function SpliceWorkspaceRoom() {
   });
   const createWorkOrderMutation = useMutation({
     mutationFn: (input: { title: string; body: string; agentId?: string | null; projectId?: string | null; priority?: string; wakeAgent?: boolean }) =>
-      spliceApi.createWorkspaceRoomWorkOrder(PUZZLE_TESTBED_ID, input),
+      spliceApi.createWorkspaceRoomWorkOrder(roomWorkspaceId, input),
     onSuccess: (result) => {
       setFocusedWorkOrderId(result.workOrder.id);
       void workOrdersQuery.refetch();
@@ -6562,7 +6566,7 @@ export function SpliceWorkspaceRoom() {
   });
   const updateWorkOrderStatusMutation = useMutation({
     mutationFn: ({ workOrderId, status, wakeAgent }: { workOrderId: string; status: string; wakeAgent?: boolean }) =>
-      spliceApi.updateWorkspaceRoomWorkOrderStatus(PUZZLE_TESTBED_ID, workOrderId, { status, wakeAgent }),
+      spliceApi.updateWorkspaceRoomWorkOrderStatus(roomWorkspaceId, workOrderId, { status, wakeAgent }),
     onSuccess: () => {
       void workOrdersQuery.refetch();
       void inboxQuery.refetch();
@@ -6574,7 +6578,7 @@ export function SpliceWorkspaceRoom() {
   });
   const updateRunStatusMutation = useMutation({
     mutationFn: ({ runId, status, error }: { runId: string; status: string; error?: string }) =>
-      spliceApi.updateWorkspaceRoomRunStatus(PUZZLE_TESTBED_ID, runId, { status, error }),
+      spliceApi.updateWorkspaceRoomRunStatus(roomWorkspaceId, runId, { status, error }),
     onSuccess: () => {
       void runsQuery.refetch();
       void roomQuery.refetch();
@@ -6585,17 +6589,13 @@ export function SpliceWorkspaceRoom() {
   });
 
   const data = roomQuery.data;
-  const paperGoals = useMemo(() => (data?.goals ?? []).map(toPaperGoal), [data?.goals]);
-  const paperProjects = useMemo(() => (data?.projects ?? []).map(toPaperProject), [data?.projects]);
+  const paperGoals = useMemo(() => (data?.goals ?? []).map((goal, index) => toPaperGoal(goal, index, roomWorkspaceId)), [data?.goals, roomWorkspaceId]);
+  const paperProjects = useMemo(() => (data?.projects ?? []).map((project, index) => toPaperProject(project, index, roomWorkspaceId)), [data?.projects, roomWorkspaceId]);
   const paperIssues = useMemo(
     () => [...(data?.lanes.active ?? []), ...(data?.lanes.review ?? []), ...(data?.lanes.next ?? []), ...(data?.lanes.blocked ?? [])]
-      .map(toPaperIssue),
-    [data?.lanes.active, data?.lanes.blocked, data?.lanes.next, data?.lanes.review],
+      .map((item, index) => toPaperIssue(item, index, roomWorkspaceId)),
+    [data?.lanes.active, data?.lanes.blocked, data?.lanes.next, data?.lanes.review, roomWorkspaceId],
   );
-
-  if (workspaceId && workspaceId !== PUZZLE_TESTBED_ID) {
-    return <Navigate to={`/splice/workspace-room/${PUZZLE_TESTBED_ID}`} replace />;
-  }
 
   if (roomQuery.isLoading) {
     return <PageSkeleton variant="dashboard" />;
@@ -6606,7 +6606,7 @@ export function SpliceWorkspaceRoom() {
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
         <div className="flex items-center gap-2 font-medium">
           <AlertTriangle className="h-4 w-4" />
-          Could not load Puzzle Game
+          {roomWorkspaceId}를 불러올 수 없습니다
         </div>
         <p className="mt-2 text-red-800/80 dark:text-red-200/80">
           {roomQuery.error instanceof Error ? roomQuery.error.message : "알 수 없는 오류"}
@@ -6648,7 +6648,7 @@ export function SpliceWorkspaceRoom() {
   const updatingRunId = updateRunStatusMutation.isPending ? updateRunStatusMutation.variables?.runId ?? null : null;
 
   return (
-    <PuzzleWorkspaceShell
+    <WorkspaceRoomShell
       data={data}
       approvalPendingCount={approvals?.counts.pending ?? 0}
       activeTab={activeTab}
@@ -6711,6 +6711,7 @@ export function SpliceWorkspaceRoom() {
       {activeTab === "runs" && (
         <RunsTab
           data={data}
+          workspaceId={roomWorkspaceId}
           dispatchingRunner={dispatchRunnerMutation.isPending}
           focusedRunId={focusedRunId}
           postingCommentKey={postingCommentKey}
@@ -6822,6 +6823,6 @@ export function SpliceWorkspaceRoom() {
       )}
       {activeTab === "activity" && <ActivityTab data={data} messages={messages} timeline={timeline} onOpenTab={setActiveTab} onOpenRun={onOpenRun} onOpenWorkOrder={onOpenWorkOrder} onOpenWorkItem={onOpenWorkItem} />}
       {activeTab === "details" && <DetailsTab data={data} />}
-    </PuzzleWorkspaceShell>
+    </WorkspaceRoomShell>
   );
 }

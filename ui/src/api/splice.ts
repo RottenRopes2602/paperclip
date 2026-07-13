@@ -141,6 +141,22 @@ export interface SpliceOverviewData {
   requests: SpliceAgentRunRequest[];
 }
 
+export interface SpliceTestWorkspaceSummary {
+  id: string;
+  name: string;
+  path: string;
+  kind: string;
+  source: string;
+  available: boolean;
+  totals: SpliceWorkspaceRoomData["totals"] | null;
+  workspaceBinding: SpliceWorkspaceRoomData["workspaceBinding"] | null;
+}
+
+export interface SpliceTestWorkspacesData {
+  generatedAt: string;
+  workspaces: SpliceTestWorkspaceSummary[];
+}
+
 export interface SpliceRunnerDispatch {
   status: "runner_dispatched" | "dry_run_dispatched" | string;
   pid: number | null;
@@ -850,6 +866,7 @@ export interface SpliceWorkspaceRoomData {
 
 export const spliceApi = {
   overview: () => api.get<SpliceOverviewData>("/splice/overview"),
+  testWorkspaces: () => api.get<SpliceTestWorkspacesData>("/splice/test-workspaces"),
   workspaceRoom: (workspaceId: string) =>
     api.get<SpliceWorkspaceRoomData>(`/splice/workspaces/${encodeURIComponent(workspaceId)}/room`),
   workspaceRoomTimeline: (workspaceId: string) =>
