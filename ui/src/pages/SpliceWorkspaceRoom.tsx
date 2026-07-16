@@ -94,15 +94,15 @@ type SelectedWorkspaceTarget =
 
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "관제", icon: LayoutDashboard },
-  { value: "inbox", label: "신호함", icon: Inbox },
+  { value: "inbox", label: "확인할 것", icon: Inbox },
   { value: "lanes", label: "코드 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
   { value: "intake", label: "업무 접수", icon: SquarePen },
-  { value: "goals", label: "목표", icon: Target },
+  { value: "goals", label: "목표 기준", icon: Target },
   { value: "projects", label: "프로젝트", icon: FolderOpen },
-  { value: "issues", label: "이슈", icon: CircleDot },
+  { value: "issues", label: "작업", icon: CircleDot },
   { value: "desk", label: "업무 책상", icon: SquarePen },
-  { value: "reviews", label: "검수", icon: ShieldAlert },
+  { value: "reviews", label: "검토", icon: ShieldAlert },
   { value: "approvals", label: "승인", icon: CheckCircle2 },
   { value: "routines", label: "루틴", icon: Repeat2 },
   { value: "agents", label: "에이전트", icon: Bot },
@@ -121,10 +121,10 @@ const roomNavigationGroups: Array<{
   tabs: RoomTab[];
   advancedTabs: RoomTab[];
 }> = [
-  { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox"], advancedTabs: [] },
+  { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox", "goals", "reviews", "approvals"], advancedTabs: [] },
   { value: "execute", label: "실행", icon: Rocket, defaultTab: "runs", tabs: ["runs", "agents"], advancedTabs: ["comms", "routines"] },
   { value: "code", label: "코드 사본", icon: GitBranch, defaultTab: "lanes", tabs: ["lanes"], advancedTabs: [] },
-  { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects", "reviews", "approvals", "goals"], advancedTabs: ["desk", "intake"] },
+  { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects"], advancedTabs: ["desk", "intake"] },
   { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
 ];
 
@@ -1593,7 +1593,10 @@ function WorkspaceSidebar({
           {roomNavigationGroups.map((group) => {
             const Icon = group.icon;
             const active = activeGroup === group.value;
-            const subTabs = [...group.tabs.filter((tab) => tab !== group.defaultTab), ...group.advancedTabs];
+            const subTabs = [
+              ...group.tabs.filter((tab) => roomTabLabel(tab) !== group.label),
+              ...group.advancedTabs,
+            ];
             return (
               <div key={group.value} className="space-y-1">
                 <button
@@ -3720,7 +3723,7 @@ function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Projec
   );
 }
 
-function ProjectsTab({ projects, archivedProjects }: { projects: SpliceWorkspaceRoomProject[]; archivedProjects: SpliceWorkspaceRoomProject[] }) {
+function ProjectsTab({ projects, archivedProjects = [] }: { projects: SpliceWorkspaceRoomProject[]; archivedProjects?: SpliceWorkspaceRoomProject[] }) {
   return (
     <div className="space-y-4">
       <SectionTitle title="프로젝트" aside={`진행 ${projects.length}개`} />
@@ -4077,6 +4080,7 @@ function IssuesTab({
   data: SpliceWorkspaceRoomData;
   onOpenWorkItem: (item: WorkItemRef) => void;
 }) {
+  const archivedIssues = data.archivedIssues ?? [];
   const lanes: Array<{ title: string; items: SpliceWorkspaceRoomWorkItem[] }> = [
     { title: "지금", items: data.lanes.active },
     { title: "검수", items: data.lanes.review },
@@ -4092,13 +4096,13 @@ function IssuesTab({
           <WorkItemList items={lane.items} empty={`${lane.title} 업무가 없습니다.`} onOpenWorkItem={onOpenWorkItem} />
         </section>
       ))}
-      {data.archivedIssues.length ? (
+      {archivedIssues.length ? (
         <details className="border border-border">
           <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
-            보관된 이슈 기록 <span className="ml-1 text-xs font-normal text-muted-foreground">{data.archivedIssues.length}개</span>
+            보관된 이슈 기록 <span className="ml-1 text-xs font-normal text-muted-foreground">{archivedIssues.length}개</span>
           </summary>
           <div className="border-t border-border">
-            <WorkItemList items={data.archivedIssues} empty="보관된 이슈가 없습니다." onOpenWorkItem={onOpenWorkItem} />
+            <WorkItemList items={archivedIssues} empty="보관된 이슈가 없습니다." onOpenWorkItem={onOpenWorkItem} />
           </div>
         </details>
       ) : null}

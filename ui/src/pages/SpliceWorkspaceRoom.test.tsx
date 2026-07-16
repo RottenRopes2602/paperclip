@@ -514,8 +514,11 @@ describe("SpliceWorkspaceRoom", () => {
     expect(mainNavigation?.textContent).toContain("코드 사본");
     expect(mainNavigation?.textContent).toContain("업무");
     expect(mainNavigation?.textContent).toContain("기록");
-    expect(mainNavigation?.textContent).toContain("신호함");
-    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(6);
+    expect(mainNavigation?.textContent).toContain("확인할 것");
+    expect(mainNavigation?.textContent).toContain("목표 기준");
+    expect(mainNavigation?.textContent).toContain("검토");
+    expect(mainNavigation?.textContent).toContain("승인");
+    expect(mainNavigation?.querySelectorAll("button")).toHaveLength(9);
 
     expect(container.textContent).toContain("내가 확인할 것");
     const attentionQueue = Array.from(container.querySelectorAll("section")).find((section) => section.textContent?.includes("내가 확인할 것"));
@@ -586,11 +589,20 @@ describe("SpliceWorkspaceRoom", () => {
     await flushReact();
     expect(container.querySelector('[aria-label="업무 보조 탐색"]')).toBeNull();
     expect(mainNavigation?.textContent).toContain("프로젝트");
-    expect(mainNavigation?.textContent).toContain("검수");
-    expect(mainNavigation?.textContent).toContain("승인");
-    expect(mainNavigation?.textContent).toContain("목표");
+    expect(mainNavigation?.textContent).toContain("작업");
+    expect(mainNavigation?.textContent).not.toContain("검토");
+    expect(mainNavigation?.textContent).not.toContain("승인");
+    expect(mainNavigation?.textContent).not.toContain("목표 기준");
     expect(mainNavigation?.textContent).toContain("업무 책상");
     expect(mainNavigation?.textContent).toContain("업무 접수");
+
+    const observeButton = exactButton(mainNavigation!, "관제");
+    await act(async () => observeButton.click());
+    await flushReact();
+    expect(mainNavigation?.textContent).toContain("확인할 것");
+    expect(mainNavigation?.textContent).toContain("목표 기준");
+    expect(mainNavigation?.textContent).toContain("검토");
+    expect(mainNavigation?.textContent).toContain("승인");
 
     const historyButton = exactButton(mainNavigation!, "기록");
     await act(async () => historyButton.click());
