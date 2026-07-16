@@ -1494,9 +1494,24 @@ function WorkspaceSidebar({
     staleTime: 30000,
   });
   const testWorkspaces = testWorkspacesQuery.data?.workspaces ?? [];
+  const [expandedGroups, setExpandedGroups] = useState<Record<RoomNavigationGroup, boolean>>({
+    observe: true,
+    execute: false,
+    code: false,
+    work: false,
+    history: false,
+  });
   const selectTab = (tab: RoomTab) => {
     onTabChange(tab);
     if (mobileLayout) setSidebarOpen(false);
+  };
+
+  const toggleGroup = (group: (typeof roomNavigationGroups)[number]) => {
+    setExpandedGroups((current) => ({
+      ...current,
+      [group.value]: activeGroup === group.value ? !current[group.value] : true,
+    }));
+    selectTab(group.defaultTab);
   };
 
   const activeGroup = roomNavigationGroupForTab(activeTab);
@@ -1593,6 +1608,7 @@ function WorkspaceSidebar({
           {roomNavigationGroups.map((group) => {
             const Icon = group.icon;
             const active = activeGroup === group.value;
+            const expanded = expandedGroups[group.value];
             const subTabs = [
               ...group.tabs.filter((tab) => roomTabLabel(tab) !== group.label),
               ...group.advancedTabs,
@@ -1602,8 +1618,8 @@ function WorkspaceSidebar({
                 <button
                   type="button"
                   aria-current={active && activeTab === group.defaultTab ? "page" : undefined}
-                  aria-expanded={subTabs.length ? active : undefined}
-                  onClick={() => selectTab(group.defaultTab)}
+                  aria-expanded={subTabs.length ? expanded : undefined}
+                  onClick={() => toggleGroup(group)}
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] font-medium transition-colors",
                     active ? "bg-[#339cf4] text-white hover:bg-[#339cf4]" : "text-muted-foreground hover:bg-[#eef6ff] hover:text-[#2586d4]",
@@ -1613,7 +1629,7 @@ function WorkspaceSidebar({
                   <span className="flex-1 truncate">{group.label}</span>
                   {group.value === "execute" && runActiveCount > 0 ? <span className="text-[11px] text-blue-600 dark:text-blue-400">{runActiveCount} 가동</span> : null}
                 </button>
-                {active && subTabs.length ? (
+                {expanded && subTabs.length ? (
                   <div className="ml-4 border-l border-border pl-2">
                     {subTabs.map((tab) => {
                       const item = roomTabs.find((candidate) => candidate.value === tab)!;

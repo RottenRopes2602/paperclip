@@ -536,6 +536,7 @@ describe("SpliceWorkspaceRoom", () => {
     await flushReact();
 
     expect(container.querySelector('[aria-label="실행 보조 탐색"]')).toBeNull();
+    expect(mainNavigation?.textContent).toContain("확인할 것");
     expect(mainNavigation?.textContent).toContain("에이전트");
     expect(mainNavigation?.textContent).toContain("대화");
     expect(mainNavigation?.textContent).toContain("루틴");
@@ -555,6 +556,16 @@ describe("SpliceWorkspaceRoom", () => {
 
     expect(container.querySelector('[aria-label="코드 사본 보조 탐색"]')).toBeNull();
     expect(container.textContent).toContain("프로젝트 코드 사본");
+    expect(mainNavigation?.textContent).toContain("확인할 것");
+    expect(mainNavigation?.textContent).toContain("실행 현황");
+
+    await act(async () => exactButton(mainNavigation!, "실행").click());
+    await flushReact();
+    expect(mainNavigation?.textContent).toContain("에이전트");
+    expect(mainNavigation?.textContent).toContain("확인할 것");
+    await act(async () => exactButton(mainNavigation!, "실행").click());
+    await flushReact();
+    expect(mainNavigation?.textContent).not.toContain("에이전트");
 
     await act(async () => {
       root.unmount();
@@ -590,11 +601,15 @@ describe("SpliceWorkspaceRoom", () => {
     expect(container.querySelector('[aria-label="업무 보조 탐색"]')).toBeNull();
     expect(mainNavigation?.textContent).toContain("프로젝트");
     expect(mainNavigation?.textContent).toContain("작업");
-    expect(mainNavigation?.textContent).not.toContain("검토");
-    expect(mainNavigation?.textContent).not.toContain("승인");
-    expect(mainNavigation?.textContent).not.toContain("목표 기준");
+    expect(mainNavigation?.textContent).toContain("검토");
+    expect(mainNavigation?.textContent).toContain("승인");
+    expect(mainNavigation?.textContent).toContain("목표 기준");
     expect(mainNavigation?.textContent).toContain("업무 책상");
     expect(mainNavigation?.textContent).toContain("업무 접수");
+    expect(mainNavigation?.textContent).toContain("확인할 것");
+    expect(mainNavigation?.textContent).toContain("에이전트");
+    expect(mainNavigation?.textContent).toContain("대화");
+    expect(mainNavigation?.textContent).toContain("루틴");
 
     const observeButton = exactButton(mainNavigation!, "관제");
     await act(async () => observeButton.click());
