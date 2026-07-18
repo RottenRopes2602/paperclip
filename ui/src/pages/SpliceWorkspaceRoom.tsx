@@ -95,7 +95,7 @@ type SelectedWorkspaceTarget =
 const roomTabs: Array<{ value: RoomTab; label: string; icon: LucideIcon }> = [
   { value: "dashboard", label: "관제", icon: LayoutDashboard },
   { value: "inbox", label: "확인할 것", icon: Inbox },
-  { value: "lanes", label: "코드 사본", icon: GitBranch },
+  { value: "lanes", label: "작업 사본", icon: GitBranch },
   { value: "runs", label: "실행 현황", icon: Rocket },
   { value: "intake", label: "업무 접수", icon: SquarePen },
   { value: "goals", label: "목표 기준", icon: Target },
@@ -123,7 +123,7 @@ const roomNavigationGroups: Array<{
 }> = [
   { value: "observe", label: "관제", icon: LayoutDashboard, defaultTab: "dashboard", tabs: ["dashboard", "inbox", "goals", "reviews", "approvals"], advancedTabs: [] },
   { value: "execute", label: "실행", icon: Rocket, defaultTab: "runs", tabs: ["runs", "agents"], advancedTabs: ["comms", "routines"] },
-  { value: "code", label: "코드 사본", icon: GitBranch, defaultTab: "lanes", tabs: ["lanes"], advancedTabs: [] },
+  { value: "code", label: "작업 사본", icon: GitBranch, defaultTab: "lanes", tabs: ["lanes"], advancedTabs: [] },
   { value: "work", label: "업무", icon: CircleDot, defaultTab: "issues", tabs: ["issues", "projects"], advancedTabs: ["desk", "intake"] },
   { value: "history", label: "기록", icon: History, defaultTab: "activity", tabs: ["activity", "details"], advancedTabs: [] },
 ];
@@ -401,7 +401,7 @@ function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
   if (counts.length) return counts.join(" · ");
   if (actor.session) return `${actor.session.branch} · 변경 ${actor.session.dirty}`;
   if (actor.request) return "실행 요청됨";
-  return actor.state === "away" ? "활성 코드 사본 없음" : "대기 중";
+  return actor.state === "away" ? "활성 작업 사본 없음" : "대기 중";
 }
 
 function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
@@ -620,7 +620,7 @@ type OfficeLaneFilter = "all" | "root" | "codex" | "claude" | "splice";
 
 const officeLaneFilters: Array<{ value: OfficeLaneFilter; label: string }> = [
   { value: "all", label: "전체" },
-  { value: "root", label: "원본 코드" },
+  { value: "root", label: "원본" },
   { value: "codex", label: "Codex" },
   { value: "claude", label: "Claude" },
   { value: "splice", label: "Splice" },
@@ -759,9 +759,9 @@ function SharedRoleDesk({
 type FixedOfficeRoomId = Exclude<OfficeLaneFilter, "all">;
 
 const fixedOfficeRooms: Array<{ id: FixedOfficeRoomId; label: string; sublabel: string }> = [
-  { id: "root", label: "원본 코드실", sublabel: "기준 저장소" },
-  { id: "codex", label: "Codex 작업실", sublabel: "Codex 코드 사본" },
-  { id: "claude", label: "Claude 작업실", sublabel: "Claude Code 사본" },
+  { id: "root", label: "원본 작업실", sublabel: "기준 저장소" },
+  { id: "codex", label: "Codex 작업실", sublabel: "Codex 작업 사본" },
+  { id: "claude", label: "Claude 작업실", sublabel: "Claude 작업 사본" },
   { id: "splice", label: "Splice 에이전트실", sublabel: "격리 실행 사본" },
 ];
 
@@ -874,13 +874,13 @@ function FixedOfficeRoom({
               "min-w-0 max-w-[calc(50%-3px)] border-2 border-black bg-[#172631]/95 px-2 py-1 text-left font-mono shadow-[2px_2px_0_rgba(0,0,0,0.35)] focus:outline-none focus:ring-2 focus:ring-cyan-300",
               selectedTarget?.kind === "lane" && selectedTarget.laneId === lane.id && "ring-2 ring-cyan-300",
             )}
-            title={`${lane.name} 코드 사본 열기`}
+            title={`${lane.name} 작업 사본 열기`}
           >
             <span className="block truncate text-[9px] font-black uppercase text-cyan-50">{lane.name}</span>
             <span className="block truncate text-[8px] text-cyan-100/60">{lane.branch} · 변경 {lane.dirty}</span>
           </button>
         ))}
-        {!lanes.length ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/20 px-2 py-1 font-mono text-[9px] text-cyan-100/55">연결된 코드 사본 없음</span> : null}
+        {!lanes.length ? <span className="border-2 border-dashed border-cyan-100/20 bg-black/20 px-2 py-1 font-mono text-[9px] text-cyan-100/55">연결된 작업 사본 없음</span> : null}
       </div>
       <div className="relative z-20 mt-2 flex min-h-20 max-w-[78%] flex-wrap content-start gap-2">
         {laneActors.slice(0, 4).map(({ lane, actor, canonical }) => (
@@ -935,10 +935,10 @@ function CopyLaneOffice({
     <div className="relative overflow-hidden border-[6px] border-[#3c2b20] bg-[#b98558] p-4 shadow-[inset_0_0_0_4px_rgba(255,255,255,0.12),8px_8px_0_rgba(0,0,0,0.3)]">
       <div className="absolute inset-0 opacity-75" style={{ backgroundImage: "linear-gradient(90deg,rgba(79,45,24,0.28) 2px,transparent 2px),linear-gradient(rgba(255,255,255,0.12) 2px,transparent 2px)", backgroundSize: "48px 24px", imageRendering: "pixelated" }} aria-hidden="true" />
       <div className="relative z-20 flex items-center justify-between gap-3 border-2 border-black bg-[#101820] px-3 py-2 font-mono shadow-[3px_3px_0_rgba(0,0,0,0.55)]">
-        <span className="text-[11px] font-black text-cyan-100">{workspaceName} · 코드 사본 사무실</span>
-        <span className="text-[10px] font-bold text-emerald-300">고정 4개 방 · 코드 사본 {lanes.length}</span>
+        <span className="text-[11px] font-black text-cyan-100">{workspaceName} · 작업 사본 사무실</span>
+        <span className="text-[10px] font-bold text-emerald-300">고정 4개 방 · 작업 사본 {lanes.length}</span>
       </div>
-      <div className="relative z-20 mt-3 flex flex-wrap gap-1.5" role="group" aria-label="코드 사본 방 필터">
+      <div className="relative z-20 mt-3 flex flex-wrap gap-1.5" role="group" aria-label="작업 사본 방 필터">
         {officeLaneFilters.map((option) => (
           <button
             key={option.value}
@@ -969,7 +969,7 @@ function CopyLaneOffice({
           />
         ))}
       </div>
-      {filter !== "all" && filteredLaneCount === 0 ? <p className="relative z-20 mt-2 font-mono text-[9px] text-amber-100/80">선택한 방은 유지되며 현재 연결된 코드 사본만 없습니다.</p> : null}
+      {filter !== "all" && filteredLaneCount === 0 ? <p className="relative z-20 mt-2 font-mono text-[9px] text-amber-100/80">선택한 방은 유지되며 현재 연결된 작업 사본만 없습니다.</p> : null}
       <section className="relative z-20 mt-3 min-h-32 overflow-hidden border-[6px] border-[#405745] bg-[#5f8069] px-4 py-4 shadow-[inset_0_0_0_3px_rgba(255,255,255,0.14)]" style={{ backgroundImage: "linear-gradient(90deg,rgba(29,70,47,0.22) 2px,transparent 2px),linear-gradient(rgba(29,70,47,0.22) 2px,transparent 2px)", backgroundSize: "24px 24px" }} aria-label="등록 역할 공용 대기 구역">
         <PixelFurniture kind="meeting" className="bottom-3 right-5 scale-75 origin-bottom-right" />
         <PixelFurniture kind="plant" className="left-3 top-3" />
@@ -977,7 +977,7 @@ function CopyLaneOffice({
         <div className="relative z-10 flex items-center justify-between gap-3">
           <div>
             <p className="font-mono text-[10px] font-black text-white">등록 역할 · 공용 대기 라운지</p>
-            <p className="mt-1 font-mono text-[9px] text-white/75">역할은 한 번만 표시되고, 실제 세션은 각 코드 사본 방에 나타납니다.</p>
+            <p className="mt-1 font-mono text-[9px] text-white/75">역할은 한 번만 표시되고, 실제 세션은 각 작업 사본 방에 나타납니다.</p>
           </div>
           <span className="border-2 border-black bg-amber-300 px-1.5 py-1 font-mono text-[9px] font-black text-black">{agents.length}</span>
         </div>
@@ -1064,7 +1064,7 @@ function SelectionInspector({
   const inspectorTitle = selectedTarget?.kind === "role"
     ? "등록 역할"
     : selectedTarget?.kind === "lane"
-      ? "코드 사본"
+      ? "작업 사본"
       : selectedTarget?.kind === "session"
         ? "작업 인스턴스"
         : selectedTarget?.kind === "run"
@@ -1084,7 +1084,7 @@ function SelectionInspector({
       </div>
 
       {!selectedTarget ? (
-        <p className="px-4 py-5 text-sm text-muted-foreground">등록 역할, 코드 사본 방, 작업 인스턴스 또는 실제 실행을 선택하세요.</p>
+        <p className="px-4 py-5 text-sm text-muted-foreground">등록 역할, 작업 사본 방, 작업 인스턴스 또는 실제 실행을 선택하세요.</p>
       ) : null}
 
       {selectedTarget?.kind === "role" && role ? (
@@ -1101,7 +1101,7 @@ function SelectionInspector({
             </div>
             <div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground">
               <p>작업 위치: {role.session?.path ?? role.zone}</p>
-              <p className="mt-1">업무 배정은 역할 기준이며, 실제 실행은 코드 사본의 세션과 run에서 별도로 추적합니다.</p>
+              <p className="mt-1">업무 배정은 역할 기준이며, 실제 실행은 작업 사본의 세션과 run에서 별도로 추적합니다.</p>
             </div>
           </div>
           <div className="flex flex-wrap content-start gap-2">
@@ -1123,16 +1123,16 @@ function SelectionInspector({
       {selectedTarget?.kind === "lane" && lane ? (
         <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5">
           <div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{lane.name}</p><p className="mt-1 text-xs text-muted-foreground">{lane.managerLabel} · {lane.copyKindLabel} · {lane.branch}</p></div><div className="grid gap-px border border-border bg-border sm:grid-cols-3"><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">변경 파일</p><p className="mt-1 text-sm font-medium">{lane.dirty}</p></div><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">앞섬 · 뒤처짐</p><p className="mt-1 text-sm font-medium">{lane.ahead} · {lane.behind}</p></div><div className="bg-background px-3 py-2"><p className="text-[11px] text-muted-foreground">세션 · run</p><p className="mt-1 text-sm font-medium">{lane.actors.length} · {lane.liveRunCount + lane.queuedRunCount}</p></div></div><p className="break-all border border-border bg-muted/25 px-3 py-3 font-mono text-[11px] text-muted-foreground">{lane.path}</p></div>
-          <div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />코드 사본 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("activity")} className={actionButtonClass}><History className="h-3.5 w-3.5" />최근 기록</Button></div>
+          <div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />작업 사본 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("activity")} className={actionButtonClass}><History className="h-3.5 w-3.5" />최근 기록</Button></div>
         </div>
       ) : null}
 
       {selectedTarget?.kind === "session" && lane && sessionActor ? (
-        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{sessionActor.name}</p><p className="mt-1 text-xs text-muted-foreground">{lane.name}의 세션 · {sessionActor.state}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>코드 사본: {lane.copyKindLabel} · {lane.branch}</p><p className="mt-1">연결 역할: {sessionRole ? `${compactAgentName(sessionRole.name, data.name)} · ${sessionRole.role}` : "등록 역할과 연결되지 않음"}</p><p className="mt-1">이 항목은 실제 에이전트 실행이 아니며, 작업 세션 신호입니다.</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />코드 사본</Button>{sessionRole ? <Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "role", actorId: sessionRole.id })} className={actionButtonClass}><Bot className="h-3.5 w-3.5" />등록 역할</Button> : null}<Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button></div></div>
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{sessionActor.name}</p><p className="mt-1 text-xs text-muted-foreground">{lane.name}의 세션 · {sessionActor.state}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>작업 사본: {lane.copyKindLabel} · {lane.branch}</p><p className="mt-1">연결 역할: {sessionRole ? `${compactAgentName(sessionRole.name, data.name)} · ${sessionRole.role}` : "등록 역할과 연결되지 않음"}</p><p className="mt-1">이 항목은 실제 에이전트 실행이 아니며, 작업 세션 신호입니다.</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "lane", laneId: lane.id })} className={actionButtonClass}><GitBranch className="h-3.5 w-3.5" />작업 사본</Button>{sessionRole ? <Button type="button" variant="outline" size="sm" onClick={() => onSelectTarget({ kind: "role", actorId: sessionRole.id })} className={actionButtonClass}><Bot className="h-3.5 w-3.5" />등록 역할</Button> : null}<Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 현황</Button></div></div>
       ) : null}
 
       {selectedTarget?.kind === "run" && run ? (
-        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{compactAgentName(run.agentName, data.name)}</p><p className="mt-1 break-all font-mono text-xs text-muted-foreground">{run.id}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>등록 역할: {runRole ? `${compactAgentName(runRole.name, data.name)} · ${runRole.role}` : "연결 역할 없음"}</p><p className="mt-1">코드 사본: {runLane ? `${runLane.name} · ${runLane.branch}` : run.workspacePath ?? run.launch?.workspacePath ?? "확인되지 않음"}</p><p className="mt-1">상태 · 시간: {runtimeLabel(run.runtime, run.status)} · {formatIsoAge(run.updatedAt ?? run.requestedAt)}</p><p className="mt-1">연결 업무: {run.note ?? run.launch?.card ?? runWork?.title ?? "연결 정보 없음"}</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenRun(run.id)} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => runWork ? onOpenWorkItem(runWork) : onOpenTab("desk")} className={actionButtonClass}><SquarePen className="h-3.5 w-3.5" />업무</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className={actionButtonClass}><FolderOpen className="h-3.5 w-3.5" />결과</Button></div></div>
+        <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:px-5"><div className="min-w-0 space-y-3"><div><p className="text-base font-semibold">{compactAgentName(run.agentName, data.name)}</p><p className="mt-1 break-all font-mono text-xs text-muted-foreground">{run.id}</p></div><div className="border border-border bg-muted/25 px-3 py-3 text-xs text-muted-foreground"><p>등록 역할: {runRole ? `${compactAgentName(runRole.name, data.name)} · ${runRole.role}` : "연결 역할 없음"}</p><p className="mt-1">작업 사본: {runLane ? `${runLane.name} · ${runLane.branch}` : run.workspacePath ?? run.launch?.workspacePath ?? "확인되지 않음"}</p><p className="mt-1">상태 · 시간: {runtimeLabel(run.runtime, run.status)} · {formatIsoAge(run.updatedAt ?? run.requestedAt)}</p><p className="mt-1">연결 업무: {run.note ?? run.launch?.card ?? runWork?.title ?? "연결 정보 없음"}</p></div></div><div className="flex flex-wrap content-start gap-2"><Button type="button" variant="outline" size="sm" onClick={() => onOpenRun(run.id)} className={actionButtonClass}><Rocket className="h-3.5 w-3.5" />실행 상세</Button><Button type="button" variant="outline" size="sm" onClick={() => runWork ? onOpenWorkItem(runWork) : onOpenTab("desk")} className={actionButtonClass}><SquarePen className="h-3.5 w-3.5" />업무</Button><Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className={actionButtonClass}><FolderOpen className="h-3.5 w-3.5" />결과</Button></div></div>
       ) : null}
     </section>
   );
@@ -6050,7 +6050,7 @@ function LaneCard({ lane }: { lane: SpliceExecutionLane }) {
         <span className="text-muted-foreground">세션 신호</span>
         <span>{lane.actors.length ? `${lane.actors.length}개 활동 신호 감지` : "아직 연결된 활동 없음"}</span>
         <span className="text-muted-foreground">내부 경로</span>
-        <span className={lane.projectPresent ? "text-foreground" : "text-destructive"}>{lane.projectPresent ? "확인됨" : "이 코드 사본에 없음"}</span>
+        <span className={lane.projectPresent ? "text-foreground" : "text-destructive"}>{lane.projectPresent ? "확인됨" : "이 작업 사본에 없음"}</span>
       </div>
 
       {lane.actors.length ? (
@@ -6079,8 +6079,8 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
 
   return (
     <section className="space-y-3">
-      <SectionTitle title="프로젝트 코드 사본" aside={`${allLanes.length}개 감지`} />
-      <p className="text-xs text-muted-foreground">원본 코드와 Codex·Claude·Splice가 만든 Git 워크트리의 경로, 브랜치, 변경 상태를 비교합니다.</p>
+      <SectionTitle title="프로젝트 작업 사본" aside={`${allLanes.length}개 감지`} />
+      <p className="text-xs text-muted-foreground">원본과 Codex·Claude·Splice가 만든 Git 워크트리의 경로, 브랜치, 변경 상태를 비교합니다.</p>
       <div className="border border-border bg-muted/20 px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -6097,7 +6097,7 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
           <div className="grid grid-cols-3 gap-px border border-border bg-border text-xs">
             <div className="min-w-[88px] bg-background px-3 py-2">
               <p className="font-semibold tabular-nums">{allLanes.length}</p>
-              <p className="text-[11px] text-muted-foreground">코드 사본</p>
+              <p className="text-[11px] text-muted-foreground">작업 사본</p>
             </div>
             <div className="min-w-[88px] bg-background px-3 py-2">
               <p className="font-semibold tabular-nums">{data.totals.activeExecutionLanes ?? 0}</p>
@@ -6115,7 +6115,7 @@ function ExecutionLanesPanel({ data, limit }: { data: SpliceWorkspaceRoomData; l
         {lanes.length ? lanes.map((lane) => (
           <LaneCard key={lane.id} lane={lane} />
         )) : (
-          <div className="border border-border px-4 py-4 text-sm text-muted-foreground">감지된 코드 사본이 없습니다.</div>
+          <div className="border border-border px-4 py-4 text-sm text-muted-foreground">감지된 작업 사본이 없습니다.</div>
         )}
       </div>
     </section>
@@ -6129,7 +6129,7 @@ function LanesTab({ data }: { data: SpliceWorkspaceRoomData }) {
     <div className="space-y-6">
       <ExecutionLanesPanel data={data} />
       <section className="space-y-3">
-        <SectionTitle title="세션·실행 연결 상태" aside={`${lanes.length}개 코드 사본`} />
+        <SectionTitle title="세션·실행 연결 상태" aside={`${lanes.length}개 작업 사본`} />
         <div className="border border-border">
           {lanes.map((lane) => (
             <EntityRow
@@ -6274,7 +6274,7 @@ function OfficeOverview({
     <section className="space-y-4">
       <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <SectionTitle title={`${data.name} 사무실`} aside={`코드 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
+            <SectionTitle title={`${data.name} 사무실`} aside={`작업 사본 ${data.executionLanes.length} · 실제 에이전트 ${runCounts.active}`} />
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="h-8 gap-1.5">
                 <Rocket className="h-3.5 w-3.5" />
@@ -6282,7 +6282,7 @@ function OfficeOverview({
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("lanes")} className="h-8 gap-1.5">
                 <GitBranch className="h-3.5 w-3.5" />
-                코드 사본
+                작업 사본
               </Button>
             </div>
           </div>

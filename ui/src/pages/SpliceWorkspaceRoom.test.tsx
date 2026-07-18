@@ -100,7 +100,7 @@ const assignedWork = {
   projectName: "Puzzle Game",
   priority: "high",
   ageMin: 3,
-  description: "역할·코드 사본·세션·실행 선택 상태를 확인합니다.",
+  description: "역할·작업 사본·세션·실행 선택 상태를 확인합니다.",
 };
 
 const rootRole = registeredRole("role-root", "operator", "운영자 등록 역할", "operator", "present");
@@ -125,11 +125,11 @@ const spliceRole = registeredRole("role-splice", "splice", "Splice 등록 역할
 const executionLanes = [
   {
     id: "lane-root",
-    name: "원본 코드 방",
+    name: "원본 작업실 방",
     kind: "main",
-    kindLabel: "원본 코드",
+    kindLabel: "원본",
     copyKind: "root",
-    copyKindLabel: "원본 코드",
+    copyKindLabel: "원본",
     manager: "local",
     managerLabel: "Splice Hub",
     state: "active",
@@ -511,7 +511,7 @@ describe("SpliceWorkspaceRoom", () => {
     const mainNavigation = container.querySelector('nav[aria-label="Splice 주요 탐색"]');
     expect(mainNavigation?.textContent).toContain("관제");
     expect(mainNavigation?.textContent).toContain("실행");
-    expect(mainNavigation?.textContent).toContain("코드 사본");
+    expect(mainNavigation?.textContent).toContain("작업 사본");
     expect(mainNavigation?.textContent).toContain("업무");
     expect(mainNavigation?.textContent).toContain("기록");
     expect(mainNavigation?.textContent).toContain("확인할 것");
@@ -548,14 +548,14 @@ describe("SpliceWorkspaceRoom", () => {
     await flushReact();
     expect(container.textContent).toContain("에이전트 현황");
 
-    const codeCopiesButton = exactButton(mainNavigation!, "코드 사본");
+    const codeCopiesButton = exactButton(mainNavigation!, "작업 사본");
     await act(async () => {
       codeCopiesButton.click();
     });
     await flushReact();
 
-    expect(container.querySelector('[aria-label="코드 사본 보조 탐색"]')).toBeNull();
-    expect(container.textContent).toContain("프로젝트 코드 사본");
+    expect(container.querySelector('[aria-label="작업 사본 보조 탐색"]')).toBeNull();
+    expect(container.textContent).toContain("프로젝트 작업 사본");
     expect(mainNavigation?.textContent).toContain("확인할 것");
     expect(mainNavigation?.textContent).toContain("실행 현황");
 
@@ -640,11 +640,11 @@ describe("SpliceWorkspaceRoom", () => {
     const roomText = rooms.map((room) => room.textContent ?? "").join(" ");
 
     expect(rooms).toHaveLength(4);
-    expect(roomText).toContain("원본 코드 방");
+    expect(roomText).toContain("원본 작업실 방");
     expect(roomText).toContain("Codex 코드 방");
     expect(roomText).toContain("Claude 코드 방");
     expect(roomText).toContain("Splice 코드 방");
-    expect(roomText).toContain("원본 코드");
+    expect(roomText).toContain("원본");
     expect(roomText).toContain("Codex");
     expect(roomText).toContain("Claude");
     expect(roomText).toContain("Splice");
@@ -671,7 +671,7 @@ describe("SpliceWorkspaceRoom", () => {
     const root = await renderRoom(container);
     const filters = [
       ["전체", null],
-      ["원본 코드", "root"],
+      ["원본", "root"],
       ["Codex", "codex"],
       ["Claude", "claude"],
       ["Splice", "splice"],
@@ -759,13 +759,13 @@ describe("SpliceWorkspaceRoom", () => {
     const root = await renderRoom(container, roomData, copyRoomRunFixture);
 
     await act(async () => {
-      titledButton(container, "Codex 코드 방 코드 사본 열기").click();
+      titledButton(container, "Codex 코드 방 작업 사본 열기").click();
     });
     await flushReact();
 
     const inspector = selectionInspector(container);
     const inspectorText = inspector.textContent ?? "";
-    expect(inspectorText).toContain("코드 사본");
+    expect(inspectorText).toContain("작업 사본");
     expect(inspectorText).toContain("Codex 코드 방");
     expect(inspectorText).toContain("Codex");
     expect(inspectorText).toContain("codex/copy-room");
