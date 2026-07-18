@@ -5301,7 +5301,8 @@ function AgentsTab({
   const selectedRequests = selectedAgent?.requests ?? [];
   const selectedMessages = selectedAgent?.messages ?? [];
   const selectedWorkOrders = selectedAgent?.workOrders ?? [];
-  const activeAgentCount = consoleAgents.filter((agent) => ["working", "requested", "queued"].includes(agent.state)).length;
+  const runningAgentCount = consoleAgents.filter((agent) => agent.state === "working").length;
+  const waitingAgentCount = consoleAgents.filter((agent) => ["requested", "queued"].includes(agent.state)).length;
   const attentionAgentCount = consoleAgents.filter((agent) =>
     agent.state === "blocked" || agent.requests.some((request) => ["failed", "blocked"].includes(String(request.status))),
   ).length;
@@ -5319,11 +5320,12 @@ function AgentsTab({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <SectionTitle title="에이전트 상태" aside={`등록 ${consoleAgents.length} · 실행 중 ${activeAgentCount} · 확인 필요 ${attentionAgentCount}`} />
+          <SectionTitle title="에이전트 상태" aside={`등록 ${consoleAgents.length} · 실행 중 ${runningAgentCount} · 대기 ${waitingAgentCount} · 확인 필요 ${attentionAgentCount}`} />
           <p className="mt-1 text-xs text-muted-foreground">누가 일할 수 있는지와 현재 연결 상태만 확인합니다. 직접 지시는 `대화`에서 보냅니다.</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200"><Dot state="working" />실행 중 {activeAgentCount}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200"><Dot state="working" />실행 중 {runningAgentCount}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-600 bg-amber-50 px-2.5 py-1 text-amber-900 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-200"><Dot state="requested" />대기 {waitingAgentCount}</span>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-red-600 bg-red-50 px-2.5 py-1 text-red-800 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200"><Dot state="blocked" />확인 필요 {attentionAgentCount}</span>
         </div>
       </div>
