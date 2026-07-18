@@ -3763,24 +3763,61 @@ function GoalsTab({ goals, projects, issues }: { goals: Goal[]; projects: Projec
   );
 }
 
+function projectStageLabel(stage: string | null): string | null {
+  if (!stage) return null;
+  return {
+    discovery: "탐색",
+    planning: "기획",
+    prototype: "프로토타입",
+    build: "구현",
+    validation: "검증",
+    release: "출시",
+    maintenance: "유지보수",
+  }[stage] ?? stage;
+}
+
+function ProjectDisplayRow({ project, archived = false }: { project: SpliceWorkspaceRoomProject; archived?: boolean }) {
+  const summary = project.summary || plainSummary(project.description, "요약 없음");
+  const stage = projectStageLabel(project.stage);
+  const meta = [
+    project.goalName ? `목표 · ${project.goalName}` : null,
+    stage ? `단계 · ${stage}` : null,
+    project.ownerName ? `담당 · ${project.ownerName}` : null,
+    `업무 · ${project.issueTotal}건`,
+  ].filter(Boolean);
+
+  return (
+    <div className="flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0">
+      <div className="mt-0.5 shrink-0 text-muted-foreground">
+        {archived ? <History className="h-4 w-4" /> : <Flag className="h-4 w-4" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{project.identifier}</span>
+          <span className="truncate text-sm font-medium">{project.title}</span>
+        </div>
+        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{summary}</p>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {meta.map((item) => <span key={item}>{item}</span>)}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {!archived ? <span className="text-xs tabular-nums text-muted-foreground">진척 {project.progress}%</span> : null}
+        <StatusBadge status={project.status} ns="project" />
+      </div>
+    </div>
+  );
+}
+
 function ProjectsTab({ projects, archivedProjects = [] }: { projects: SpliceWorkspaceRoomProject[]; archivedProjects?: SpliceWorkspaceRoomProject[] }) {
   return (
     <div className="space-y-4">
       <SectionTitle title="프로젝트" aside={`진행 ${projects.length}개`} />
       <div className="border border-border">
         {projects.length ? projects.map((project) => (
-          <EntityRow
+          <ProjectDisplayRow
             key={project.id}
-            identifier={project.id}
-            title={project.title}
-            subtitle={plainSummary(project.description, `${project.ownerName} · 이슈 ${project.issueTotal}개`)}
-            leading={<Flag className="h-4 w-4 text-muted-foreground" />}
-            trailing={(
-              <div className="flex items-center gap-3">
-                <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">{project.progress}%</span>
-                <StatusBadge status={project.status} ns="project" />
-              </div>
-            )}
+            project={project}
           />
         )) : <p className="px-4 py-4 text-sm text-muted-foreground">현재 진행 중인 프로젝트가 없습니다.</p>}
       </div>
@@ -3791,13 +3828,10 @@ function ProjectsTab({ projects, archivedProjects = [] }: { projects: SpliceWork
           </summary>
           <div className="border-t border-border">
             {archivedProjects.map((project) => (
-              <EntityRow
+              <ProjectDisplayRow
                 key={project.id}
-                identifier={project.id}
-                title={project.title}
-                subtitle={plainSummary(project.description, `${project.ownerName} · 이슈 ${project.issueTotal}개`)}
-                leading={<History className="h-4 w-4 text-muted-foreground" />}
-                trailing={<StatusBadge status={project.status} ns="project" />}
+                archived
+                project={project}
               />
             ))}
           </div>

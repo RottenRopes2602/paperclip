@@ -675,8 +675,10 @@ export interface SpliceWorkOrderStatusPost {
 
 export interface SpliceWorkspaceRoomWorkItem {
   id: string;
+  identifier: string;
   type: "project" | "issue";
   title: string;
+  summary: string | null;
   status: string;
   bucket: "active" | "review" | "todo" | "blocked" | "done" | "archived" | string;
   progressWeight: number;
@@ -685,6 +687,9 @@ export interface SpliceWorkspaceRoomWorkItem {
   projectSlug: string | null;
   projectName: string;
   priority: string | null;
+  stage: string | null;
+  goalSlug: string | null;
+  goalName: string | null;
   ageMin: number | null;
   description: string | null;
 }
