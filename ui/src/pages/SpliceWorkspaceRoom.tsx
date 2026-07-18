@@ -156,6 +156,18 @@ const actorStateTone: Record<string, string> = {
   idle: "border-border bg-muted/50 text-muted-foreground",
 };
 
+const agentStateTone: Record<string, string> = {
+  working: "border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200",
+  assigned: "border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200",
+  reviewing: "border-violet-600 bg-violet-50 text-violet-800 dark:border-violet-400 dark:bg-violet-950/40 dark:text-violet-200",
+  requested: "border-amber-600 bg-amber-50 text-amber-900 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-200",
+  queued: "border-slate-500 bg-slate-100 text-slate-800 dark:border-slate-400 dark:bg-slate-900/50 dark:text-slate-200",
+  blocked: "border-red-600 bg-red-50 text-red-800 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200",
+  present: "border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200",
+  away: "border-border bg-muted/50 text-muted-foreground",
+  idle: "border-border bg-muted/50 text-muted-foreground",
+};
+
 function koStatusLabel(value: string | null | undefined): string {
   const key = String(value ?? "").toLowerCase();
   const labels: Record<string, string> = {
@@ -404,7 +416,7 @@ function actorRoomLine(actor: SpliceWorkspaceRoomActor): string {
   return actor.state === "away" ? "활성 작업 사본 없음" : "대기 중";
 }
 
-function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
+function actorStateLabel(actor: Pick<SpliceWorkspaceRoomActor, "state">): string {
   if (actor.state === "working") return "실행 중";
   if (actor.state === "assigned") return "업무 배정";
   if (actor.state === "reviewing") return "검수 중";
@@ -413,6 +425,18 @@ function actorStateLabel(actor: SpliceWorkspaceRoomActor): string {
   if (actor.state === "present") return "자리 있음";
   if (actor.state === "away") return "자리 비움";
   return actor.state.replace(/[-_]+/g, " ");
+}
+
+function AgentStateBadge({ state }: { state: string }) {
+  return (
+    <span className={cn(
+      "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold",
+      agentStateTone[state] ?? agentStateTone.idle,
+    )}>
+      <Dot state={state} />
+      {actorStateLabel({ state })}
+    </span>
+  );
 }
 
 function actorOfficePosition(actor: SpliceWorkspaceRoomActor, slotIndex: number) {
@@ -5233,10 +5257,9 @@ function AgentsTab({
   focusedAgentId,
   messages,
   onFocusAgent,
+  onOpenTab,
   onOpenRun,
-  onSend,
   runningAgentId,
-  sendingAgentId,
   onRunAgent,
 }: {
   agentConsole: SpliceAgentConsoleData | null;
@@ -5244,10 +5267,9 @@ function AgentsTab({
   focusedAgentId: string | null;
   messages: SpliceAgentMessage[];
   onFocusAgent: (agentId: string) => void;
+  onOpenTab: (tab: RoomTab) => void;
   onOpenRun: (runId: string) => void;
-  onSend: (agentId: string, body: string) => void;
   runningAgentId: string | null;
-  sendingAgentId: string | null;
   onRunAgent: (agentId: string) => void;
 }) {
   const consoleAgents = useMemo(
@@ -5275,25 +5297,19 @@ function AgentsTab({
 
   const selectedAgent = consoleAgents.find((agent) => agent.id === selectedAgentId) ?? consoleAgents[0] ?? null;
   const isRunning = Boolean(selectedAgent && runningAgentId === selectedAgent.id);
-  const isSending = Boolean(selectedAgent && sendingAgentId === selectedAgent.id);
   const activeStatuses = new Set(["requested", "launch_ready", "launched"]);
   const selectedRequests = selectedAgent?.requests ?? [];
   const selectedMessages = selectedAgent?.messages ?? [];
   const selectedWorkOrders = selectedAgent?.workOrders ?? [];
-  const activeRequestCount = selectedRequests.filter((request) => activeStatuses.has(String(request.status))).length;
-
-  const submitInstruction = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const body = draft.trim();
-    if (!selectedAgent || !body || isSending) return;
-    setDraft("");
-    onSend(selectedAgent.id, body);
-  };
+  const activeAgentCount = consoleAgents.filter((agent) => ["working", "requested", "queued"].includes(agent.state)).length;
+  const attentionAgentCount = consoleAgents.filter((agent) =>
+    agent.state === "blocked" || agent.requests.some((request) => ["failed", "blocked"].includes(String(request.status))),
+  ).length;
 
   if (!selectedAgent) {
     return (
       <div className="space-y-4">
-        <SectionTitle title="에이전트 현황" aside="에이전트 없음" />
+        <SectionTitle title="에이전트 상태" aside="에이전트 없음" />
         <p className="border border-border px-4 py-4 text-sm text-muted-foreground">에이전트를 찾지 못했습니다.</p>
       </div>
     );
@@ -5301,12 +5317,25 @@ function AgentsTab({
 
   return (
     <div className="space-y-4">
-      <SectionTitle title="에이전트 현황" aside={`책상 ${consoleAgents.length} · 가동 요청 ${activeRequestCount}`} />
-      <div className="grid min-h-[640px] gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="min-w-0 border border-border">
+      <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <SectionTitle title="에이전트 상태" aside={`등록 ${consoleAgents.length} · 실행 중 ${activeAgentCount} · 확인 필요 ${attentionAgentCount}`} />
+          <p className="mt-1 text-xs text-muted-foreground">누가 일할 수 있는지와 현재 연결 상태만 확인합니다. 직접 지시는 `대화`에서 보냅니다.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200"><Dot state="working" />실행 중 {activeAgentCount}</span>
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-red-600 bg-red-50 px-2.5 py-1 text-red-800 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200"><Dot state="blocked" />확인 필요 {attentionAgentCount}</span>
+        </div>
+      </div>
+      <div className="grid min-h-[640px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border bg-muted/25 px-4 py-3">
+            <p className="text-sm font-semibold">팀원 목록</p>
+            <span className="text-xs text-muted-foreground">{consoleAgents.length}명</span>
+          </div>
           {consoleAgents.map((agent) => {
             const active = agent.id === selectedAgent.id;
-            const pending = agent.requests.filter((request) => activeStatuses.has(String(request.status))).length;
+            const currentWork = agent.currentWork[0]?.title ?? agent.workOrders[0]?.title ?? "현재 할당 없음";
             return (
               <button
                 key={agent.id}
@@ -5316,24 +5345,19 @@ function AgentsTab({
                   onFocusAgent(agent.id);
                 }}
                 className={cn(
-                  "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left last:border-b-0",
-                  active ? "bg-muted" : "bg-background hover:bg-muted/60",
+                  "flex w-full items-start gap-3 border-b border-border border-l-4 px-3 py-3 text-left last:border-b-0",
+                  active ? "border-l-blue-600 bg-blue-50/70 dark:border-l-blue-400 dark:bg-blue-950/25" : "border-l-transparent bg-background hover:bg-muted/60",
                 )}
               >
                 <Identity name={compactAgentName(agent.name, data.name)} initials={agent.initials} size="sm" />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <Dot state={agent.state} />
                     <p className="truncate text-sm font-semibold">{compactAgentName(agent.name, data.name)}</p>
+                    <AgentStateBadge state={agent.state} />
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">{agent.role} · {agent.zone}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.currentWork.length} work</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.workOrders.length} orders</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.requests.length} runs</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5">{agent.messages.length} msgs</span>
-                    {pending ? <span className="rounded-full bg-muted px-2 py-0.5">{pending} active</span> : null}
-                  </div>
+                  <p className="mt-2 truncate text-xs font-medium text-foreground/80">{currentWork}</p>
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">{agent.session ? `작업 사본 · ${agent.session.branch}` : "작업 사본 연결 없음"}</p>
                 </div>
               </button>
             );
@@ -5341,17 +5365,17 @@ function AgentsTab({
         </div>
 
         <section className="min-w-0 space-y-4">
-          <div className="border border-border">
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
             <div className="flex flex-col gap-3 border-b border-border px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <Identity name={compactAgentName(selectedAgent.name, data.name)} initials={selectedAgent.initials} size="default" />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate text-base font-semibold">{compactAgentName(selectedAgent.name, data.name)}</h2>
-                    <StatusBadge status={selectedAgent.state} />
+                    <AgentStateBadge state={selectedAgent.state} />
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {selectedAgent.role} · {selectedWorkOrders[0]?.title ?? selectedAgent.currentWork[0]?.title ?? "배정된 업무 없음"}
+                    {selectedAgent.role} · {selectedAgent.currentWork[0]?.title ?? selectedWorkOrders[0]?.title ?? "현재 할당 없음"}
                   </p>
                 </div>
               </div>
@@ -5364,132 +5388,114 @@ function AgentsTab({
                 className="h-8 gap-1.5 self-start lg:self-auto"
               >
                 <Play className={cn("h-3.5 w-3.5", isRunning && "animate-pulse")} />
-                {isRunning ? "대기" : "깨우기"}
+                {isRunning ? "실행 중" : "실행 시작"}
               </Button>
             </div>
 
-            <div className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="배정 업무" value={selectedAgent.currentWork.length} icon={CircleDot} />
-              <MetricCard label="사무실 요청" value={selectedWorkOrders.length} icon={SquarePen} />
-              <MetricCard label="실행 기록" value={selectedRequests.length} icon={Activity} />
-              <MetricCard label="대화" value={selectedMessages.length} icon={MessageSquare} />
+            <div className="grid divide-y divide-border bg-muted/15 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="min-w-0 px-4 py-4">
+                <p className="text-[11px] font-semibold text-muted-foreground">현재 업무</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">{selectedAgent.currentWork.length}</p>
+                <p className="mt-1 truncate text-xs text-foreground/80">{selectedAgent.currentWork[0]?.title ?? selectedWorkOrders[0]?.title ?? "현재 할당 없음"}</p>
+              </div>
+              <div className="min-w-0 px-4 py-4">
+                <p className="text-[11px] font-semibold text-muted-foreground">작업 사본</p>
+                <p className="mt-1 truncate text-sm font-semibold">{selectedAgent.session?.branch ?? "연결 없음"}</p>
+                <p className="mt-1 truncate text-xs text-foreground/80">{selectedAgent.session?.path ?? "세션을 찾지 못했습니다"}</p>
+              </div>
+              <div className="min-w-0 px-4 py-4">
+                <p className="text-[11px] font-semibold text-muted-foreground">최근 신호</p>
+                <p className="mt-1 text-xl font-semibold">{formatIsoAge(selectedAgent.lastEventAt ?? selectedMessages[0]?.createdAt ?? selectedRequests[0]?.updatedAt)}</p>
+                <p className="mt-1 truncate text-xs text-foreground/80">실행 {selectedRequests.length} · 대화 {selectedMessages.length}</p>
+              </div>
             </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-w-0 space-y-4">
-              <div className="border border-border">
-                <div className="border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">배정 업무</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">운영 frontmatter에서 읽은 PaperClip 담당 정보입니다.</p>
+            <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">현재 맡은 업무</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">실제로 담당 중인 업무만 먼저 보여줍니다.</p>
                 </div>
-                {selectedAgent.currentWork.length ? selectedAgent.currentWork.map((item) => (
-                  <EntityRow
-                    key={`${item.type}:${item.id}`}
-                    title={item.title}
-                    subtitle={`${item.type} · ${item.projectName || item.id}`}
-                    leading={<CircleDot className="h-4 w-4 text-muted-foreground" />}
-                    trailing={<StatusBadge status={item.status} />}
-                  />
-                )) : null}
-                {selectedWorkOrders.length ? selectedWorkOrders.slice(0, 8).map((order) => (
-                  <EntityRow
-                    key={`order:${order.id}`}
-                    title={order.title}
-                    subtitle={`오피스 업무 · ${koStatusLabel(order.priority)}`}
-                    leading={<SquarePen className="h-4 w-4 text-muted-foreground" />}
-                    trailing={<StatusBadge status={order.status} />}
-                  />
-                )) : null}
-                {!selectedAgent.currentWork.length && !selectedWorkOrders.length ? (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">아직 배정된 업무가 없습니다.</p>
-                ) : null}
+                <span className="text-xs font-semibold text-muted-foreground">{selectedAgent.currentWork.length}건</span>
               </div>
-
-              <form className="border border-border" onSubmit={submitInstruction}>
-                <div className="border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">지시 보내기</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">메시지는 사무실 업무와 깨우기 요청으로 함께 남습니다.</p>
-                </div>
-                <div className="space-y-3 px-4 py-4">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    className="min-h-28 w-full resize-y border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                    placeholder={`${compactAgentName(selectedAgent.name, data.name)}에게 메시지`}
-                    disabled={isSending}
-                  />
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={!draft.trim() || isSending} className="gap-1.5">
-                      <Send className={cn("h-3.5 w-3.5", isSending && "animate-pulse")} />
-                      {isSending ? "보내는 중" : "보내고 깨우기"}
-                    </Button>
+              {selectedAgent.currentWork.length ? selectedAgent.currentWork.map((item) => (
+                <EntityRow
+                  key={`${item.type}:${item.id}`}
+                  title={item.title}
+                  subtitle={`${item.type} · ${item.projectName || item.id}`}
+                  leading={<CircleDot className="h-4 w-4 text-blue-600" />}
+                  trailing={<StatusBadge status={item.status} />}
+                />
+              )) : (
+                <p className="px-4 py-5 text-sm text-muted-foreground">현재 담당 업무가 없습니다.</p>
+              )}
+              {selectedWorkOrders.length ? (
+                <div className="flex items-center justify-between gap-3 border-t border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-950/20">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">사무실 접수 업무 {selectedWorkOrders.length}건</p>
+                    <p className="mt-0.5 text-xs text-amber-800/75 dark:text-amber-200/75">현재 업무와 별도로 접수된 요청입니다.</p>
                   </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("desk")} className="shrink-0">업무에서 보기</Button>
                 </div>
-              </form>
+              ) : null}
             </section>
 
             <aside className="min-w-0 space-y-4">
-              <section className="border border-border">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <p className="text-sm font-semibold">실행 기록</p>
-                  <span className="text-xs text-muted-foreground">{selectedRequests.length}</span>
+              <section className="overflow-hidden rounded-lg border border-border bg-card">
+                <div className="border-b border-border px-4 py-3">
+                  <p className="text-sm font-semibold">연결 상태</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">에이전트가 실제 작업 공간과 연결되어 있는지 확인합니다.</p>
                 </div>
-                <div className="max-h-[310px] overflow-y-auto">
-                  {selectedRequests.length ? selectedRequests.slice(0, 12).map((request) => (
-                    <button
-                      key={request.id}
-                      type="button"
-                      onClick={() => onOpenRun(request.id)}
-                      className="block w-full border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-accent/50"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <StatusBadge status={request.status} />
-                        <span className="text-xs text-muted-foreground">{formatIsoAge(request.updatedAt || request.requestedAt)}</span>
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{request.note ?? "메모 없음"}</p>
-                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{request.id}</p>
-                    </button>
-                  )) : (
-                    <p className="px-4 py-4 text-sm text-muted-foreground">아직 실행 기록이 없습니다.</p>
-                  )}
+                <div className="space-y-3 px-4 py-4 text-xs">
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">에이전트</span><AgentStateBadge state={selectedAgent.state} /></div>
+                  <div className="flex min-w-0 items-center justify-between gap-3"><span className="text-muted-foreground">작업 사본</span><span className="truncate font-medium">{selectedAgent.session?.branch ?? "연결 없음"}</span></div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">실행 요청</span><span className="font-medium tabular-nums">{selectedRequests.filter((request) => activeStatuses.has(String(request.status))).length}건 대기 · {selectedRequests.length}건 기록</span></div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">최근 신호</span><span className="font-medium">{formatIsoAge(selectedAgent.lastEventAt ?? selectedMessages[0]?.createdAt)}</span></div>
+                </div>
+                <div className="flex flex-wrap gap-2 border-t border-border bg-muted/15 px-4 py-3">
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("comms")} className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />대화 열기</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => onOpenTab("runs")} className="gap-1.5"><Activity className="h-3.5 w-3.5" />실행 현황</Button>
                 </div>
               </section>
 
-              <section className="border border-border">
+              <section className="overflow-hidden rounded-lg border border-border bg-card">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <p className="text-sm font-semibold">최근 대화</p>
-                  <span className="text-xs text-muted-foreground">{selectedMessages.length}</span>
+                  <span className="text-xs text-muted-foreground">{selectedMessages.length}건</span>
                 </div>
-                <div className="max-h-[310px] overflow-y-auto">
-                  {selectedMessages.length ? selectedMessages.slice(0, 10).map((message) => (
-                    <article key={message.id} className="border-b border-border px-4 py-3 last:border-b-0">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="truncate text-xs font-medium">{message.author}</p>
-                          {message.kind === "reply" ? <StatusBadge status="reply" /> : null}
-                        </div>
-                        <span className="text-xs text-muted-foreground">{formatIsoAge(message.createdAt)}</span>
-                      </div>
-                      <p className="mt-2 line-clamp-3 text-sm leading-5 text-foreground/90">{message.body}</p>
-                      {message.workOrderTitle ? (
-                        <p className="mt-2 truncate text-[11px] text-muted-foreground">{message.workOrderTitle}</p>
-                      ) : null}
-                      {message.error ? (
-                        <p className="mt-2 line-clamp-2 text-xs text-red-600 dark:text-red-300">{message.error}</p>
-                      ) : null}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <StatusBadge status={message.status} />
-                        {message.workOrderId ? <span className="truncate font-mono">{message.workOrderId}</span> : null}
-                      </div>
-                    </article>
-                  )) : (
-                    <p className="px-4 py-4 text-sm text-muted-foreground">아직 메시지가 없습니다.</p>
-                  )}
-                </div>
+                {selectedMessages[0] ? (
+                  <div className="px-4 py-4">
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{selectedMessages[0].author}</span><span>{formatIsoAge(selectedMessages[0].createdAt)}</span></div>
+                    <p className="mt-2 line-clamp-3 text-sm leading-5">{selectedMessages[0].body}</p>
+                  </div>
+                ) : <p className="px-4 py-4 text-sm text-muted-foreground">최근 대화가 없습니다.</p>}
+                <div className="border-t border-border px-4 py-3"><Button type="button" variant="ghost" size="sm" onClick={() => onOpenTab("comms")} className="px-0">전체 대화 보기</Button></div>
               </section>
             </aside>
           </div>
+
+          <section className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">최근 실행</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">실제 실행의 결과와 상태는 실행 현황에서 이어서 확인합니다.</p>
+              </div>
+              <span className="text-xs font-semibold text-muted-foreground">{selectedRequests.length}건</span>
+            </div>
+            {selectedRequests.length ? (
+              <div className="grid gap-px bg-border md:grid-cols-2">
+                {selectedRequests.slice(0, 8).map((request) => (
+                  <button key={request.id} type="button" onClick={() => onOpenRun(request.id)} className="min-w-0 bg-card px-4 py-3 text-left transition-colors hover:bg-accent/50">
+                    <div className="flex items-center justify-between gap-3"><StatusBadge status={request.status} /><span className="text-xs text-muted-foreground">{formatIsoAge(request.updatedAt || request.requestedAt)}</span></div>
+                    <p className="mt-2 line-clamp-2 text-xs text-foreground/80">{request.note ?? "메모 없음"}</p>
+                    <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{request.id}</p>
+                  </button>
+                ))}
+              </div>
+            ) : <p className="px-4 py-5 text-sm text-muted-foreground">아직 실행 기록이 없습니다.</p>}
+          </section>
         </section>
       </div>
     </div>
@@ -6960,10 +6966,9 @@ export function SpliceWorkspaceRoom() {
           focusedAgentId={focusedAgentId}
           messages={messages}
           onFocusAgent={onFocusAgent}
+          onOpenTab={setActiveTab}
           onOpenRun={onOpenRun}
-          sendingAgentId={sendingAgentId}
           runningAgentId={runningAgentId}
-          onSend={(agentId, body) => sendMessageMutation.mutate({ agentId, body })}
           onRunAgent={(agentId) => runAgentMutation.mutate(agentId)}
         />
       )}

@@ -546,7 +546,7 @@ describe("SpliceWorkspaceRoom", () => {
       exactButton(mainNavigation!, "에이전트").click();
     });
     await flushReact();
-    expect(container.textContent).toContain("에이전트 현황");
+    expect(container.textContent).toContain("에이전트 상태");
 
     const codeCopiesButton = exactButton(mainNavigation!, "작업 사본");
     await act(async () => {
