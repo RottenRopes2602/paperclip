@@ -705,6 +705,7 @@ export interface SpliceWorkspaceRoomProject extends SpliceWorkspaceRoomWorkItem 
     archived: number;
   };
   issueTotal: number;
+  issues: SpliceWorkspaceRoomWorkItem[];
 }
 
 export interface SpliceWorkspaceRoomActor {

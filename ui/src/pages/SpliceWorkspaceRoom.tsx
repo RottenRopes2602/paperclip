@@ -3779,32 +3779,75 @@ function projectStageLabel(stage: string | null): string | null {
 function ProjectDisplayRow({ project, archived = false }: { project: SpliceWorkspaceRoomProject; archived?: boolean }) {
   const summary = project.summary || plainSummary(project.description, "요약 없음");
   const stage = projectStageLabel(project.stage);
-  const meta = [
-    project.goalName ? `목표 · ${project.goalName}` : null,
-    stage ? `단계 · ${stage}` : null,
-    project.ownerName ? `담당 · ${project.ownerName}` : null,
-    `업무 · ${project.issueTotal}건`,
-  ].filter(Boolean);
+  const workBreakdown = [
+    ["진행", project.issueCounts.active],
+    ["검토", project.issueCounts.review],
+    ["대기", project.issueCounts.todo],
+    ["막힘", project.issueCounts.blocked],
+    ["완료", project.issueCounts.done],
+    ["기록", project.issueCounts.archived],
+  ].filter(([, count]) => count > 0);
 
   return (
-    <div className="flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0">
-      <div className="mt-0.5 shrink-0 text-muted-foreground">
-        {archived ? <History className="h-4 w-4" /> : <Flag className="h-4 w-4" />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{project.identifier}</span>
-          <span className="truncate text-sm font-medium">{project.title}</span>
+    <div className="border-b border-border px-4 py-4 last:border-b-0">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 text-muted-foreground">
+          {archived ? <History className="h-4 w-4" /> : <Flag className="h-4 w-4" />}
         </div>
-        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{summary}</p>
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          {meta.map((item) => <span key={item}>{item}</span>)}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{project.identifier}</span>
+            <span className="truncate text-sm font-medium">{project.title}</span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{summary}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!archived ? <span className="text-xs tabular-nums text-muted-foreground">진척 {project.progress}%</span> : null}
+          <StatusBadge status={project.status} ns="project" />
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {!archived ? <span className="text-xs tabular-nums text-muted-foreground">진척 {project.progress}%</span> : null}
-        <StatusBadge status={project.status} ns="project" />
+
+      <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <ProjectInfoCell label="목표 연결" value={project.goalName || "미연결"} />
+        <ProjectInfoCell label="단계" value={stage || "미지정"} />
+        <ProjectInfoCell label="담당" value={project.ownerName || "미지정"} />
+        <ProjectInfoCell
+          label={`연결 업무 ${project.issueTotal}건`}
+          value={workBreakdown.length ? workBreakdown.map(([label, count]) => `${label} ${count}`).join(" · ") : "업무 없음"}
+        />
       </div>
+
+      {project.issues.length ? (
+        <details className="mt-3 border-t border-border/70 pt-2">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground marker:hidden hover:text-foreground">
+            <ChevronDown className="h-3.5 w-3.5" />
+            연결된 업무 보기
+          </summary>
+          <div className="mt-2 border border-border/70">
+            {project.issues.map((issue) => <ProjectIssueRow key={issue.id} issue={issue} />)}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function ProjectInfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 border border-border/70 bg-muted/20 px-3 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-xs text-foreground" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function ProjectIssueRow({ issue }: { issue: SpliceWorkspaceRoomWorkItem }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2 last:border-b-0">
+      <CircleDot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{issue.identifier}</span>
+      <span className="min-w-0 flex-1 truncate text-xs">{issue.title}</span>
+      <StatusBadge status={issue.status} ns="issue" />
     </div>
   );
 }
