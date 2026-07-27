@@ -2,6 +2,10 @@
 
 A minimal but complete example of an agent company package.
 
+For companies that produce video or other large media, the optional
+[Marketing Studio starter](marketing-studio-starter.md) adds a reusable production
+skill, project, and two starter tasks without changing this minimal example.
+
 ## Directory Structure
 
 ```

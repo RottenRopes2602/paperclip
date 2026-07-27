@@ -107,6 +107,13 @@ And the example: [references/example-company.md](references/example-company.md)
 
 Create the directory structure and all files. Follow the spec's conventions exactly.
 
+If the company or project will create social video, product captures, motion work,
+or other large media, offer the reusable Marketing Studio starter. When selected,
+read [references/marketing-studio-starter.md](references/marketing-studio-starter.md)
+and copy the matching files from `assets/marketing-studio/` into the generated
+package. Replace the documented placeholders; do not copy machine-local paths,
+brand-specific rules, or binary media.
+
 **Directory structure:**
 
 ```
