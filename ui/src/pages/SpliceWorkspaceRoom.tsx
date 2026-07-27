@@ -3780,12 +3780,12 @@ function ProjectDisplayRow({ project, archived = false }: { project: SpliceWorks
   const summary = project.summary || plainSummary(project.description, "요약 없음");
   const stage = projectStageLabel(project.stage);
   const workBreakdown = [
-    ["진행", project.issueCounts.active],
-    ["검토", project.issueCounts.review],
-    ["대기", project.issueCounts.todo],
-    ["막힘", project.issueCounts.blocked],
-    ["완료", project.issueCounts.done],
-    ["기록", project.issueCounts.archived],
+    ["진행", project.issueCounts.active] as const,
+    ["검토", project.issueCounts.review] as const,
+    ["대기", project.issueCounts.todo] as const,
+    ["막힘", project.issueCounts.blocked] as const,
+    ["완료", project.issueCounts.done] as const,
+    ["기록", project.issueCounts.archived] as const,
   ].filter(([, count]) => count > 0);
 
   return (
